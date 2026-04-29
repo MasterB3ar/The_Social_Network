@@ -41,18 +41,18 @@ const LAYERS = [
 ];
 const DEMO_USERS = [
   {
-    name: 'Alex Demo',
-    username: 'alex',
-    email: 'alex@tsn.local',
-    bio: 'Demo account for testing TSN chat.',
-    post: 'Hey, I am Alex. Click me in People to test realtime chat.'
+    name: 'Demo User 1',
+    username: 'demo_one',
+    email: 'demo.one@tsn.local',
+    bio: 'Generic demo account for testing TSN chat.',
+    post: 'This is Demo User 1. Open People to test realtime chat.'
   },
   {
-    name: 'Sam Demo',
-    username: 'sam',
-    email: 'sam@tsn.local',
-    bio: 'Second demo account for testing conversations.',
-    post: 'This is Sam. TSN demo chat is ready.'
+    name: 'Demo User 2',
+    username: 'demo_two',
+    email: 'demo.two@tsn.local',
+    bio: 'Second generic demo account for testing conversations.',
+    post: 'This is Demo User 2. TSN demo chat is ready.'
   }
 ];
 
@@ -359,14 +359,14 @@ app.post('/api/auth/demo', async (req, res) => {
       email: blueprint.email,
       bio: blueprint.bio,
       passwordHash: await bcrypt.hash(DEMO_PASSWORD, 12),
-      demoPasswordVersion: 2,
+      demoPasswordVersion: 3,
       unlockedLayers: [],
       createdAt: new Date().toISOString()
     };
     db.users.push(user);
-  } else if (user.demoPasswordVersion !== 2) {
+  } else if (user.demoPasswordVersion !== 3) {
     user.passwordHash = await bcrypt.hash(DEMO_PASSWORD, 12);
-    user.demoPasswordVersion = 2;
+    user.demoPasswordVersion = 3;
   }
 
   const hasDemoPost = db.posts.some((post) => post.authorId === user.id);
@@ -632,7 +632,7 @@ app.get('*', (req, res) => {
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`TSN is running on port ${PORT}.`);
   console.log(`Database file: ${DB_FILE}`);
-  console.log('Easy login is available: Continue as Guest or Demo Alex/Sam.');
+  console.log('Easy login is available: Continue as Guest or Demo User 1/2.');
 
   if (process.env.NODE_ENV === 'production' && JWT_SECRET === DEFAULT_JWT_SECRET) {
     console.warn('WARNING: Set a strong JWT_SECRET before using TSN publicly.');
