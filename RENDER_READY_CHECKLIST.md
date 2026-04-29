@@ -15,5 +15,5 @@ After deploying:
 
 - [ ] Open `/api/health` and check it returns `ok: true`.
 - [ ] Create a normal account.
-- [ ] Test Demo Alex + Demo Sam chat in two browser windows.
+- [ ] Test Demo User 1 + Demo User 2 chat in two browser windows.
 - [ ] Test Layer 1 → Layer 2 → Layer 3 unlock order.
