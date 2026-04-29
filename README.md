@@ -124,8 +124,8 @@ RENDER_READY_CHECKLIST.md  Quick checklist
 
 ## Test chat
 
-1. Open the site normally and click **Demo Alex**.
-2. Open the site in private/incognito mode and click **Demo Sam**.
+1. Open the site normally and click **Demo User 1**.
+2. Open the site in private/incognito mode and click **Demo User 2**.
 3. Click the other user in the People panel.
 4. Send messages.
 
