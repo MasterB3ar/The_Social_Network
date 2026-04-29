@@ -1,0 +1,34 @@
+# Render Blueprint for SAVED DATA.
+# Before using this file, rename it to render.yaml.
+# Persistent disks require a paid Render web service instance.
+services:
+  - type: web
+    name: tsn-social-network
+    runtime: node
+    plan: starter
+    region: frankfurt
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /api/health
+    autoDeployTrigger: commit
+    disk:
+      name: tsn-data
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NODE_VERSION
+        value: 24.14.1
+      - key: DATA_DIR
+        value: /var/data
+      - key: JWT_SECRET
+        generateValue: true
+      - key: TSN_DEMO_PASSWORD
+        sync: false
+      - key: TSN_LAYER_1_PASSWORD
+        sync: false
+      - key: TSN_LAYER_2_PASSWORD
+        sync: false
+      - key: TSN_LAYER_3_PASSWORD
+        sync: false

@@ -1,0 +1,144 @@
+# The Social Network (TSN)
+
+A full-stack social media starter app with accounts, profiles, posts, likes, comments, realtime private chat, and 3 password-gated deeper layers.
+
+## Features
+
+- Register/login accounts
+- Username-or-email login
+- Guest and demo login for testing
+- Secure password hashing with bcrypt
+- Stronger account password rules
+- Public feed with posts, likes, and comments
+- User profiles and bios
+- People search
+- Online/offline presence
+- Realtime private chat with Socket.IO
+- 3 deeper password-gated layers
+- Private post board inside each unlocked layer
+- Render deployment files included
+
+## Run locally
+
+```bash
+npm install
+cp .env.example .env
+npm start
+```
+
+Open:
+
+```text
+http://localhost:3000
+```
+
+## Default local passwords
+
+Demo accounts:
+
+```text
+TSN-Demo!9vK2p-Q8rM
+```
+
+Layer passwords:
+
+```text
+Layer 1: TSN-Layer1!8qN4-vZ2m-R7tP
+Layer 2: TSN-Layer2!5xC9-mH6a-B3yL
+Layer 3: TSN-Layer3!2pW7-kD8s-N4rX
+```
+
+Change these in `.env` before sharing your site.
+
+## Deploy on Render
+
+This project includes two Render Blueprint files:
+
+```text
+render.yaml               Free testing deploy
+render.persistent.yaml    Paid deploy with saved data on a persistent disk
+```
+
+### Free testing deploy
+
+Use the included `render.yaml` as-is.
+
+It uses:
+
+```text
+Runtime: Node
+Plan: free
+Build Command: npm install
+Start Command: npm start
+Health Check Path: /api/health
+DATA_DIR=/tmp/tsn-data
+```
+
+This is easy and good for testing. Data can reset after restarts or redeploys.
+
+### Saved-data deploy
+
+Use this if you want accounts, messages, posts, and layer unlocks to survive restarts.
+
+1. Rename `render.persistent.yaml` to `render.yaml`.
+2. Deploy with Render Blueprint.
+3. Use the Starter plan with a disk mounted at `/var/data`.
+
+It uses:
+
+```text
+Plan: starter
+Disk mount path: /var/data
+DATA_DIR=/var/data
+```
+
+Persistent disks require a paid Render service.
+
+## Required Render secrets
+
+When Render asks for Blueprint secret values, enter these:
+
+```text
+TSN_DEMO_PASSWORD=<strong demo password>
+TSN_LAYER_1_PASSWORD=<strong layer 1 password>
+TSN_LAYER_2_PASSWORD=<strong layer 2 password>
+TSN_LAYER_3_PASSWORD=<strong layer 3 password>
+```
+
+`JWT_SECRET` is generated automatically in the Blueprint.
+
+## Project files
+
+```text
+server.js                  Express + Socket.IO API server
+public/index.html          Front-end layout
+public/styles.css          Styling
+public/app.js              Front-end behavior
+render.yaml                Free Render Blueprint
+render.persistent.yaml     Paid persistent-disk Render Blueprint
+ONLINE_DEPLOY.md           Full Render deploy guide
+RENDER_READY_CHECKLIST.md  Quick checklist
+.env.example               Local environment example
+.env.render.example        Render environment example
+```
+
+## Test chat
+
+1. Open the site normally and click **Demo Alex**.
+2. Open the site in private/incognito mode and click **Demo Sam**.
+3. Click the other user in the People panel.
+4. Send messages.
+
+## Health check
+
+Open:
+
+```text
+/api/health
+```
+
+It should return `ok: true`.
+
+## Important before real public launch
+
+This app uses a JSON file database to stay simple. That is okay for testing and learning. Before real public use, move the database to PostgreSQL or MongoDB, disable/protect guest/demo login, add rate limiting, add password reset, and add moderation/admin tools.

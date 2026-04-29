@@ -1,0 +1,215 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>The Social Network | TSN</title>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <div class="noise"></div>
+
+  <section id="authScreen" class="auth-screen">
+    <div class="auth-hero">
+      <div class="brand-mark">TSN</div>
+      <p class="eyebrow">The Social Network</p>
+      <h1>Post, discover, and chat in real time.</h1>
+      <p class="hero-copy">A clean social media starter with accounts, profiles, posts, likes, comments, online presence, and private messaging.</p>
+      <div class="hero-cards">
+        <div><strong>Live Chat</strong><span>Socket.IO private messages</span></div>
+        <div><strong>Profiles</strong><span>Names, usernames, bios</span></div>
+        <div><strong>Feed</strong><span>Posts, likes, comments</span></div>
+      </div>
+    </div>
+
+    <div class="auth-panel">
+      <div class="tabs">
+        <button class="tab active" data-tab="login">Login</button>
+        <button class="tab" data-tab="register">Create account</button>
+      </div>
+
+      <form id="loginForm" class="auth-form">
+        <h2>Welcome back</h2>
+        <label>
+          Username or email
+          <input name="login" autocomplete="username" placeholder="ruben or ruben@example.com" required />
+        </label>
+        <label>
+          Password
+          <input name="password" type="password" autocomplete="current-password" placeholder="Your password" required />
+        </label>
+        <button class="primary" type="submit">Login to TSN</button>
+
+        <div class="easy-login">
+          <div class="easy-login-heading">
+            <span></span>
+            <strong>or enter fast</strong>
+            <span></span>
+          </div>
+          <button id="guestLoginBtn" class="secondary wide" type="button">Continue as Guest</button>
+          <div class="demo-grid">
+            <button class="ghost demo-button" data-demo-login="alex" type="button">Demo Alex</button>
+            <button class="ghost demo-button" data-demo-login="sam" type="button">Demo Sam</button>
+          </div>
+          <p class="auth-hint">Demo accounts are created automatically. Manual demo password: <strong>TSN-Demo!9vK2p-Q8rM</strong></p>
+        </div>
+      </form>
+
+      <form id="registerForm" class="auth-form hidden">
+        <h2>Create your account</h2>
+        <label>
+          Display name
+          <input name="name" autocomplete="name" placeholder="Ruben Mundorf" required />
+        </label>
+        <label>
+          Username
+          <input name="username" autocomplete="username" placeholder="ruben_dev" required />
+        </label>
+        <label>
+          Email <span class="optional">optional</span>
+          <input name="email" type="email" autocomplete="email" placeholder="you can leave this empty" />
+        </label>
+        <label>
+          Password
+          <input name="password" type="password" autocomplete="new-password" placeholder="10+ chars, uppercase, number, symbol" required />
+        </label>
+        <button class="primary" type="submit">Join TSN</button>
+      </form>
+
+      <p id="authError" class="error"></p>
+      <p class="save-note">TSN keeps you logged in on this device for 7 days.</p>
+    </div>
+  </section>
+
+  <main id="appScreen" class="app hidden">
+    <nav class="topbar">
+      <div class="brand">
+        <div class="brand-mark small">TSN</div>
+        <div>
+          <strong>The Social Network</strong>
+          <span>Realtime social media</span>
+        </div>
+      </div>
+      <div class="topbar-actions">
+        <button id="refreshBtn" class="ghost">Refresh</button>
+        <button id="logoutBtn" class="ghost danger">Logout</button>
+      </div>
+    </nav>
+
+    <div class="layout">
+      <aside class="sidebar card">
+        <div class="profile-block">
+          <div id="myAvatar" class="avatar large">?</div>
+          <div>
+            <h2 id="myName">Loading...</h2>
+            <p id="myUsername">@username</p>
+          </div>
+        </div>
+        <form id="profileForm" class="profile-form">
+          <label>
+            Name
+            <input id="profileName" name="name" maxlength="60" />
+          </label>
+          <label>
+            Bio
+            <textarea id="profileBio" name="bio" maxlength="160" rows="3"></textarea>
+          </label>
+          <button class="secondary" type="submit">Save profile</button>
+        </form>
+
+        <div class="stat-grid">
+          <div><strong id="postCount">0</strong><span>Posts</span></div>
+          <div><strong id="userCount">0</strong><span>People</span></div>
+        </div>
+      </aside>
+
+      <section class="feed">
+        <div class="composer card">
+          <div class="composer-top">
+            <div id="composerAvatar" class="avatar">?</div>
+            <textarea id="postInput" placeholder="What is happening on TSN?" maxlength="600"></textarea>
+          </div>
+          <div class="composer-actions">
+            <span id="postCounter">0/600</span>
+            <button id="postBtn" class="primary">Post</button>
+          </div>
+        </div>
+
+
+        <section class="layers-card card">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow mini">Deep access</p>
+              <h2>TSN Layers</h2>
+              <p>Unlock 3 deeper rooms. Each layer needs its own password.</p>
+            </div>
+            <span id="layerProgress" class="pill">0/3 unlocked</span>
+          </div>
+
+          <div id="layersList" class="layers-list"></div>
+
+          <div id="layerRoom" class="layer-room hidden">
+            <div class="layer-room-header">
+              <div>
+                <p id="activeLayerLabel" class="eyebrow mini">Layer</p>
+                <h3 id="activeLayerName">Layer room</h3>
+                <p id="activeLayerTagline">Private layer conversation.</p>
+              </div>
+              <button id="closeLayerBtn" class="ghost" type="button">Close layer</button>
+            </div>
+
+            <div class="layer-composer">
+              <textarea id="layerPostInput" maxlength="600" placeholder="Post inside this layer..."></textarea>
+              <div class="composer-actions">
+                <span id="layerPostCounter">0/600</span>
+                <button id="layerPostBtn" class="primary" type="button">Post to layer</button>
+              </div>
+            </div>
+
+            <div id="layerPostsList" class="layer-posts"></div>
+          </div>
+        </section>
+
+        <div id="postsList" class="posts"></div>
+      </section>
+
+      <aside class="people card">
+        <div class="section-heading">
+          <div>
+            <h2>People</h2>
+            <p>Click someone to chat.</p>
+          </div>
+          <span id="onlinePill" class="pill">0 online</span>
+        </div>
+        <input id="userSearch" class="search" placeholder="Search users..." />
+        <div id="usersList" class="users-list"></div>
+      </aside>
+    </div>
+  </main>
+
+  <section id="chatPanel" class="chat-panel hidden">
+    <header>
+      <div class="chat-user">
+        <div id="chatAvatar" class="avatar">?</div>
+        <div>
+          <strong id="chatName">Chat</strong>
+          <span id="chatStatus">Offline</span>
+        </div>
+      </div>
+      <button id="closeChatBtn" class="icon-button" aria-label="Close chat">×</button>
+    </header>
+    <div id="messagesList" class="messages"></div>
+    <div id="typingLabel" class="typing hidden">typing...</div>
+    <form id="messageForm" class="message-form">
+      <input id="messageInput" placeholder="Write a message..." autocomplete="off" />
+      <button class="primary" type="submit">Send</button>
+    </form>
+  </section>
+
+  <div id="toast" class="toast hidden"></div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="/app.js"></script>
+</body>
+</html>
