@@ -2,3 +2,8 @@ node_modules
 .env
 .DS_Store
 npm-debug.log*
+
+# Runtime data must not be committed.
+data/*.json
+data/backups/
+*.tmp

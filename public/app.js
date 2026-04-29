@@ -6,9 +6,13 @@ const state = {
   socket: null,
   activeChatUser: null,
   activeMessages: [],
-  layers: [],
-  activeLayer: null,
-  layerPosts: []
+  rooms: [],
+  activeRoom: null,
+  roomMessages: [],
+  chatDrafts: {},
+  commentDrafts: {},
+  roomSettingDrafts: {},
+  adminUsers: []
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -22,9 +26,10 @@ const usersList = $('#usersList');
 const chatPanel = $('#chatPanel');
 const messagesList = $('#messagesList');
 const toast = $('#toast');
-const layersList = $('#layersList');
-const layerRoom = $('#layerRoom');
-const layerPostsList = $('#layerPostsList');
+const roomsList = $('#roomsList');
+const roomPanel = $('#roomPanel');
+const roomMessagesList = $('#roomMessagesList');
+const adminUsersList = $('#adminUsersList');
 
 function escapeHtml(value) {
   return String(value || '')
@@ -55,11 +60,34 @@ function formatTime(dateString) {
   return date.toLocaleDateString();
 }
 
+function canDeleteOwnOrAdmin(authorId) {
+  return Boolean(state.me && (state.me.isAdmin || authorId === state.me.id));
+}
+
 function showToast(message) {
   toast.textContent = message;
   toast.classList.remove('hidden');
   clearTimeout(showToast.timeout);
   showToast.timeout = setTimeout(() => toast.classList.add('hidden'), 2400);
+}
+
+function forceLocalLogout(message = 'You have been logged out.') {
+  if (state.socket) {
+    state.socket.disconnect();
+    state.socket = null;
+  }
+  setToken(null);
+  state.me = null;
+  state.users = [];
+  state.posts = [];
+  state.activeChatUser = null;
+  state.activeMessages = [];
+  state.rooms = [];
+  state.activeRoom = null;
+  state.roomMessages = [];
+  state.adminUsers = [];
+  showAuth();
+  showToast(message);
 }
 
 async function api(path, options = {}) {
@@ -80,6 +108,9 @@ async function api(path, options = {}) {
   }
 
   if (!response.ok) {
+    if (data.logout) {
+      forceLocalLogout(data.error || 'Your session ended.');
+    }
     throw new Error(data.error || 'Something went wrong.');
   }
 
@@ -196,12 +227,7 @@ document.querySelectorAll('[data-demo-login]').forEach((button) => {
 });
 
 $('#logoutBtn').addEventListener('click', () => {
-  if (state.socket) state.socket.disconnect();
-  setToken(null);
-  state.me = null;
-  state.users = [];
-  state.posts = [];
-  showAuth();
+  forceLocalLogout('Logged out');
 });
 
 $('#refreshBtn').addEventListener('click', async () => {
@@ -227,6 +253,109 @@ $('#profileForm').addEventListener('submit', async (event) => {
   }
 });
 
+const adminClaimForm = $('#adminClaimForm');
+if (adminClaimForm) {
+  adminClaimForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+
+    const passwordInput = $('#adminPasswordInput');
+    const password = passwordInput.value.trim();
+    if (!password) return;
+
+    try {
+      const data = await api('/api/admin/claim', {
+        method: 'POST',
+        body: JSON.stringify({ password })
+      });
+      state.me = data.user;
+      passwordInput.value = '';
+      renderMe();
+      await loadAdminUsers();
+      renderPosts();
+      renderRoomPanel();
+      renderChat();
+      showToast('Admin rights enabled');
+    } catch (error) {
+      showToast(error.message);
+    }
+  });
+}
+
+
+const refreshAdminUsersBtn = $('#refreshAdminUsersBtn');
+if (refreshAdminUsersBtn) {
+  refreshAdminUsersBtn.addEventListener('click', () => loadAdminUsers().catch((error) => showToast(error.message)));
+}
+
+const createBackupBtn = $('#createBackupBtn');
+if (createBackupBtn) {
+  createBackupBtn.addEventListener('click', async () => {
+    const backupStatus = $('#backupStatus');
+    createBackupBtn.disabled = true;
+    if (backupStatus) backupStatus.textContent = 'Creating backup...';
+
+    try {
+      const data = await api('/api/admin/backup', { method: 'POST' });
+      if (backupStatus) backupStatus.textContent = `Backup created: ${data.backupFile}`;
+      showToast('Database backup created');
+    } catch (error) {
+      if (backupStatus) backupStatus.textContent = 'Backup failed';
+      showToast(error.message);
+    } finally {
+      createBackupBtn.disabled = false;
+    }
+  });
+}
+
+if (adminUsersList) {
+  adminUsersList.addEventListener('click', async (event) => {
+    const kickButton = event.target.closest('[data-admin-kick]');
+    const banButton = event.target.closest('[data-admin-ban]');
+    const unbanButton = event.target.closest('[data-admin-unban]');
+
+    try {
+      if (kickButton) {
+        const userId = kickButton.dataset.adminKick;
+        const user = state.adminUsers.find((candidate) => candidate.id === userId);
+        if (!confirm(`Kick ${user?.name || 'this user'} out of TSN now?`)) return;
+        const data = await api(`/api/admin/users/${userId}/kick`, { method: 'POST' });
+        upsertAdminUser(data.user);
+        renderAdminUsers();
+        await loadUsers($('#userSearch').value);
+        showToast('User kicked');
+      }
+
+      if (banButton) {
+        const userId = banButton.dataset.adminBan;
+        const user = state.adminUsers.find((candidate) => candidate.id === userId);
+        const reason = prompt(`Ban ${user?.name || 'this user'}? Optional reason:`) || '';
+        if (!confirm(`Ban ${user?.name || 'this user'} and force logout?`)) return;
+        const data = await api(`/api/admin/users/${userId}/ban`, {
+          method: 'POST',
+          body: JSON.stringify({ reason })
+        });
+        upsertAdminUser(data.user);
+        renderAdminUsers();
+        await loadUsers($('#userSearch').value);
+        showToast('User banned');
+      }
+
+      if (unbanButton) {
+        const userId = unbanButton.dataset.adminUnban;
+        const user = state.adminUsers.find((candidate) => candidate.id === userId);
+        if (!confirm(`Unban ${user?.name || 'this user'}?`)) return;
+        const data = await api(`/api/admin/users/${userId}/unban`, { method: 'POST' });
+        upsertAdminUser(data.user);
+        renderAdminUsers();
+        await loadUsers($('#userSearch').value);
+        showToast('User unbanned');
+      }
+    } catch (error) {
+      showToast(error.message);
+    }
+  });
+}
+
 $('#postInput').addEventListener('input', () => {
   $('#postCounter').textContent = `${$('#postInput').value.length}/600`;
 });
@@ -250,6 +379,37 @@ $('#postBtn').addEventListener('click', async () => {
 });
 
 postsList.addEventListener('click', async (event) => {
+  const deletePostButton = event.target.closest('[data-delete-post]');
+  if (deletePostButton) {
+    if (!confirm('Delete this post?')) return;
+    try {
+      const postId = deletePostButton.dataset.deletePost;
+      await api(`/api/posts/${postId}`, { method: 'DELETE' });
+      state.posts = state.posts.filter((post) => post.id !== postId);
+      renderPosts();
+      showToast('Post deleted');
+    } catch (error) {
+      showToast(error.message);
+    }
+    return;
+  }
+
+  const deleteCommentButton = event.target.closest('[data-delete-comment]');
+  if (deleteCommentButton) {
+    if (!confirm('Delete this comment?')) return;
+    try {
+      const postId = deleteCommentButton.dataset.postId;
+      const commentId = deleteCommentButton.dataset.deleteComment;
+      const data = await api(`/api/posts/${postId}/comments/${commentId}`, { method: 'DELETE' });
+      upsertPost(data.post);
+      renderPosts();
+      showToast('Comment deleted');
+    } catch (error) {
+      showToast(error.message);
+    }
+    return;
+  }
+
   const likeButton = event.target.closest('[data-like]');
   if (!likeButton) return;
 
@@ -260,6 +420,12 @@ postsList.addEventListener('click', async (event) => {
   } catch (error) {
     showToast(error.message);
   }
+});
+
+postsList.addEventListener('input', (event) => {
+  const form = event.target.closest('[data-comment-form]');
+  if (!form) return;
+  state.commentDrafts[form.dataset.commentForm] = event.target.value;
 });
 
 postsList.addEventListener('submit', async (event) => {
@@ -278,6 +444,7 @@ postsList.addEventListener('submit', async (event) => {
       body: JSON.stringify({ body })
     });
     input.value = '';
+    state.commentDrafts[postId] = '';
     upsertPost(data.post);
     renderPosts();
   } catch (error) {
@@ -292,6 +459,13 @@ $('#userSearch').addEventListener('input', () => {
 });
 
 $('#closeChatBtn').addEventListener('click', () => {
+  const input = $('#messageInput');
+  if (state.activeChatUser && input) {
+    state.chatDrafts[state.activeChatUser.id] = input.value;
+    input.dataset.chatUserId = '';
+    input.value = '';
+  }
+
   state.activeChatUser = null;
   state.activeMessages = [];
   chatPanel.classList.add('hidden');
@@ -299,7 +473,10 @@ $('#closeChatBtn').addEventListener('click', () => {
 });
 
 $('#messageInput').addEventListener('input', () => {
-  if (state.socket && state.activeChatUser) {
+  if (!state.activeChatUser) return;
+  state.chatDrafts[state.activeChatUser.id] = $('#messageInput').value;
+
+  if (state.socket) {
     state.socket.emit('typing', { to: state.activeChatUser.id });
   }
 });
@@ -310,207 +487,450 @@ $('#messageForm').addEventListener('submit', (event) => {
   const text = input.value.trim();
   if (!text || !state.socket || !state.activeChatUser) return;
 
+  const to = state.activeChatUser.id;
+  state.chatDrafts[to] = input.value;
+
   state.socket.emit('private-message', {
-    to: state.activeChatUser.id,
+    to,
     text
   }, (response) => {
-    if (!response?.ok) showToast(response?.error || 'Could not send message.');
-  });
+    if (!response?.ok) {
+      showToast(response?.error || 'Could not send message.');
+      return;
+    }
 
-  input.value = '';
+    if (state.activeChatUser?.id === to) {
+      input.value = '';
+    }
+    state.chatDrafts[to] = '';
+  });
 });
 
-if (layersList) {
-  layersList.addEventListener('submit', async (event) => {
-    const form = event.target.closest('[data-layer-unlock]');
-    if (!form) return;
+if (roomsList) {
+  roomsList.addEventListener('click', async (event) => {
+    const openButton = event.target.closest('[data-room-open]');
+    const claimButton = event.target.closest('[data-room-claim]');
+    const releaseButton = event.target.closest('[data-room-release]');
+
+    if (openButton) {
+      openRoom(Number(openButton.dataset.roomOpen));
+      return;
+    }
+
+    if (claimButton) {
+      const roomId = Number(claimButton.dataset.roomClaim);
+      try {
+        const data = await api(`/api/rooms/${roomId}/claim`, { method: 'POST' });
+        state.rooms = data.rooms;
+        state.activeRoom = data.room;
+        renderRooms();
+        renderRoomPanel();
+        await openRoom(roomId);
+        showToast(`Room ${roomId} claimed`);
+      } catch (error) {
+        showToast(error.message);
+      }
+      return;
+    }
+
+    if (releaseButton) {
+      const roomId = Number(releaseButton.dataset.roomRelease);
+      if (!confirm('Release this room? This resets its custom name and removes its password.')) return;
+      try {
+        const data = await api(`/api/rooms/${roomId}/release`, { method: 'POST' });
+        state.rooms = data.rooms;
+        if (state.activeRoom?.id === roomId) {
+          state.activeRoom = data.room;
+          state.roomMessages = [];
+        }
+        renderRooms();
+        renderRoomPanel();
+        showToast(`Room ${roomId} released`);
+      } catch (error) {
+        showToast(error.message);
+      }
+    }
+  });
+}
+
+const closeRoomBtn = $('#closeRoomBtn');
+if (closeRoomBtn) {
+  closeRoomBtn.addEventListener('click', () => {
+    state.activeRoom = null;
+    state.roomMessages = [];
+    roomPanel.classList.add('hidden');
+    renderRooms();
+  });
+}
+
+const roomSettingsForm = $('#roomSettingsForm');
+if (roomSettingsForm) {
+  roomSettingsForm.addEventListener('submit', async (event) => {
     event.preventDefault();
+    if (!state.activeRoom?.canManage) return;
 
-    const layerId = Number(form.dataset.layerUnlock);
-    const input = form.querySelector('input');
-    const password = input.value.trim();
-    if (!password) return;
-
-    try {
-      const data = await api(`/api/layers/${layerId}/unlock`, {
-        method: 'POST',
-        body: JSON.stringify({ password })
-      });
-      state.me = data.user;
-      state.layers = data.layers;
-      input.value = '';
-      renderLayers();
-      await openLayer(layerId);
-      showToast(`Layer ${layerId} unlocked`);
-    } catch (error) {
-      showToast(error.message);
-    }
-  });
-
-  layersList.addEventListener('click', (event) => {
-    const openButton = event.target.closest('[data-layer-open]');
-    if (!openButton) return;
-    openLayer(Number(openButton.dataset.layerOpen));
-  });
-}
-
-const closeLayerBtn = $('#closeLayerBtn');
-if (closeLayerBtn) {
-  closeLayerBtn.addEventListener('click', () => {
-    state.activeLayer = null;
-    state.layerPosts = [];
-    layerRoom.classList.add('hidden');
-    renderLayers();
-  });
-}
-
-const layerPostInput = $('#layerPostInput');
-if (layerPostInput) {
-  layerPostInput.addEventListener('input', () => {
-    $('#layerPostCounter').textContent = `${layerPostInput.value.length}/600`;
-  });
-}
-
-const layerPostBtn = $('#layerPostBtn');
-if (layerPostBtn) {
-  layerPostBtn.addEventListener('click', async () => {
-    if (!state.activeLayer) return;
-    const input = $('#layerPostInput');
-    const body = input.value.trim();
-    if (!body) return;
+    const nameInput = $('#roomNameInput');
+    const passwordInput = $('#roomPasswordInput');
+    const body = { name: nameInput.value.trim() };
+    if (passwordInput.value.trim()) body.password = passwordInput.value.trim();
 
     try {
-      const data = await api(`/api/layers/${state.activeLayer.id}/posts`, {
-        method: 'POST',
-        body: JSON.stringify({ body })
+      const data = await api(`/api/rooms/${state.activeRoom.id}/settings`, {
+        method: 'PATCH',
+        body: JSON.stringify(body)
       });
-      input.value = '';
-      $('#layerPostCounter').textContent = '0/600';
-      state.layerPosts.unshift(data.post);
-      renderLayerRoom();
-      showToast(`Posted to Layer ${state.activeLayer.id}`);
+      state.rooms = data.rooms;
+      state.activeRoom = data.room;
+      passwordInput.value = '';
+      renderRooms();
+      renderRoomPanel();
+      showToast('Room settings saved');
     } catch (error) {
       showToast(error.message);
     }
   });
 }
 
+const clearRoomPasswordBtn = $('#clearRoomPasswordBtn');
+if (clearRoomPasswordBtn) {
+  clearRoomPasswordBtn.addEventListener('click', async () => {
+    if (!state.activeRoom?.canManage) return;
+    if (!confirm('Remove this room password? Everyone will be able to enter the room.')) return;
 
-function renderLayers() {
-  if (!layersList) return;
+    try {
+      const data = await api(`/api/rooms/${state.activeRoom.id}/settings`, {
+        method: 'PATCH',
+        body: JSON.stringify({ clearPassword: true })
+      });
+      state.rooms = data.rooms;
+      state.activeRoom = data.room;
+      state.roomMessages = [];
+      renderRooms();
+      renderRoomPanel();
+      showToast('Room password removed');
+      await openRoom(state.activeRoom.id);
+    } catch (error) {
+      showToast(error.message);
+    }
+  });
+}
 
-  const unlockedCount = state.layers.filter((layer) => layer.unlocked).length;
-  $('#layerProgress').textContent = `${unlockedCount}/3 unlocked`;
+const unlockRoomBtn = $('#unlockRoomBtn');
+if (unlockRoomBtn) {
+  unlockRoomBtn.addEventListener('click', async () => {
+    if (!state.activeRoom) return;
+    await unlockRoom(state.activeRoom);
+  });
+}
 
-  if (!state.layers.length) {
-    layersList.innerHTML = '<div class="empty">Layers are loading...</div>';
+const roomMessageInput = $('#roomMessageInput');
+if (roomMessageInput) {
+  roomMessageInput.addEventListener('input', () => {
+    $('#roomMessageCounter').textContent = `${roomMessageInput.value.length}/600`;
+  });
+}
+
+const roomMessageBtn = $('#roomMessageBtn');
+if (roomMessageBtn) {
+  roomMessageBtn.addEventListener('click', async () => {
+    if (!state.activeRoom) return;
+    const input = $('#roomMessageInput');
+    const text = input.value.trim();
+    if (!text) return;
+
+    try {
+      const data = await api(`/api/rooms/${state.activeRoom.id}/messages`, {
+        method: 'POST',
+        body: JSON.stringify({ text })
+      });
+      input.value = '';
+      $('#roomMessageCounter').textContent = '0/600';
+
+      if (!state.roomMessages.some((message) => message.id === data.message.id)) {
+        state.roomMessages.push(data.message);
+      }
+      renderRoomPanel();
+      showToast(`Sent to Room ${state.activeRoom.id}`);
+    } catch (error) {
+      showToast(error.message);
+    }
+  });
+}
+
+if (roomMessagesList) {
+  roomMessagesList.addEventListener('click', async (event) => {
+    const button = event.target.closest('[data-delete-room-message]');
+    if (!button || !state.activeRoom) return;
+    if (!confirm('Delete this room message for everyone?')) return;
+
+    try {
+      const messageId = button.dataset.deleteRoomMessage;
+      await api(`/api/rooms/${state.activeRoom.id}/messages/${messageId}`, { method: 'DELETE' });
+      state.roomMessages = state.roomMessages.filter((message) => message.id !== messageId);
+      renderRoomPanel();
+      showToast('Room message deleted');
+    } catch (error) {
+      showToast(error.message);
+    }
+  });
+}
+
+if (messagesList) {
+  messagesList.addEventListener('click', async (event) => {
+    const button = event.target.closest('[data-delete-message]');
+    if (!button) return;
+    if (!confirm('Delete this chat message for everyone?')) return;
+
+    try {
+      const messageId = button.dataset.deleteMessage;
+      await api(`/api/messages/${messageId}`, { method: 'DELETE' });
+      state.activeMessages = state.activeMessages.filter((message) => message.id !== messageId);
+      renderChat();
+      showToast('Message deleted');
+    } catch (error) {
+      showToast(error.message);
+    }
+  });
+}
+
+
+function renderRooms() {
+  if (!roomsList) return;
+
+  const claimedCount = state.rooms.filter((room) => room.claimed).length;
+  const lockedCount = state.rooms.filter((room) => room.hasPassword).length;
+  $('#roomProgress').textContent = `${claimedCount}/7 claimed · ${lockedCount} locked`;
+
+  if (!state.rooms.length) {
+    roomsList.innerHTML = '<div class="empty">Rooms are loading...</div>';
     return;
   }
 
-  layersList.innerHTML = state.layers.map((layer) => {
-    const isActive = state.activeLayer?.id === layer.id;
-
-    if (layer.unlocked) {
-      return `
-        <article class="layer-card unlocked ${isActive ? 'active' : ''}">
-          <div class="layer-number">L${escapeHtml(layer.id)}</div>
-          <div class="layer-main">
-            <strong>${escapeHtml(layer.name)}</strong>
-            <span>${escapeHtml(layer.tagline)}</span>
-          </div>
-          <button class="secondary" type="button" data-layer-open="${escapeHtml(layer.id)}">
-            ${isActive ? 'Open' : 'Enter'}
-          </button>
-        </article>
-      `;
-    }
-
-    if (!layer.available) {
-      return `
-        <article class="layer-card locked disabled">
-          <div class="layer-number">L${escapeHtml(layer.id)}</div>
-          <div class="layer-main">
-            <strong>${escapeHtml(layer.name)}</strong>
-            <span>Locked. Unlock Layer ${escapeHtml(layer.id - 1)} first.</span>
-          </div>
-          <button class="ghost" type="button" disabled>Locked</button>
-        </article>
-      `;
-    }
+  roomsList.innerHTML = state.rooms.map((room) => {
+    const isActive = state.activeRoom?.id === room.id;
+    const ownerLabel = room.owner ? `Claimed by ${escapeHtml(room.owner.name)} (@${escapeHtml(room.owner.username)})` : 'Unclaimed — be the first to claim it.';
+    const canRelease = room.canManage;
+    const lockLabel = room.hasPassword
+      ? (room.canAccess ? 'Password protected · unlocked' : 'Password protected')
+      : 'No password';
 
     return `
-      <article class="layer-card locked">
-        <div class="layer-number">L${escapeHtml(layer.id)}</div>
-        <div class="layer-main">
-          <strong>${escapeHtml(layer.name)}</strong>
-          <span>${escapeHtml(layer.tagline)}</span>
-          <form class="layer-unlock-form" data-layer-unlock="${escapeHtml(layer.id)}">
-            <input type="password" placeholder="Layer ${escapeHtml(layer.id)} password" autocomplete="off" />
-            <button class="primary" type="submit">Unlock</button>
-          </form>
+      <article class="room-card ${isActive ? 'active' : ''} ${room.claimed ? 'claimed' : 'unclaimed'} ${room.hasPassword ? 'locked-room-card' : ''}">
+        <div class="room-number">${room.hasPassword && !room.canAccess ? '🔒' : `R${escapeHtml(room.id)}`}</div>
+        <div class="room-main">
+          <strong>${escapeHtml(room.name)}</strong>
+          <span>${escapeHtml(room.tagline)}</span>
+          <small>${ownerLabel}</small>
+          <small>${escapeHtml(lockLabel)}</small>
+        </div>
+        <div class="room-actions">
+          <button class="secondary" type="button" data-room-open="${escapeHtml(room.id)}">
+            ${room.hasPassword && !room.canAccess ? 'Unlock' : (isActive ? 'Open' : 'Enter')}
+          </button>
+          ${room.claimed
+            ? (canRelease ? `<button class="ghost" type="button" data-room-release="${escapeHtml(room.id)}">Release</button>` : '')
+            : `<button class="primary" type="button" data-room-claim="${escapeHtml(room.id)}">Claim</button>`}
         </div>
       </article>
     `;
   }).join('');
 }
 
-function renderLayerRoom() {
-  if (!state.activeLayer || !layerRoom) return;
+function canDeleteRoomMessage(message) {
+  return Boolean(
+    state.me &&
+    (state.me.isAdmin || message.authorId === state.me.id || state.activeRoom?.ownerId === state.me.id)
+  );
+}
 
-  $('#activeLayerLabel').textContent = `Layer ${state.activeLayer.id}`;
-  $('#activeLayerName').textContent = state.activeLayer.name;
-  $('#activeLayerTagline').textContent = state.activeLayer.tagline;
-  layerRoom.classList.remove('hidden');
+function renderRoomPanel() {
+  if (!state.activeRoom || !roomPanel) return;
 
-  if (!state.layerPosts.length) {
-    layerPostsList.innerHTML = '<div class="empty">No posts inside this layer yet.</div>';
+  const room = state.activeRoom;
+  $('#activeRoomLabel').textContent = `Room ${room.id}`;
+  $('#activeRoomName').textContent = room.name;
+  $('#activeRoomTagline').textContent = room.owner
+    ? `${room.tagline} Claimed by ${room.owner.name}. ${room.hasPassword ? 'This room has a password.' : 'This room has no password.'}`
+    : `${room.tagline} This room is unclaimed.`;
+  roomPanel.classList.remove('hidden');
+
+  const roomSettingsForm = $('#roomSettingsForm');
+  const roomLockedNotice = $('#roomLockedNotice');
+  const roomComposer = roomPanel.querySelector('.room-composer');
+  const roomPasswordInput = $('#roomPasswordInput');
+  const roomNameInput = $('#roomNameInput');
+
+  if (roomNameInput && roomNameInput.dataset.roomId !== String(room.id)) {
+    roomNameInput.value = room.name;
+    roomNameInput.dataset.roomId = String(room.id);
+  }
+
+  if (roomPasswordInput && roomPasswordInput.dataset.roomId !== String(room.id)) {
+    roomPasswordInput.value = '';
+    roomPasswordInput.dataset.roomId = String(room.id);
+  }
+
+  if (roomSettingsForm) roomSettingsForm.classList.toggle('hidden', !room.canManage);
+  if ($('#clearRoomPasswordBtn')) $('#clearRoomPasswordBtn').disabled = !room.hasPassword;
+  if (roomLockedNotice) roomLockedNotice.classList.toggle('hidden', room.canAccess);
+  if (roomComposer) roomComposer.classList.toggle('hidden', !room.canAccess);
+  if (roomMessagesList) roomMessagesList.classList.toggle('hidden', !room.canAccess);
+
+  if (!room.canAccess) {
+    roomMessagesList.innerHTML = '';
     return;
   }
 
-  layerPostsList.innerHTML = state.layerPosts.map((post) => `
-    <article class="layer-post">
-      <div class="post-person">
-        <div class="avatar">${escapeHtml(initials(post.author?.name || 'User'))}</div>
-        <div>
-          <strong>${escapeHtml(post.author?.name || 'Unknown')}</strong>
-          <span>@${escapeHtml(post.author?.username || 'unknown')} · ${escapeHtml(formatTime(post.createdAt))}</span>
+  if (!state.roomMessages.length) {
+    roomMessagesList.innerHTML = '<div class="empty">No messages in this room yet.</div>';
+    return;
+  }
+
+  roomMessagesList.innerHTML = state.roomMessages.map((message) => `
+    <article class="room-message">
+      <div class="post-row-top">
+        <div class="post-person">
+          <div class="avatar">${escapeHtml(initials(message.author?.name || 'User'))}</div>
+          <div>
+            <strong>${escapeHtml(message.author?.name || 'Unknown')}</strong>
+            <span>@${escapeHtml(message.author?.username || 'unknown')} · ${escapeHtml(formatTime(message.createdAt))}</span>
+          </div>
         </div>
+        ${canDeleteRoomMessage(message) ? `<button class="admin-delete" type="button" data-delete-room-message="${escapeHtml(message.id)}">Delete</button>` : ''}
       </div>
-      <p>${escapeHtml(post.body)}</p>
+      <p>${escapeHtml(message.text)}</p>
     </article>
   `).join('');
 }
 
-async function loadLayers() {
-  if (!layersList) return;
-  const data = await api('/api/layers');
-  state.layers = data.layers;
-  renderLayers();
+async function loadRooms() {
+  if (!roomsList) return;
+  const data = await api('/api/rooms');
+  state.rooms = data.rooms;
+  if (state.activeRoom) {
+    const updated = state.rooms.find((candidate) => candidate.id === state.activeRoom.id);
+    if (updated) {
+      state.activeRoom = updated;
+      if (!updated.canAccess) state.roomMessages = [];
+    }
+  }
+  renderRooms();
+  renderRoomPanel();
 }
 
-async function openLayer(layerId) {
-  const layer = state.layers.find((candidate) => candidate.id === layerId);
-  if (!layer) return;
-  if (!layer.unlocked) {
-    showToast(`Unlock Layer ${layerId} first`);
+async function unlockRoom(room) {
+  if (!room) return false;
+  if (!room.hasPassword || room.canAccess) return true;
+
+  const password = prompt(`Enter password for ${room.name}:`);
+  if (password === null) return false;
+
+  try {
+    const data = await api(`/api/rooms/${room.id}/unlock`, {
+      method: 'POST',
+      body: JSON.stringify({ password })
+    });
+
+    const index = state.rooms.findIndex((candidate) => candidate.id === room.id);
+    if (index >= 0) state.rooms[index] = data.room;
+    state.activeRoom = data.room;
+    renderRooms();
+    renderRoomPanel();
+    showToast('Room unlocked');
+    return true;
+  } catch (error) {
+    showToast(error.message);
+    return false;
+  }
+}
+
+async function openRoom(roomId) {
+  const room = state.rooms.find((candidate) => candidate.id === roomId);
+  if (!room) return;
+
+  state.activeRoom = room;
+  state.roomMessages = [];
+  renderRooms();
+  renderRoomPanel();
+
+  if (room.hasPassword && !room.canAccess) {
+    const unlocked = await unlockRoom(room);
+    if (!unlocked) return;
+  }
+
+  try {
+    const data = await api(`/api/rooms/${roomId}/messages`);
+    state.activeRoom = data.room;
+    state.roomMessages = data.messages;
+    renderRooms();
+    renderRoomPanel();
+    $('#roomMessageInput').focus();
+  } catch (error) {
+    if (error.locked) state.roomMessages = [];
+    showToast(error.message);
+    renderRoomPanel();
+  }
+}
+
+function renderAdminTools() {
+  const adminBox = $('#adminBox');
+  const adminActive = $('#adminActive');
+  const adminClaimForm = $('#adminClaimForm');
+  const adminModerationPanel = $('#adminModerationPanel');
+  if (!adminBox || !adminActive || !adminClaimForm) return;
+
+  adminActive.classList.toggle('hidden', !state.me?.isAdmin);
+  adminClaimForm.classList.toggle('hidden', Boolean(state.me?.isAdmin));
+  if (adminModerationPanel) adminModerationPanel.classList.toggle('hidden', !state.me?.isAdmin);
+  renderAdminUsers();
+}
+
+function upsertAdminUser(user) {
+  if (!user) return;
+  const index = state.adminUsers.findIndex((candidate) => candidate.id === user.id);
+  if (index >= 0) state.adminUsers[index] = user;
+  else state.adminUsers.push(user);
+  state.adminUsers.sort((a, b) => Number(b.online) - Number(a.online) || Number(Boolean(b.banned)) - Number(Boolean(a.banned)) || a.name.localeCompare(b.name));
+}
+
+function renderAdminUsers() {
+  if (!adminUsersList || !state.me?.isAdmin) return;
+
+  if (!state.adminUsers.length) {
+    adminUsersList.innerHTML = '<div class="empty small-empty">No accounts loaded yet.</div>';
     return;
   }
 
-  state.activeLayer = layer;
-  state.layerPosts = [];
-  renderLayers();
-  renderLayerRoom();
+  adminUsersList.innerHTML = state.adminUsers.map((user) => {
+    const isMe = user.id === state.me.id;
+    const isProtectedAdmin = user.isAdmin && !isMe;
+    const status = user.banned ? 'Banned' : user.online ? 'Online' : 'Offline';
+    return `
+      <article class="admin-user-row ${user.banned ? 'banned' : ''}">
+        <div class="admin-user-main">
+          <div class="avatar small-avatar">${escapeHtml(initials(user.name))}</div>
+          <div>
+            <strong>${escapeHtml(user.name)}${isMe ? ' (you)' : ''}</strong>
+            <span>@${escapeHtml(user.username)} · ${escapeHtml(user.role)} · ${escapeHtml(status)}</span>
+            ${user.banReason ? `<small>Reason: ${escapeHtml(user.banReason)}</small>` : ''}
+          </div>
+        </div>
+        <div class="admin-user-actions">
+          <button class="ghost tiny" type="button" data-admin-kick="${escapeHtml(user.id)}" ${isMe || user.banned ? 'disabled' : ''}>Kick</button>
+          ${user.banned
+            ? `<button class="secondary tiny" type="button" data-admin-unban="${escapeHtml(user.id)}">Unban</button>`
+            : `<button class="ghost danger tiny" type="button" data-admin-ban="${escapeHtml(user.id)}" ${isMe || isProtectedAdmin ? 'disabled' : ''}>Ban</button>`}
+        </div>
+      </article>
+    `;
+  }).join('');
+}
 
-  try {
-    const data = await api(`/api/layers/${layerId}/posts`);
-    state.activeLayer = data.layer;
-    state.layerPosts = data.posts;
-    renderLayers();
-    renderLayerRoom();
-    $('#layerPostInput').focus();
-  } catch (error) {
-    showToast(error.message);
-  }
+async function loadAdminUsers() {
+  if (!state.me?.isAdmin || !adminUsersList) return;
+  const data = await api('/api/admin/users');
+  state.adminUsers = data.users || [];
+  renderAdminUsers();
 }
 
 function renderMe() {
@@ -521,6 +941,7 @@ function renderMe() {
   $('#profileBio').value = state.me.bio || '';
   $('#myAvatar').textContent = initials(state.me.name);
   $('#composerAvatar').textContent = initials(state.me.name);
+  renderAdminTools();
 }
 
 function renderStats() {
@@ -553,7 +974,10 @@ function renderPosts() {
               <span>@${escapeHtml(post.author?.username || 'unknown')}</span>
             </div>
           </div>
-          <span class="post-time">${escapeHtml(formatTime(post.createdAt))}</span>
+          <div class="post-meta-actions">
+            <span class="post-time">${escapeHtml(formatTime(post.createdAt))}</span>
+            ${canDeleteOwnOrAdmin(post.authorId) ? `<button class="admin-delete" type="button" data-delete-post="${escapeHtml(post.id)}">Delete</button>` : ''}
+          </div>
         </header>
 
         <p class="post-body">${escapeHtml(post.body)}</p>
@@ -569,8 +993,11 @@ function renderPosts() {
           ${comments.map((comment) => `
             <div class="comment">
               <div class="avatar">${escapeHtml(initials(comment.author?.name || 'User'))}</div>
-              <div>
-                <strong>${escapeHtml(comment.author?.name || 'Unknown')}</strong>
+              <div class="comment-content">
+                <div class="comment-head">
+                  <strong>${escapeHtml(comment.author?.name || 'Unknown')}</strong>
+                  ${canDeleteOwnOrAdmin(comment.authorId) ? `<button class="admin-delete small" type="button" data-post-id="${escapeHtml(post.id)}" data-delete-comment="${escapeHtml(comment.id)}">Delete</button>` : ''}
+                </div>
                 <p>${escapeHtml(comment.body)}</p>
               </div>
             </div>
@@ -578,7 +1005,7 @@ function renderPosts() {
         </div>
 
         <form class="comment-form" data-comment-form="${escapeHtml(post.id)}">
-          <input placeholder="Write a comment..." maxlength="240" />
+          <input placeholder="Write a comment..." maxlength="240" value="${escapeHtml(state.commentDrafts[post.id] || '')}" />
           <button class="secondary" type="submit">Send</button>
         </form>
       </article>
@@ -596,12 +1023,14 @@ function renderUsers() {
 
   usersList.innerHTML = state.users.map((user) => {
     const isActive = state.activeChatUser?.id === user.id;
+    const bio = String(user.bio || '').trim() || 'No bio yet.';
     return `
       <button class="user-row ${isActive ? 'active' : ''}" data-user-id="${escapeHtml(user.id)}">
         <div class="avatar">${escapeHtml(initials(user.name))}</div>
-        <div>
+        <div class="user-row-main">
           <strong>${escapeHtml(user.name)}</strong>
           <span>@${escapeHtml(user.username)}</span>
+          <span class="user-bio">${escapeHtml(bio)}</span>
         </div>
         <span class="status-dot ${user.online ? 'online' : ''}"></span>
       </button>
@@ -623,6 +1052,8 @@ function renderChat() {
   $('#chatAvatar').textContent = initials(user.name);
   $('#chatName').textContent = user.name;
   $('#chatStatus').textContent = user.online ? 'Online now' : 'Offline';
+  const chatBio = $('#chatBio');
+  if (chatBio) chatBio.textContent = String(user.bio || '').trim() || 'No bio yet.';
   chatPanel.classList.remove('hidden');
 
   if (!state.activeMessages.length) {
@@ -630,10 +1061,24 @@ function renderChat() {
   } else {
     messagesList.innerHTML = state.activeMessages.map((message) => `
       <div class="message ${message.from === state.me.id ? 'mine' : ''}">
-        <span>${escapeHtml(message.text)}</span>
+        <div class="message-content">
+          <span>${escapeHtml(message.text)}</span>
+          ${state.me?.isAdmin ? `<button class="message-delete" type="button" data-delete-message="${escapeHtml(message.id)}" aria-label="Delete message">×</button>` : ''}
+        </div>
         <small>${escapeHtml(formatTime(message.createdAt))}</small>
       </div>
     `).join('');
+  }
+
+  const input = $('#messageInput');
+  if (input) {
+    const draft = state.chatDrafts[user.id] || '';
+    if (input.dataset.chatUserId !== user.id) {
+      input.value = draft;
+      input.dataset.chatUserId = user.id;
+    } else if (document.activeElement !== input && input.value !== draft) {
+      input.value = draft;
+    }
   }
 
   messagesList.scrollTop = messagesList.scrollHeight;
@@ -686,7 +1131,8 @@ async function loadPosts() {
 }
 
 async function loadEverything() {
-  await Promise.all([loadPosts(), loadUsers($('#userSearch').value), loadLayers()]);
+  await Promise.all([loadPosts(), loadUsers($('#userSearch').value), loadRooms()]);
+  if (state.me?.isAdmin) await loadAdminUsers();
 }
 
 function connectSocket() {
@@ -709,6 +1155,14 @@ function connectSocket() {
       renderChat();
     }
 
+    if (state.me?.isAdmin) {
+      const adminUser = state.adminUsers.find((candidate) => candidate.id === userId);
+      if (adminUser) {
+        adminUser.online = online;
+        renderAdminUsers();
+      }
+    }
+
     renderUsers();
   });
 
@@ -719,6 +1173,11 @@ function connectSocket() {
 
   state.socket.on('post-updated', (post) => {
     upsertPost(post);
+    renderPosts();
+  });
+
+  state.socket.on('post-deleted', ({ postId }) => {
+    state.posts = state.posts.filter((post) => post.id !== postId);
     renderPosts();
   });
 
@@ -739,6 +1198,45 @@ function connectSocket() {
     }
   });
 
+  state.socket.on('message-deleted', ({ messageId }) => {
+    const before = state.activeMessages.length;
+    state.activeMessages = state.activeMessages.filter((message) => message.id !== messageId);
+    if (state.activeMessages.length !== before) renderChat();
+  });
+
+  state.socket.on('room-updated', (room) => {
+    const index = state.rooms.findIndex((candidate) => candidate.id === room.id);
+    if (index >= 0) state.rooms[index] = room;
+    else state.rooms.push(room);
+
+    if (state.activeRoom?.id === room.id) {
+      state.activeRoom = room;
+      if (!room.canAccess) state.roomMessages = [];
+      renderRoomPanel();
+    }
+
+    renderRooms();
+  });
+
+  state.socket.on('room-message', (message) => {
+    if (state.activeRoom?.id === message.roomId) {
+      const exists = state.roomMessages.some((candidate) => candidate.id === message.id);
+      if (!exists) state.roomMessages.push(message);
+      state.roomMessages.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+      renderRoomPanel();
+    } else {
+      const room = state.rooms.find((candidate) => candidate.id === message.roomId);
+      showToast(`New message in ${room?.name || `Room ${message.roomId}`}`);
+    }
+  });
+
+  state.socket.on('room-message-deleted', ({ roomId, messageId }) => {
+    if (state.activeRoom?.id !== roomId) return;
+    const before = state.roomMessages.length;
+    state.roomMessages = state.roomMessages.filter((message) => message.id !== messageId);
+    if (state.roomMessages.length !== before) renderRoomPanel();
+  });
+
   let typingTimer = null;
   state.socket.on('typing', ({ from }) => {
     if (!state.activeChatUser || from !== state.activeChatUser.id) return;
@@ -747,7 +1245,16 @@ function connectSocket() {
     typingTimer = setTimeout(() => $('#typingLabel').classList.add('hidden'), 1200);
   });
 
-  state.socket.on('connect_error', () => {
+  state.socket.on('force-logout', ({ reason }) => {
+    forceLocalLogout(reason || 'You have been logged out by an admin.');
+  });
+
+  state.socket.on('connect_error', (error) => {
+    const message = error?.message || 'Chat connection failed. Log in again.';
+    if (message.toLowerCase().includes('banned') || message.toLowerCase().includes('expired')) {
+      forceLocalLogout(message);
+      return;
+    }
     showToast('Chat connection failed. Log in again.');
   });
 }

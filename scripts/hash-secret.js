@@ -3,7 +3,7 @@ const bcrypt = require('bcryptjs');
 const secret = process.argv.slice(2).join(' ');
 
 if (!secret) {
-  console.error('Usage: node scripts/hash-secret.js "your-password-or-layer-secret"');
+  console.error('Usage: node scripts/hash-secret.js "your-password-or-secret"');
   process.exit(1);
 }
 

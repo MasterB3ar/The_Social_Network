@@ -1,31 +1,37 @@
-# Render Blueprint for FREE testing.
-# This deploys TSN as a Node web service. Data is stored on Render's ephemeral
-# filesystem, so accounts/posts/messages can reset after redeploys or restarts.
-# For saved data, use render.persistent.yaml or add a paid persistent disk.
+# Render Blueprint for SAVED DATA.
+# This is the recommended Render config for TSN because the app stores its JSON
+# database on a persistent disk mounted at /var/data.
+# Persistent disks require a paid Render web service instance.
 services:
   - type: web
     name: tsn-social-network
     runtime: node
-    plan: free
+    plan: starter
     region: frankfurt
     buildCommand: npm install
     startCommand: npm start
     healthCheckPath: /api/health
     autoDeployTrigger: commit
+    disk:
+      name: tsn-data
+      mountPath: /var/data
+      sizeGB: 1
     envVars:
       - key: NODE_ENV
         value: production
       - key: NODE_VERSION
         value: 24.14.1
       - key: DATA_DIR
-        value: /tmp/tsn-data
+        value: /var/data
       - key: JWT_SECRET
         generateValue: true
-      - key: TSN_DEMO_PASSWORD
+      - key: TSN_DATA_ENCRYPTION_KEY
+        generateValue: true
+      - key: TSN_DEMO_PASSWORD_HASH
         sync: false
-      - key: TSN_LAYER_1_PASSWORD
+      - key: TSN_ADMIN_SETUP_PASSWORD_HASH
         sync: false
-      - key: TSN_LAYER_2_PASSWORD
-        sync: false
-      - key: TSN_LAYER_3_PASSWORD
+      - key: TSN_CONTENT_FILTER_ENABLED
+        value: true
+      - key: TSN_BLOCKED_WORDS
         sync: false

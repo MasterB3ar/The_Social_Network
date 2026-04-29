@@ -1,32 +1,60 @@
 # TSN Render-ready checklist
 
-Before deploying:
+## Must be true before real users join
 
-- [ ] Project files are at the root of your GitHub repo.
-- [ ] `package.json` is in the root.
-- [ ] `server.js` is in the root.
-- [ ] `render.yaml` is in the root.
-- [ ] `JWT_SECRET` is set or generated.
-- [ ] `TSN_DATA_ENCRYPTION_KEY` is set or generated.
-- [ ] You generated a hash for `TSN_DEMO_PASSWORD_HASH`.
-- [ ] You generated hashes for all 3 layer password hash variables.
-- [ ] You saved the real Layer 1/2/3 passwords somewhere safe.
-- [ ] You are using free mode only for testing.
-- [ ] You are using `render.persistent.yaml` if you need saved data.
+- [ ] `DATA_DIR=/var/data`
+- [ ] A Render persistent disk is attached at `/var/data`
+- [ ] You are using `render.yaml`, not `render.free.yaml`
+- [ ] `JWT_SECRET` is set
+- [ ] `TSN_DATA_ENCRYPTION_KEY` is set
+- [ ] `TSN_DATA_ENCRYPTION_KEY` is saved somewhere safe and will not be changed
+- [ ] `TSN_DEMO_PASSWORD_HASH` is set
+- [ ] `TSN_ADMIN_SETUP_PASSWORD_HASH` is set
+- [ ] `/api/health` shows `dataDir: /var/data`
+- [ ] You have created your admin account and claimed admin rights
+- [ ] You have tested post/comment/chat/rooms after a redeploy
 
-Generate a hash:
+## Local update checklist
 
-```bash
-npm run hash-secret -- "YourStrongSecretPassword!2026"
+- [ ] Stop TSN
+- [ ] Run `npm run backup`
+- [ ] Keep your `.env`
+- [ ] Keep the same `TSN_DATA_ENCRYPTION_KEY`
+- [ ] Update the code
+- [ ] Run `npm install`
+- [ ] Run `npm start`
+- [ ] Confirm old accounts/posts/messages still exist
+
+## Important warnings
+
+Do not store the live database in:
+
+```text
+./data/db.json
 ```
 
-After deploying:
+Do not use this for a real public Render site:
 
-- [ ] Open `/api/health` and check it returns `ok: true`.
-- [ ] Create a normal account.
-- [ ] Log in with username and password.
-- [ ] Test Demo User 1 + Demo User 2 chat in two browser windows.
-- [ ] Test Layer 1 → Layer 2 → Layer 3 unlock order.
-- [ ] Check the JSON database and confirm usernames are stored as `usernameEnc` + `usernameHash`.
-- [ ] Check that posts/comments/layer posts use `bodyEnc`, not plain `body`.
-- [ ] Check that private messages use `textEnc`, not plain `text`.
+```text
+DATA_DIR=/tmp/tsn-data
+```
+
+Do not change this after users create data:
+
+```text
+TSN_DATA_ENCRYPTION_KEY
+```
+
+## Backup commands
+
+Create backup:
+
+```bash
+npm run backup
+```
+
+Restore backup:
+
+```bash
+npm run restore -- /full/path/to/db-backup.json
+```

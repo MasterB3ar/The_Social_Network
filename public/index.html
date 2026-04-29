@@ -3,24 +3,20 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>The Social Network | TSN</title>
+  <title>TSN V1.0</title>
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="/styles.css" />
 </head>
 <body>
   <div class="noise"></div>
+  <div class="version-badge" aria-label="TSN version">V1.0</div>
 
   <section id="authScreen" class="auth-screen">
     <div class="auth-hero">
       <div class="brand-mark">TSN</div>
-      <p class="eyebrow">The Social Network</p>
+      <p class="eyebrow">TSN V1.0</p>
       <h1>Post, discover, and chat in real time.</h1>
       <p class="hero-copy">A clean social media starter with accounts, profiles, posts, likes, comments, online presence, and private messaging.</p>
-      <div class="hero-cards">
-        <div><strong>Live Chat</strong><span>Socket.IO private messages</span></div>
-        <div><strong>Profiles</strong><span>Names, usernames, bios</span></div>
-        <div><strong>Feed</strong><span>Posts, likes, comments</span></div>
-      </div>
     </div>
 
     <div class="auth-panel">
@@ -72,7 +68,7 @@
         </label>
         <label>
           Password
-          <input name="password" type="password" autocomplete="new-password" placeholder="10+ chars, uppercase, number, symbol" required />
+          <input name="password" type="password" autocomplete="new-password" placeholder="4+ characters, e.g. 1234" required />
         </label>
         <button class="primary" type="submit">Join TSN</button>
       </form>
@@ -87,7 +83,7 @@
       <div class="brand">
         <div class="brand-mark small">TSN</div>
         <div>
-          <strong>The Social Network</strong>
+          <strong>TSN V1.0</strong>
           <span>Realtime social media</span>
         </div>
       </div>
@@ -118,6 +114,30 @@
           <button class="secondary" type="submit">Save profile</button>
         </form>
 
+        <section id="adminBox" class="admin-box">
+          <div id="adminActive" class="admin-active hidden">
+            <strong>Admin mode active</strong>
+            <span>You can delete content, kick users, ban users, and unban accounts.</span>
+          </div>
+          <form id="adminClaimForm" class="admin-claim-form">
+            <strong>Admin access</strong>
+            <span>Enter your admin setup password to unlock moderation tools.</span>
+            <input id="adminPasswordInput" type="password" placeholder="Admin setup password" autocomplete="off" />
+            <button class="secondary" type="submit">Claim admin</button>
+          </form>
+          <div id="adminModerationPanel" class="admin-moderation hidden">
+            <div class="admin-moderation-head">
+              <strong>Account moderation</strong>
+              <button id="refreshAdminUsersBtn" class="ghost tiny" type="button">Reload</button>
+            </div>
+            <div class="admin-backup-row">
+              <button id="createBackupBtn" class="secondary tiny" type="button">Create data backup</button>
+              <span id="backupStatus" class="backup-status">Backups protect data before updates.</span>
+            </div>
+            <div id="adminUsersList" class="admin-users-list"></div>
+          </div>
+        </section>
+
         <div class="stat-grid">
           <div><strong id="postCount">0</strong><span>Posts</span></div>
           <div><strong id="userCount">0</strong><span>People</span></div>
@@ -137,37 +157,61 @@
         </div>
 
 
-        <section class="layers-card card">
+        <section class="rooms-card card">
           <div class="section-heading">
             <div>
-              <p class="eyebrow mini">Deep access</p>
-              <h2>TSN Layers</h2>
-              <p>Unlock 3 deeper rooms. Each layer needs its own password.</p>
+              <p class="eyebrow mini">Rooms</p>
+              <h2>TSN Rooms</h2>
+              <p>Enter 7 shared chat rooms. Unclaimed rooms can be claimed by one user.</p>
             </div>
-            <span id="layerProgress" class="pill">0/3 unlocked</span>
+            <span id="roomProgress" class="pill">0/7 claimed</span>
           </div>
 
-          <div id="layersList" class="layers-list"></div>
+          <div id="roomsList" class="rooms-list"></div>
 
-          <div id="layerRoom" class="layer-room hidden">
-            <div class="layer-room-header">
+          <div id="roomPanel" class="room-panel hidden">
+            <div class="room-panel-header">
               <div>
-                <p id="activeLayerLabel" class="eyebrow mini">Layer</p>
-                <h3 id="activeLayerName">Layer room</h3>
-                <p id="activeLayerTagline">Private layer conversation.</p>
+                <p id="activeRoomLabel" class="eyebrow mini">Room</p>
+                <h3 id="activeRoomName">Room chat</h3>
+                <p id="activeRoomTagline">Shared room conversation.</p>
               </div>
-              <button id="closeLayerBtn" class="ghost" type="button">Close layer</button>
+              <button id="closeRoomBtn" class="ghost" type="button">Close room</button>
             </div>
 
-            <div class="layer-composer">
-              <textarea id="layerPostInput" maxlength="600" placeholder="Post inside this layer..."></textarea>
+            <form id="roomSettingsForm" class="room-settings hidden">
+              <div>
+                <label>
+                  Room name
+                  <input id="roomNameInput" maxlength="40" placeholder="Room name" />
+                </label>
+                <label>
+                  Optional room password
+                  <input id="roomPasswordInput" type="password" maxlength="80" placeholder="Leave empty to keep current password" autocomplete="off" />
+                </label>
+              </div>
+              <div class="room-settings-actions">
+                <button class="secondary" type="submit">Save room</button>
+                <button id="clearRoomPasswordBtn" class="ghost danger" type="button">Remove password</button>
+              </div>
+              <p class="room-settings-note">Only the room owner and admins can edit this. Passwords are optional.</p>
+            </form>
+
+            <div id="roomLockedNotice" class="room-locked hidden">
+              <strong>This room is password protected.</strong>
+              <p>Enter the room password to read and send messages.</p>
+              <button id="unlockRoomBtn" class="secondary" type="button">Unlock room</button>
+            </div>
+
+            <div class="room-composer">
+              <textarea id="roomMessageInput" maxlength="600" placeholder="Message this room..."></textarea>
               <div class="composer-actions">
-                <span id="layerPostCounter">0/600</span>
-                <button id="layerPostBtn" class="primary" type="button">Post to layer</button>
+                <span id="roomMessageCounter">0/600</span>
+                <button id="roomMessageBtn" class="primary" type="button">Send to room</button>
               </div>
             </div>
 
-            <div id="layerPostsList" class="layer-posts"></div>
+            <div id="roomMessagesList" class="room-messages"></div>
           </div>
         </section>
 
@@ -195,6 +239,7 @@
         <div>
           <strong id="chatName">Chat</strong>
           <span id="chatStatus">Offline</span>
+          <span id="chatBio" class="chat-bio">No bio yet.</span>
         </div>
       </div>
       <button id="closeChatBtn" class="icon-button" aria-label="Close chat">×</button>
