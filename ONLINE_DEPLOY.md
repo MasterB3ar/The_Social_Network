@@ -128,9 +128,9 @@ https://tsn-social-network.onrender.com
 
 Then test chat:
 
-1. Login as Demo Alex in one browser.
+1. Login as Demo User 1 in one browser.
 2. Open a private/incognito window.
-3. Login as Demo Sam.
+3. Login as Demo User 2.
 4. Click the other user in the People list.
 5. Send a message.
 
