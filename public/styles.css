@@ -1362,3 +1362,214 @@ button:disabled {
     padding: 7px 10px;
   }
 }
+
+/* TSN V1.0 side-room layout: rooms stay clean on the side, not inside the feed. */
+.layout {
+  grid-template-columns: minmax(220px, 300px) minmax(380px, 1fr) minmax(320px, 390px);
+}
+
+.right-rail {
+  position: sticky;
+  top: 94px;
+  display: grid;
+  gap: 18px;
+  min-width: 0;
+  align-self: start;
+  max-height: calc(100vh - 112px);
+  overflow: auto;
+  padding-right: 4px;
+}
+
+.right-rail::-webkit-scrollbar,
+.rooms-list::-webkit-scrollbar {
+  width: 10px;
+}
+
+.right-rail::-webkit-scrollbar-track,
+.rooms-list::-webkit-scrollbar-track {
+  background: rgba(255,255,255,0.045);
+  border-radius: 999px;
+}
+
+.right-rail::-webkit-scrollbar-thumb,
+.rooms-list::-webkit-scrollbar-thumb {
+  background: rgba(255,255,255,0.18);
+  border-radius: 999px;
+}
+
+.right-rail .side-card,
+.right-rail .people {
+  position: static;
+}
+
+.right-rail .rooms-card {
+  padding: 16px;
+  gap: 14px;
+}
+
+.compact-heading {
+  align-items: flex-start;
+}
+
+.compact-heading h2 {
+  font-size: 1.25rem;
+}
+
+.compact-heading p {
+  font-size: 0.84rem;
+  line-height: 1.35;
+}
+
+.right-rail .pill {
+  font-size: 0.68rem;
+  padding: 6px 8px;
+}
+
+.rooms-list {
+  max-height: 310px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.side-room-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  padding: 10px;
+  border-radius: 18px;
+}
+
+.room-open-area {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+  min-width: 0;
+  border: 0;
+  padding: 0;
+  color: inherit;
+  text-align: left;
+  background: transparent;
+}
+
+.room-open-area:hover {
+  transform: none;
+  filter: none;
+}
+
+.side-room-card .room-number {
+  width: 42px;
+  height: 42px;
+  border-radius: 14px;
+  font-size: 0.82rem;
+}
+
+.side-room-card .room-main strong,
+.side-room-card .room-main small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.side-room-card .room-main small {
+  margin-top: 4px;
+}
+
+.side-room-card .room-actions {
+  justify-content: flex-end;
+}
+
+.right-rail .room-panel {
+  padding: 14px;
+  border-radius: 20px;
+}
+
+.right-rail .room-panel-header {
+  gap: 10px;
+}
+
+.right-rail .room-panel-header h3 {
+  font-size: 1.2rem;
+}
+
+.right-rail .room-panel-header p {
+  font-size: 0.82rem;
+  line-height: 1.35;
+}
+
+.right-rail .room-settings > div:first-child {
+  grid-template-columns: 1fr;
+}
+
+.right-rail .room-composer textarea {
+  min-height: 76px;
+}
+
+.right-rail .room-messages {
+  max-height: 300px;
+}
+
+.right-rail .people {
+  padding: 16px;
+}
+
+.right-rail .users-list {
+  max-height: 300px;
+}
+
+@media (max-width: 1280px) {
+  .layout {
+    grid-template-columns: minmax(220px, 280px) minmax(340px, 1fr);
+  }
+
+  .right-rail {
+    position: static;
+    grid-column: 1 / -1;
+    grid-template-columns: minmax(280px, 0.9fr) minmax(320px, 1fr);
+    align-items: start;
+    max-height: none;
+    overflow: visible;
+    padding-right: 0;
+  }
+
+  .right-rail .rooms-list,
+  .right-rail .users-list {
+    max-height: 360px;
+  }
+}
+
+@media (max-width: 1100px) {
+  .right-rail .people {
+    grid-column: auto;
+  }
+
+  .right-rail .users-list {
+    display: grid;
+    grid-template-columns: 1fr;
+    max-height: 360px;
+  }
+}
+
+@media (max-width: 780px) {
+  .right-rail {
+    grid-template-columns: 1fr;
+  }
+
+  .right-rail .rooms-list,
+  .right-rail .users-list {
+    max-height: 320px;
+  }
+
+  .side-room-card {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .side-room-card .room-actions {
+    justify-content: stretch;
+  }
+
+  .side-room-card .room-actions button {
+    flex: 1;
+  }
+}

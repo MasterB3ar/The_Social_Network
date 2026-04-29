@@ -157,12 +157,16 @@
         </div>
 
 
-        <section class="rooms-card card">
-          <div class="section-heading">
+        <div id="postsList" class="posts"></div>
+      </section>
+
+      <aside class="right-rail">
+        <section class="rooms-card card side-card">
+          <div class="section-heading compact-heading">
             <div>
               <p class="eyebrow mini">Rooms</p>
               <h2>TSN Rooms</h2>
-              <p>Enter 7 shared chat rooms. Unclaimed rooms can be claimed by one user.</p>
+              <p>Claim, rename, lock, and chat in shared rooms.</p>
             </div>
             <span id="roomProgress" class="pill">0/7 claimed</span>
           </div>
@@ -176,7 +180,7 @@
                 <h3 id="activeRoomName">Room chat</h3>
                 <p id="activeRoomTagline">Shared room conversation.</p>
               </div>
-              <button id="closeRoomBtn" class="ghost" type="button">Close room</button>
+              <button id="closeRoomBtn" class="ghost" type="button">Close</button>
             </div>
 
             <form id="roomSettingsForm" class="room-settings hidden">
@@ -207,7 +211,7 @@
               <textarea id="roomMessageInput" maxlength="600" placeholder="Message this room..."></textarea>
               <div class="composer-actions">
                 <span id="roomMessageCounter">0/600</span>
-                <button id="roomMessageBtn" class="primary" type="button">Send to room</button>
+                <button id="roomMessageBtn" class="primary" type="button">Send</button>
               </div>
             </div>
 
@@ -215,19 +219,17 @@
           </div>
         </section>
 
-        <div id="postsList" class="posts"></div>
-      </section>
-
-      <aside class="people card">
-        <div class="section-heading">
-          <div>
-            <h2>People</h2>
-            <p>Click someone to chat.</p>
+        <section class="people card side-card">
+          <div class="section-heading compact-heading">
+            <div>
+              <h2>People</h2>
+              <p>Click someone to chat.</p>
+            </div>
+            <span id="onlinePill" class="pill">0 online</span>
           </div>
-          <span id="onlinePill" class="pill">0 online</span>
-        </div>
-        <input id="userSearch" class="search" placeholder="Search users..." />
-        <div id="usersList" class="users-list"></div>
+          <input id="userSearch" class="search" placeholder="Search users..." />
+          <div id="usersList" class="users-list"></div>
+        </section>
       </aside>
     </div>
   </main>

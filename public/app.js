@@ -740,28 +740,25 @@ function renderRooms() {
 
   roomsList.innerHTML = state.rooms.map((room) => {
     const isActive = state.activeRoom?.id === room.id;
-    const ownerLabel = room.owner ? `Claimed by ${escapeHtml(room.owner.name)} (@${escapeHtml(room.owner.username)})` : 'Unclaimed — be the first to claim it.';
+    const ownerLabel = room.owner ? `Owner: ${escapeHtml(room.owner.name)}` : 'Unclaimed';
     const canRelease = room.canManage;
     const lockLabel = room.hasPassword
-      ? (room.canAccess ? 'Password protected · unlocked' : 'Password protected')
-      : 'No password';
+      ? (room.canAccess ? 'Unlocked' : 'Locked')
+      : 'Open';
 
     return `
-      <article class="room-card ${isActive ? 'active' : ''} ${room.claimed ? 'claimed' : 'unclaimed'} ${room.hasPassword ? 'locked-room-card' : ''}">
-        <div class="room-number">${room.hasPassword && !room.canAccess ? '🔒' : `R${escapeHtml(room.id)}`}</div>
-        <div class="room-main">
-          <strong>${escapeHtml(room.name)}</strong>
-          <span>${escapeHtml(room.tagline)}</span>
-          <small>${ownerLabel}</small>
-          <small>${escapeHtml(lockLabel)}</small>
-        </div>
+      <article class="room-card side-room-card ${isActive ? 'active' : ''} ${room.claimed ? 'claimed' : 'unclaimed'} ${room.hasPassword ? 'locked-room-card' : ''}">
+        <button class="room-open-area" type="button" data-room-open="${escapeHtml(room.id)}" aria-label="Open ${escapeHtml(room.name)}">
+          <div class="room-number">${room.hasPassword && !room.canAccess ? '🔒' : `R${escapeHtml(room.id)}`}</div>
+          <div class="room-main">
+            <strong>${escapeHtml(room.name)}</strong>
+            <small>${ownerLabel} · ${escapeHtml(lockLabel)}</small>
+          </div>
+        </button>
         <div class="room-actions">
-          <button class="secondary" type="button" data-room-open="${escapeHtml(room.id)}">
-            ${room.hasPassword && !room.canAccess ? 'Unlock' : (isActive ? 'Open' : 'Enter')}
-          </button>
           ${room.claimed
-            ? (canRelease ? `<button class="ghost" type="button" data-room-release="${escapeHtml(room.id)}">Release</button>` : '')
-            : `<button class="primary" type="button" data-room-claim="${escapeHtml(room.id)}">Claim</button>`}
+            ? (canRelease ? `<button class="ghost tiny" type="button" data-room-release="${escapeHtml(room.id)}">Release</button>` : '')
+            : `<button class="primary tiny" type="button" data-room-claim="${escapeHtml(room.id)}">Claim</button>`}
         </div>
       </article>
     `;
