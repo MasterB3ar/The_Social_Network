@@ -1,14 +1,28 @@
 # The Social Network (TSN)
 
-A full-stack social media starter app with accounts, profiles, posts, likes, comments, realtime private chat, and 3 password-gated deeper layers.
+A full-stack social media starter app with accounts, encrypted profiles, encrypted posts/comments, encrypted private chat messages, encrypted layer-board posts, and 3 password-gated deeper layers.
 
 ## Features
 
 - Register/login accounts
 - Username-or-email login
 - Guest and demo login for testing
-- Secure password hashing with bcrypt
-- Stronger account password rules
+- Account passwords are stored as bcrypt hashes
+- User identity fields are encrypted at rest with AES-256-GCM
+  - `nameEnc`
+  - `usernameEnc`
+  - `emailEnc`
+  - `bioEnc`
+- User-generated content is encrypted at rest with AES-256-GCM
+  - post bodies use `bodyEnc`
+  - comment bodies use `bodyEnc`
+  - private chat messages use `textEnc`
+  - layer-board posts use `bodyEnc`
+- Login/search lookup uses non-reversible HMAC hashes instead of plain usernames/emails
+  - `usernameHash`
+  - `emailHash`
+- Optional bcrypt-hashed demo/layer secrets for Render
+- Strong account password rules
 - Public feed with posts, likes, and comments
 - User profiles and bios
 - People search
@@ -32,6 +46,18 @@ Open:
 http://localhost:3000
 ```
 
+## Encryption and hashing
+
+Important distinction:
+
+- Account passwords are **hashed**, not encrypted. This is safer because the app never needs to read the original password again.
+- Usernames, display names, emails, and bios are **encrypted** because the app needs to display them after login.
+- Posts, comments, private chat messages, and layer-board messages are also **encrypted at rest**.
+- Username/email login still works because TSN stores a non-reversible HMAC lookup hash.
+- Legacy plaintext fields from older TSN versions are automatically migrated to encrypted fields on server startup.
+
+Do not change `TSN_DATA_ENCRYPTION_KEY` after real users exist. If you change it, old encrypted usernames/names/emails/bios/posts/comments/messages cannot be decrypted.
+
 ## Default local passwords
 
 Demo accounts:
@@ -49,6 +75,33 @@ Layer 3: TSN-Layer3!2pW7-kD8s-N4rX
 ```
 
 Change these in `.env` before sharing your site.
+
+## More secure layer/demo secrets
+
+Instead of storing real demo/layer passwords in Render, generate bcrypt hashes.
+
+Example:
+
+```bash
+npm run hash-secret -- "MyStrongLayer1Password!2026"
+```
+
+Copy the printed hash into `.env` or Render:
+
+```env
+TSN_LAYER_1_PASSWORD_HASH=<paste-the-hash-here>
+```
+
+Do the same for:
+
+```text
+TSN_DEMO_PASSWORD_HASH
+TSN_LAYER_1_PASSWORD_HASH
+TSN_LAYER_2_PASSWORD_HASH
+TSN_LAYER_3_PASSWORD_HASH
+```
+
+If a `*_PASSWORD_HASH` value is set, TSN uses it instead of the plain `*_PASSWORD` value.
 
 ## Deploy on Render
 
@@ -78,7 +131,7 @@ This is easy and good for testing. Data can reset after restarts or redeploys.
 
 ### Saved-data deploy
 
-Use this if you want accounts, messages, posts, and layer unlocks to survive restarts.
+Use this if you want accounts, encrypted messages, encrypted posts/comments, encrypted profiles, encrypted layer posts, and layer unlocks to survive restarts.
 
 1. Rename `render.persistent.yaml` to `render.yaml`.
 2. Deploy with Render Blueprint.
@@ -96,16 +149,23 @@ Persistent disks require a paid Render service.
 
 ## Required Render secrets
 
-When Render asks for Blueprint secret values, enter these:
+Render generates these automatically from the Blueprint:
 
 ```text
-TSN_DEMO_PASSWORD=<strong demo password>
-TSN_LAYER_1_PASSWORD=<strong layer 1 password>
-TSN_LAYER_2_PASSWORD=<strong layer 2 password>
-TSN_LAYER_3_PASSWORD=<strong layer 3 password>
+JWT_SECRET
+TSN_DATA_ENCRYPTION_KEY
 ```
 
-`JWT_SECRET` is generated automatically in the Blueprint.
+You need to enter these manually. Use bcrypt hashes, not the real passwords:
+
+```text
+TSN_DEMO_PASSWORD_HASH=<bcrypt hash>
+TSN_LAYER_1_PASSWORD_HASH=<bcrypt hash>
+TSN_LAYER_2_PASSWORD_HASH=<bcrypt hash>
+TSN_LAYER_3_PASSWORD_HASH=<bcrypt hash>
+```
+
+Keep the original real layer passwords somewhere safe, because users must still type the real passwords to unlock each layer.
 
 ## Project files
 
@@ -114,12 +174,14 @@ server.js                  Express + Socket.IO API server
 public/index.html          Front-end layout
 public/styles.css          Styling
 public/app.js              Front-end behavior
+scripts/hash-secret.js     Bcrypt hash generator for demo/layer secrets
 render.yaml                Free Render Blueprint
 render.persistent.yaml     Paid persistent-disk Render Blueprint
 ONLINE_DEPLOY.md           Full Render deploy guide
 RENDER_READY_CHECKLIST.md  Quick checklist
 .env.example               Local environment example
 .env.render.example        Render environment example
+data/db.json               Local JSON database
 ```
 
 ## Test chat
@@ -137,8 +199,8 @@ Open:
 /api/health
 ```
 
-It should return `ok: true`.
+It should return `ok: true` and include the encrypted storage status for profiles, posts, comments, messages, and layer posts.
 
 ## Important before real public launch
 
-This app uses a JSON file database to stay simple. That is okay for testing and learning. Before real public use, move the database to PostgreSQL or MongoDB, disable/protect guest/demo login, add rate limiting, add password reset, and add moderation/admin tools.
+This app uses a JSON file database to stay simple. That is okay for testing and learning. Before real public use, move the database to PostgreSQL or MongoDB, disable/protect guest/demo login, add rate limiting, add password reset, add moderation/admin tools, and add proper key rotation/backups.
