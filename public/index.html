@@ -71,6 +71,7 @@
 
       <p id="authError" class="error"></p>
       <p class="save-note">TSN keeps you logged in on this device for 7 days.</p>
+      <p class="privacy-note">For safety/moderation, TSN admins can review posts, comments, direct messages, and room messages.</p>
     </div>
   </section>
 
@@ -113,7 +114,7 @@
         <section id="adminBox" class="admin-box">
           <div id="adminActive" class="admin-active hidden">
             <strong>Admin mode active</strong>
-            <span>You can delete content, kick users, ban users, and unban accounts.</span>
+            <span>You can delete content, kick users, ban users, unban accounts, and review all stored messages.</span>
           </div>
           <form id="adminClaimForm" class="admin-claim-form">
             <strong>Admin access</strong>
@@ -152,6 +153,29 @@
           </div>
         </div>
 
+        <section id="adminMessageViewer" class="admin-message-viewer card hidden">
+          <div class="admin-message-head">
+            <div>
+              <p class="eyebrow mini">Admin only</p>
+              <h2>All messages</h2>
+              <p>Review feed posts, comments, direct messages, and room messages, including password-protected rooms.</p>
+            </div>
+            <span id="adminMessageCount" class="pill">0 messages</span>
+          </div>
+          <div class="admin-message-controls">
+            <select id="adminMessageType" aria-label="Message type filter">
+              <option value="all">All messages</option>
+              <option value="feed">Feed posts + comments</option>
+              <option value="direct">Private direct messages</option>
+              <option value="rooms">Room messages</option>
+              <option value="locked-rooms">Password-room messages</option>
+            </select>
+            <input id="adminMessageSearch" placeholder="Search message text, users, or rooms..." />
+            <button id="loadAdminMessagesBtn" class="secondary" type="button">Load messages</button>
+          </div>
+          <p class="admin-message-notice">Messages stay encrypted in the database. Admins can view decrypted copies here for moderation.</p>
+          <div id="adminMessagesList" class="admin-messages-list"></div>
+        </section>
 
         <div id="postsList" class="posts"></div>
       </section>

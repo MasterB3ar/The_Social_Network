@@ -1,6 +1,6 @@
 # TSN V1.0
 
-A full-stack social media starter app with accounts, public posts, private chat, **7 shared rooms that users can claim, rename, and optionally password-protect**, admin moderation, server-side content filtering, public bios, encrypted-at-rest storage, and update-safe persistent data.
+A full-stack social media starter app with accounts, public posts, private chat, **7 shared rooms that users can claim, rename, and optionally password-protect**, admin moderation including an all-message review view, server-side content filtering, public bios, encrypted-at-rest storage, and update-safe persistent data.
 
 ## Main features
 
@@ -22,11 +22,27 @@ A full-stack social media starter app with accounts, public posts, private chat,
 - Admin tools:
   - claim admin with a server-side setup password
   - delete posts, comments, private messages, and room messages
+  - review all stored messages in one admin-only view: feed posts, comments, private direct messages, open room messages, and password-room messages
   - kick, ban, and unban accounts
   - create a server-side database backup
 - Server-side blocked-language filter
 - Render-ready deployment files
 - Persistent database location so updates do **not** wipe accounts/posts/messages
+
+
+## Admin message review
+
+When you claim admin rights, TSN shows an **All messages** panel in the middle feed area. It can load and search:
+
+```text
+Feed posts
+Feed comments
+Private direct messages
+Open room messages
+Password-protected room messages
+```
+
+Admins can delete items directly from this panel. Messages are still encrypted at rest in the database, but the server decrypts them for admin moderation. For transparency, the login page tells users that admins can review messages for safety/moderation.
 
 ## Important data-storage change
 

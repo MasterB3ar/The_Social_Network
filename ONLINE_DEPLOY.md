@@ -140,3 +140,8 @@ dataDir: /var/data
 ```
 
 If it shows `/tmp/tsn-data`, your service is still using free temporary storage.
+
+
+## TSN V1.0 admin message review
+
+Admins can review all stored feed posts, comments, direct messages, and room messages, including password-protected rooms. Messages remain encrypted at rest and are decrypted server-side only for authorized admin moderation. The login screen includes a moderation notice for users.

@@ -616,6 +616,109 @@ function publicMessage(message) {
   };
 }
 
+
+function adminMessageActor(user) {
+  const safe = publicUser(user);
+  return safe ? { id: safe.id, name: safe.name, username: safe.username, role: safe.role } : null;
+}
+
+function buildAdminMessageArchive(db) {
+  const users = Array.isArray(db.users) ? db.users : [];
+  const items = [];
+
+  const findUser = (userId) => users.find((user) => user.id === userId);
+  const makeSearchText = (item) => [
+    item.kind,
+    item.source,
+    item.roomName,
+    item.body,
+    item.author?.name,
+    item.author?.username,
+    item.fromUser?.name,
+    item.fromUser?.username,
+    item.toUser?.name,
+    item.toUser?.username
+  ].filter(Boolean).join(' ').toLowerCase();
+
+  const pushItem = (item) => {
+    items.push({ ...item, searchText: makeSearchText(item) });
+  };
+
+  (Array.isArray(db.posts) ? db.posts : []).forEach((post) => {
+    const author = adminMessageActor(findUser(post.authorId));
+    const postBody = getEncryptedObjectField(post, 'body');
+    pushItem({
+      id: `post:${post.id}`,
+      kind: 'feed-post',
+      label: 'Feed post',
+      source: 'Feed',
+      postId: post.id,
+      author,
+      body: postBody,
+      createdAt: post.createdAt
+    });
+
+    (Array.isArray(post.comments) ? post.comments : []).forEach((comment) => {
+      pushItem({
+        id: `comment:${post.id}:${comment.id}`,
+        kind: 'feed-comment',
+        label: 'Feed comment',
+        source: 'Feed',
+        postId: post.id,
+        commentId: comment.id,
+        author: adminMessageActor(findUser(comment.authorId)),
+        parentAuthor: author,
+        parentExcerpt: postBody.slice(0, 120),
+        body: getEncryptedObjectField(comment, 'body'),
+        createdAt: comment.createdAt
+      });
+    });
+  });
+
+  (Array.isArray(db.messages) ? db.messages : []).forEach((message) => {
+    pushItem({
+      id: `direct:${message.id}`,
+      kind: 'direct-message',
+      label: 'Private direct message',
+      source: 'Direct messages',
+      messageId: message.id,
+      conversationId: message.conversationId,
+      fromUser: adminMessageActor(findUser(message.from)),
+      toUser: adminMessageActor(findUser(message.to)),
+      body: getEncryptedObjectField(message, 'text'),
+      createdAt: message.createdAt,
+      readByCount: Array.isArray(message.readBy) ? message.readBy.length : 0
+    });
+  });
+
+  (Array.isArray(db.roomMessages) ? db.roomMessages : []).forEach((message) => {
+    const room = getRoom(message.roomId) || { id: Number(message.roomId), name: `Room ${message.roomId}` };
+    const record = getRoomRecord(db, room.id);
+    pushItem({
+      id: `room:${message.id}`,
+      kind: 'room-message',
+      label: record.passwordHash ? 'Password-room message' : 'Room message',
+      source: 'Rooms',
+      roomId: room.id,
+      roomName: getRoomDisplayName(room, record),
+      roomLocked: Boolean(record.passwordHash),
+      roomOwner: record.ownerId ? adminMessageActor(findUser(record.ownerId)) : null,
+      messageId: message.id,
+      author: adminMessageActor(findUser(message.authorId)),
+      body: getEncryptedObjectField(message, 'text'),
+      createdAt: message.createdAt
+    });
+  });
+
+  return items
+    .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+}
+
+function publicAdminMessageItem(item) {
+  const { searchText, ...safeItem } = item;
+  return safeItem;
+}
+
 function hasReadMessage(message, userId) {
   return Array.isArray(message.readBy) && message.readBy.includes(userId);
 }
@@ -802,7 +905,7 @@ app.get('/api/health', (req, res) => {
         roomMessages: 'aes-256-gcm encrypted at rest',
         usernameLookup: 'hmac-sha256',
         sessions: 'versioned JWT sessions support admin kick/logout',
-        moderation: 'admins can delete content, kick accounts, ban accounts, and unban accounts',
+        moderation: 'admins can delete content, kick accounts, ban accounts, unban accounts, and review all stored messages for moderation',
         contentFilter: CONTENT_FILTER_ENABLED ? 'server-side blocked-language filter enabled' : 'disabled',
         customBlockedWords: CUSTOM_BLOCKED_WORDS.length,
         adminRights: 'claimable with server-side admin setup password'
@@ -981,6 +1084,35 @@ app.get('/api/admin/users', requireAuth, requireAdmin, (req, res) => {
     .sort((a, b) => Number(b.online) - Number(a.online) || Number(Boolean(b.banned)) - Number(Boolean(a.banned)) || a.name.localeCompare(b.name));
 
   res.json({ users });
+});
+
+
+app.get('/api/admin/messages', requireAuth, requireAdmin, (req, res) => {
+  const type = cleanText(req.query.type || 'all', 32);
+  const q = cleanText(req.query.q || '', 120).toLowerCase();
+
+  let items = buildAdminMessageArchive(req.db);
+
+  if (type === 'feed') {
+    items = items.filter((item) => item.kind === 'feed-post' || item.kind === 'feed-comment');
+  } else if (type === 'direct') {
+    items = items.filter((item) => item.kind === 'direct-message');
+  } else if (type === 'rooms') {
+    items = items.filter((item) => item.kind === 'room-message');
+  } else if (type === 'locked-rooms') {
+    items = items.filter((item) => item.kind === 'room-message' && item.roomLocked);
+  }
+
+  if (q) {
+    items = items.filter((item) => item.searchText.includes(q));
+  }
+
+  res.json({
+    items: items.map(publicAdminMessageItem),
+    count: items.length,
+    generatedAt: new Date().toISOString(),
+    notice: 'Admin-only moderation view. Messages are encrypted at rest, then decrypted on the server for admins.'
+  });
 });
 
 app.post('/api/admin/users/:userId/kick', requireAuth, requireAdmin, async (req, res) => {

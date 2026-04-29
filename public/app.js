@@ -12,7 +12,8 @@ const state = {
   chatDrafts: {},
   commentDrafts: {},
   roomSettingDrafts: {},
-  adminUsers: []
+  adminUsers: [],
+  adminMessages: []
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -30,6 +31,8 @@ const roomsList = $('#roomsList');
 const roomPanel = $('#roomPanel');
 const roomMessagesList = $('#roomMessagesList');
 const adminUsersList = $('#adminUsersList');
+const adminMessageViewer = $('#adminMessageViewer');
+const adminMessagesList = $('#adminMessagesList');
 
 function escapeHtml(value) {
   return String(value || '')
@@ -118,6 +121,8 @@ function forceLocalLogout(message = 'You have been logged out.') {
   state.activeRoom = null;
   state.roomMessages = [];
   state.adminUsers = [];
+  state.adminMessages = [];
+  renderAdminMessageViewer();
   showAuth();
   showToast(message);
 }
@@ -302,6 +307,7 @@ if (adminClaimForm) {
       passwordInput.value = '';
       renderMe();
       await loadAdminUsers();
+      await loadAdminMessages();
       renderPosts();
       renderRoomPanel();
       renderChat();
@@ -334,6 +340,64 @@ if (createBackupBtn) {
       showToast(error.message);
     } finally {
       createBackupBtn.disabled = false;
+    }
+  });
+}
+
+
+const loadAdminMessagesBtn = $('#loadAdminMessagesBtn');
+if (loadAdminMessagesBtn) {
+  loadAdminMessagesBtn.addEventListener('click', () => loadAdminMessages().catch((error) => showToast(error.message)));
+}
+
+const adminMessageType = $('#adminMessageType');
+if (adminMessageType) {
+  adminMessageType.addEventListener('change', () => loadAdminMessages().catch((error) => showToast(error.message)));
+}
+
+let adminMessageSearchTimer = null;
+const adminMessageSearch = $('#adminMessageSearch');
+if (adminMessageSearch) {
+  adminMessageSearch.addEventListener('input', () => {
+    clearTimeout(adminMessageSearchTimer);
+    adminMessageSearchTimer = setTimeout(() => {
+      if (state.me?.isAdmin) loadAdminMessages().catch((error) => showToast(error.message));
+    }, 250);
+  });
+}
+
+if (adminMessagesList) {
+  adminMessagesList.addEventListener('click', async (event) => {
+    const deleteButton = event.target.closest('[data-admin-delete-message-item]');
+    if (!deleteButton) return;
+
+    const item = state.adminMessages.find((candidate) => candidate.id === deleteButton.dataset.adminDeleteMessageItem);
+    if (!item) return;
+    if (!confirm(`Delete this ${item.label || 'message'} for everyone?`)) return;
+
+    try {
+      await deleteAdminMessageItem(item);
+      state.adminMessages = state.adminMessages.filter((candidate) => candidate.id !== item.id);
+      renderAdminMessageViewer();
+      await Promise.all([loadPosts(), loadRooms()]);
+      if (state.activeRoom?.id) {
+        try {
+          const data = await api(`/api/rooms/${state.activeRoom.id}/messages`);
+          state.activeRoom = data.room;
+          state.roomMessages = data.messages;
+          renderRoomPanel();
+        } catch {}
+      }
+      if (state.activeChatUser) {
+        try {
+          const data = await api(`/api/messages/${state.activeChatUser.id}`);
+          state.activeMessages = data.messages;
+          renderChat();
+        } catch {}
+      }
+      showToast('Message deleted');
+    } catch (error) {
+      showToast(error.message);
     }
   });
 }
@@ -911,6 +975,7 @@ function renderAdminTools() {
   adminClaimForm.classList.toggle('hidden', Boolean(state.me?.isAdmin));
   if (adminModerationPanel) adminModerationPanel.classList.toggle('hidden', !state.me?.isAdmin);
   renderAdminUsers();
+  renderAdminMessageViewer();
 }
 
 function upsertAdminUser(user) {
@@ -959,6 +1024,87 @@ async function loadAdminUsers() {
   const data = await api('/api/admin/users');
   state.adminUsers = data.users || [];
   renderAdminUsers();
+}
+
+
+function adminMessageParticipants(item) {
+  if (item.kind === 'direct-message') {
+    return `${item.fromUser?.name || 'Unknown'} → ${item.toUser?.name || 'Unknown'}`;
+  }
+  if (item.kind === 'room-message') {
+    return `${item.author?.name || 'Unknown'} in ${item.roomName || `Room ${item.roomId}`}`;
+  }
+  if (item.kind === 'feed-comment') {
+    return `${item.author?.name || 'Unknown'} commented on ${item.parentAuthor?.name || 'someone'}'s post`;
+  }
+  return `${item.author?.name || 'Unknown'} posted`;
+}
+
+function adminMessageMeta(item) {
+  const parts = [item.source || item.label, formatTime(item.createdAt)];
+  if (item.kind === 'room-message') parts.push(item.roomLocked ? 'password room' : 'open room');
+  if (item.kind === 'direct-message') parts.push('private DM');
+  return parts.filter(Boolean).join(' · ');
+}
+
+function renderAdminMessageViewer() {
+  if (!adminMessageViewer) return;
+  const isAdmin = Boolean(state.me?.isAdmin);
+  adminMessageViewer.classList.toggle('hidden', !isAdmin);
+  if (!isAdmin) return;
+
+  const count = $('#adminMessageCount');
+  if (count) count.textContent = `${state.adminMessages.length} message${state.adminMessages.length === 1 ? '' : 's'}`;
+  if (!adminMessagesList) return;
+
+  if (!state.adminMessages.length) {
+    adminMessagesList.innerHTML = '<div class="empty">Click “Load messages” to review all stored TSN messages.</div>';
+    return;
+  }
+
+  adminMessagesList.innerHTML = state.adminMessages.map((item) => `
+    <article class="admin-message-item ${escapeHtml(item.kind)}">
+      <div class="admin-message-topline">
+        <span class="admin-message-label">${escapeHtml(item.label)}</span>
+        <span>${escapeHtml(adminMessageMeta(item))}</span>
+      </div>
+      <div class="admin-message-main">
+        <strong>${escapeHtml(adminMessageParticipants(item))}</strong>
+        <button class="admin-delete small" type="button" data-admin-delete-message-item="${escapeHtml(item.id)}">Delete</button>
+      </div>
+      ${item.parentExcerpt ? `<p class="admin-parent-excerpt">Original post: ${escapeHtml(item.parentExcerpt)}</p>` : ''}
+      <p class="admin-message-body">${escapeHtml(item.body || '')}</p>
+    </article>
+  `).join('');
+}
+
+async function loadAdminMessages() {
+  if (!state.me?.isAdmin || !adminMessagesList) return;
+  const type = $('#adminMessageType')?.value || 'all';
+  const q = $('#adminMessageSearch')?.value || '';
+  const data = await api(`/api/admin/messages?type=${encodeURIComponent(type)}&q=${encodeURIComponent(q)}`);
+  state.adminMessages = data.items || [];
+  renderAdminMessageViewer();
+}
+
+async function deleteAdminMessageItem(item) {
+  if (item.kind === 'feed-post') {
+    await api(`/api/posts/${item.postId}`, { method: 'DELETE' });
+    return;
+  }
+  if (item.kind === 'feed-comment') {
+    await api(`/api/posts/${item.postId}/comments/${item.commentId}`, { method: 'DELETE' });
+    return;
+  }
+  if (item.kind === 'direct-message') {
+    await api(`/api/messages/${item.messageId}`, { method: 'DELETE' });
+    return;
+  }
+  if (item.kind === 'room-message') {
+    await api(`/api/rooms/${item.roomId}/messages/${item.messageId}`, { method: 'DELETE' });
+    return;
+  }
+  throw new Error('Unsupported message type.');
 }
 
 function renderMe() {
@@ -1165,7 +1311,10 @@ async function loadPosts() {
 
 async function loadEverything() {
   await Promise.all([loadPosts(), loadUsers($('#userSearch').value), loadRooms()]);
-  if (state.me?.isAdmin) await loadAdminUsers();
+  if (state.me?.isAdmin) {
+    await loadAdminUsers();
+    renderAdminMessageViewer();
+  }
 }
 
 function connectSocket() {
@@ -1202,6 +1351,7 @@ function connectSocket() {
   state.socket.on('post-created', (post) => {
     upsertPost(post);
     renderPosts();
+    if (state.me?.isAdmin && state.adminMessages.length) loadAdminMessages().catch(() => {});
   });
 
   state.socket.on('post-updated', (post) => {
@@ -1215,6 +1365,7 @@ function connectSocket() {
   });
 
   state.socket.on('private-message', (message) => {
+    if (state.me?.isAdmin && state.adminMessages.length) loadAdminMessages().catch(() => {});
     const activeId = state.activeChatUser?.id;
     const isActiveConversation =
       activeId &&
@@ -1266,6 +1417,7 @@ function connectSocket() {
   });
 
   state.socket.on('room-message', (message) => {
+    if (state.me?.isAdmin && state.adminMessages.length) loadAdminMessages().catch(() => {});
     if (state.activeRoom?.id === message.roomId) {
       const exists = state.roomMessages.some((candidate) => candidate.id === message.id);
       if (!exists) state.roomMessages.push(message);
