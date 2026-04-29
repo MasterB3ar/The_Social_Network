@@ -214,7 +214,6 @@ registerForm.addEventListener('submit', async (event) => {
       body: JSON.stringify({
         name: form.get('name'),
         username: form.get('username'),
-        email: form.get('email'),
         password: form.get('password')
       })
     });

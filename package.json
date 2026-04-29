@@ -1,7 +1,7 @@
 {
   "name": "the-social-network-tsn",
   "version": "1.0.0",
-  "description": "TSN V1.0 - encrypted social media starter with persistent data storage, chat with unread message badges, clean side-panel rooms, optional room passwords, user-owned delete controls, admin kick/ban moderation, server-side content filter, and public bio visibility.",
+  "description": "TSN V1.0 - username-only login, encrypted social media starter with persistent data storage, chat with unread message badges, clean side-panel rooms named Room 1 through Room 7 by default, optional room passwords, user-owned delete controls, admin kick/ban moderation, server-side content filter, and public bio visibility.",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",

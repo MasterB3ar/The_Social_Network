@@ -4,12 +4,13 @@ A full-stack social media starter app with accounts, public posts, private chat,
 
 ## Main features
 
-- Register/login, guest login, and demo login
+- Username login, guest login, and demo login
 - Simple account passwords allowed: 4+ characters, so `1234` works if a user wants that
 - Public feed with posts, comments, likes, and user-owned delete controls
 - Private real-time chat with Socket.IO
 - Red unread-message badges for direct messages
 - 7 TSN Rooms:
+  - default room names are only `Room 1`, `Room 2`, `Room 3`, etc.
   - anyone can enter and chat in rooms with no password
   - unclaimed rooms can be claimed by one user
   - room owners/admins can rename claimed rooms
@@ -76,7 +77,6 @@ Encrypted at rest:
 ```text
 Display names       -> nameEnc
 Usernames           -> usernameEnc
-Emails              -> emailEnc
 Bios                -> bioEnc
 Posts/comments      -> bodyEnc
 Private messages    -> textEnc
@@ -92,7 +92,6 @@ Demo password       -> bcrypt hash supported
 Admin setup secret  -> bcrypt hash supported
 Room passwords      -> bcrypt hash
 Username lookup     -> HMAC-SHA256 lookup hash
-Email lookup        -> HMAC-SHA256 lookup hash
 ```
 
 Important: do **not** change `TSN_DATA_ENCRYPTION_KEY` after people have created accounts or messages, because old encrypted data will no longer decrypt.

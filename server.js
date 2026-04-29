@@ -33,27 +33,24 @@ const DEMO_PASSWORD = process.env.TSN_DEMO_PASSWORD || 'TSN-Demo!9vK2p-Q8rM';
 const DEMO_PASSWORD_HASH = process.env.TSN_DEMO_PASSWORD_HASH || '';
 const ADMIN_SETUP_PASSWORD = process.env.TSN_ADMIN_SETUP_PASSWORD || 'TSN-Admin!ChangeMe-2026';
 const ADMIN_SETUP_PASSWORD_HASH = process.env.TSN_ADMIN_SETUP_PASSWORD_HASH || '';
-const ROOMS = [
-  { id: 1, name: 'Room 1: Lobby', tagline: 'General chat for everyone on TSN.' },
-  { id: 2, name: 'Room 2: Gaming', tagline: 'Talk about games, matches, and clips.' },
-  { id: 3, name: 'Room 3: Tech', tagline: 'Code, PCs, apps, and hardware talk.' },
-  { id: 4, name: 'Room 4: Creative', tagline: 'Share ideas, art, edits, and projects.' },
-  { id: 5, name: 'Room 5: Study', tagline: 'Homework, planning, and focus chat.' },
-  { id: 6, name: 'Room 6: Builds', tagline: 'Show off builds, setups, and progress.' },
-  { id: 7, name: 'Room 7: Chill', tagline: 'Casual conversation and hangout space.' }
-];
+const ROOMS = Array.from({ length: 7 }, (_, index) => {
+  const id = index + 1;
+  return {
+    id,
+    name: `Room ${id}`,
+    tagline: 'Claim this room to rename it and optionally set a password.'
+  };
+});
 const DEMO_USERS = [
   {
     name: 'Demo User 1',
     username: 'demo_one',
-    email: 'demo.one@tsn.local',
     bio: 'Generic demo account for testing TSN chat.',
     post: 'This is Demo User 1. Open People to test realtime chat.'
   },
   {
     name: 'Demo User 2',
     username: 'demo_two',
-    email: 'demo.two@tsn.local',
     bio: 'Second generic demo account for testing conversations.',
     post: 'This is Demo User 2. TSN demo chat is ready.'
   }
@@ -273,10 +270,6 @@ function assertContentAllowed(value, fieldName = 'Text') {
   }
 }
 
-function normalizeEmail(email) {
-  return String(email || '').trim().toLowerCase();
-}
-
 function normalizeUsername(username) {
   return cleanText(username, 24).toLowerCase().replace(/[^a-z0-9_]/g, '');
 }
@@ -353,14 +346,12 @@ function getEncryptedObjectField(object, field) {
   return String(object[field] || '');
 }
 
-function encryptedUserIdentity({ name, username, email, bio }) {
+function encryptedUserIdentity({ name, username, bio }) {
   return {
     nameEnc: encryptField(name),
     usernameEnc: encryptField(username),
-    emailEnc: encryptField(email),
     bioEnc: encryptField(bio || ''),
-    usernameHash: lookupHash('username', normalizeUsername(username)),
-    emailHash: lookupHash('email', normalizeEmail(email))
+    usernameHash: lookupHash('username', normalizeUsername(username))
   };
 }
 
@@ -372,19 +363,9 @@ function userMatchesUsername(user, username) {
   );
 }
 
-function userMatchesEmail(user, email) {
-  const normalized = normalizeEmail(email);
-  return Boolean(normalized) && (
-    user.emailHash === lookupHash('email', normalized) ||
-    normalizeEmail(getUserField(user, 'email')) === normalized
-  );
-}
-
 function findUserByLogin(users, loginValue) {
-  const raw = String(loginValue || '');
-  const email = normalizeEmail(raw);
-  const username = normalizeUsername(raw);
-  return users.find((candidate) => userMatchesEmail(candidate, email) || userMatchesUsername(candidate, username));
+  const username = normalizeUsername(loginValue);
+  return users.find((candidate) => userMatchesUsername(candidate, username));
 }
 
 function secretFingerprint(value) {
@@ -436,7 +417,6 @@ function publicUser(user) {
     id: user.id,
     name: getUserField(user, 'name'),
     username: getUserField(user, 'username'),
-    email: getUserField(user, 'email'),
     bio: getUserField(user, 'bio'),
     role,
     isAdmin: role === 'admin',
@@ -690,8 +670,6 @@ function migrateDatabaseAtRest() {
 
   db.users.forEach((user) => {
     const plainUsername = user.username;
-    const plainEmail = user.email;
-
     if (user.sessionVersion === undefined) {
       user.sessionVersion = 0;
       changed = true;
@@ -702,7 +680,7 @@ function migrateDatabaseAtRest() {
       changed = true;
     }
 
-    ['name', 'username', 'email', 'bio'].forEach((field) => {
+    ['name', 'username', 'bio'].forEach((field) => {
       if (migrateRecordField(user, field)) changed = true;
     });
 
@@ -714,13 +692,12 @@ function migrateDatabaseAtRest() {
       }
     }
 
-    if (!user.emailHash) {
-      const email = plainEmail || getUserField(user, 'email');
-      if (email) {
-        user.emailHash = lookupHash('email', normalizeEmail(email));
+    ['email', 'emailEnc', 'emailHash'].forEach((field) => {
+      if (Object.prototype.hasOwnProperty.call(user, field)) {
+        delete user[field];
         changed = true;
       }
-    }
+    });
   });
 
   db.posts.forEach((post) => {
@@ -765,6 +742,13 @@ function migrateDatabaseAtRest() {
     }
 
     if (record.name && migrateRecordField(record, 'name')) changed = true;
+    const storedRoomName = record.nameEnc ? getEncryptedObjectField(record, 'name').trim() : '';
+    if (storedRoomName.startsWith(`Room ${room.id}: `)) {
+      // Earlier TSN versions shipped topic-style default names.
+      // Clear those defaults so existing databases now show plain "Room 1", "Room 2", etc.
+      record.nameEnc = '';
+      changed = true;
+    }
     if (record.nameEnc === undefined) {
       record.nameEnc = '';
       changed = true;
@@ -838,8 +822,6 @@ app.get('/api/health', (req, res) => {
 app.post('/api/auth/register', async (req, res) => {
   const name = cleanText(req.body.name, 60);
   const username = normalizeUsername(req.body.username);
-  const submittedEmail = normalizeEmail(req.body.email);
-  const email = submittedEmail || `${username}@tsn.local`;
   const password = String(req.body.password || '');
 
   if (!name || !username || !password) {
@@ -848,15 +830,12 @@ app.post('/api/auth/register', async (req, res) => {
   if (username.length < 3) return res.status(400).json({ error: 'Username must be at least 3 characters.' });
   const passwordError = validateAccountPassword(password);
   if (passwordError) return res.status(400).json({ error: passwordError });
-  if (submittedEmail && !/^\S+@\S+\.\S+$/.test(submittedEmail)) {
-    return res.status(400).json({ error: 'Enter a valid email, or leave it empty.' });
-  }
   if (rejectBlockedContent(res, name, 'Display name')) return;
   if (rejectBlockedContent(res, username, 'Username')) return;
 
   const db = readDb();
-  const taken = db.users.some((user) => userMatchesUsername(user, username) || (submittedEmail && userMatchesEmail(user, submittedEmail)));
-  if (taken) return res.status(409).json({ error: 'Username or email is already used.' });
+  const taken = db.users.some((user) => userMatchesUsername(user, username));
+  if (taken) return res.status(409).json({ error: 'Username is already used.' });
 
   const passwordHash = await bcrypt.hash(password, 12);
   const user = {
@@ -864,7 +843,6 @@ app.post('/api/auth/register', async (req, res) => {
     ...encryptedUserIdentity({
       name,
       username,
-      email,
       bio: 'New on TSN.'
     }),
     passwordHash,
@@ -878,16 +856,16 @@ app.post('/api/auth/register', async (req, res) => {
 });
 
 app.post('/api/auth/login', async (req, res) => {
-  const login = req.body.login || req.body.email || req.body.username;
+  const login = req.body.username || req.body.login;
   const password = String(req.body.password || '');
   const db = readDb();
 
   const user = findUserByLogin(db.users, login);
-  if (!user) return res.status(401).json({ error: 'Wrong login or password.' });
+  if (!user) return res.status(401).json({ error: 'Wrong username or password.' });
   if (isBanned(user)) return res.status(403).json({ error: 'This account has been banned.' });
 
   const ok = await bcrypt.compare(password, user.passwordHash);
-  if (!ok) return res.status(401).json({ error: 'Wrong login or password.' });
+  if (!ok) return res.status(401).json({ error: 'Wrong username or password.' });
 
   res.json({ token: signToken(user), user: publicUser(user) });
 });
@@ -904,7 +882,6 @@ app.post('/api/auth/guest', async (req, res) => {
     ...encryptedUserIdentity({
       name: `Guest ${username.slice(-4)}`,
       username,
-      email: `${username}@tsn.local`,
       bio: 'Temporary guest account on TSN.'
     }),
     passwordHash: await bcrypt.hash(crypto.randomUUID(), 12),
@@ -934,7 +911,6 @@ app.post('/api/auth/demo', async (req, res) => {
       ...encryptedUserIdentity({
         name: blueprint.name,
         username: blueprint.username,
-        email: blueprint.email,
         bio: blueprint.bio
       }),
       passwordHash: await demoPasswordHash(),
