@@ -1396,17 +1396,25 @@ app.post('/api/rooms/:roomId/release', requireAuth, async (req, res) => {
     return res.status(403).json({ error: 'Only the room owner or an admin can release this room.' });
   }
 
+  const deletedMessageCount = Array.isArray(db.roomMessages)
+    ? db.roomMessages.filter((message) => Number(message.roomId) === room.id).length
+    : 0;
+
   record.ownerId = null;
   record.claimedAt = null;
   record.nameEnc = '';
   record.passwordHash = '';
   record.passwordVersion = Number(record.passwordVersion || 0) + 1;
   clearRoomAccessForAllUsers(db, room.id);
+  db.roomMessages = Array.isArray(db.roomMessages)
+    ? db.roomMessages.filter((message) => Number(message.roomId) !== room.id)
+    : [];
   await writeDb(db);
 
   const safeRoom = publicRoom(room, db, req.user);
   emitRoomUpdated(db, room);
-  res.json({ room: safeRoom, rooms: ROOMS.map((candidate) => publicRoom(candidate, db, req.user)) });
+  io.emit('room-messages-cleared', { roomId: room.id, deletedCount: deletedMessageCount });
+  res.json({ room: safeRoom, rooms: ROOMS.map((candidate) => publicRoom(candidate, db, req.user)), deletedCount: deletedMessageCount });
 });
 
 app.get('/api/rooms/:roomId/messages', requireAuth, (req, res) => {

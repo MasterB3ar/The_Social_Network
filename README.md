@@ -17,7 +17,7 @@ A full-stack social media starter app with accounts, public posts, private chat,
   - room owners/admins can add, change, or remove an optional room password
   - room passwords are hashed, not stored as readable text
   - the room owner, message author, or an admin can delete room messages
-  - room owners/admins can release claimed rooms, which resets the name and removes the password
+  - room owners/admins can release claimed rooms, which resets the name, removes the password, and deletes all messages in that room
 - Public user bios in People/search/chat
 - Admin tools:
   - claim admin with a server-side setup password

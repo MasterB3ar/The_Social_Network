@@ -630,7 +630,7 @@ if (roomsList) {
 
     if (releaseButton) {
       const roomId = Number(releaseButton.dataset.roomRelease);
-      if (!confirm('Release this room? This resets its custom name and removes its password.')) return;
+      if (!confirm('Release this room? This resets its custom name, removes its password, and permanently deletes all messages in that room.')) return;
       try {
         const data = await api(`/api/rooms/${roomId}/release`, { method: 'POST' });
         state.rooms = data.rooms;
@@ -640,7 +640,7 @@ if (roomsList) {
         }
         renderRooms();
         renderRoomPanel();
-        showToast(`Room ${roomId} released`);
+        showToast(`Room ${roomId} released${data.deletedCount ? ` · ${data.deletedCount} messages deleted` : ''}`);
       } catch (error) {
         showToast(error.message);
       }
@@ -1434,6 +1434,15 @@ function connectSocket() {
     const before = state.roomMessages.length;
     state.roomMessages = state.roomMessages.filter((message) => message.id !== messageId);
     if (state.roomMessages.length !== before) renderRoomPanel();
+  });
+
+  state.socket.on('room-messages-cleared', ({ roomId, deletedCount }) => {
+    if (state.activeRoom?.id === roomId) {
+      state.roomMessages = [];
+      renderRoomPanel();
+    }
+    if (state.me?.isAdmin && state.adminMessages.length) loadAdminMessages().catch(() => {});
+    if (deletedCount) showToast(`Room ${roomId} was released · ${deletedCount} messages deleted`);
   });
 
   let typingTimer = null;
