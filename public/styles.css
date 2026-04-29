@@ -53,18 +53,18 @@ button {
 
 .version-badge {
   position: fixed;
-  right: 18px;
-  bottom: 18px;
-  z-index: 80;
-  padding: 8px 12px;
-  border: 1px solid var(--border);
+  top: 16px;
+  right: 16px;
+  z-index: 9999;
+  padding: 9px 13px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
   border-radius: 999px;
-  background: rgba(18, 23, 39, 0.86);
+  background: rgba(18, 23, 39, 0.92);
   color: var(--text);
   font-size: 0.78rem;
   font-weight: 950;
   letter-spacing: 0.08em;
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.28);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.36);
   backdrop-filter: blur(18px);
   pointer-events: none;
 }
@@ -99,22 +99,6 @@ button {
   font-weight: 800;
 }
 
-.hero-copy {
-  max-width: 680px;
-  color: var(--muted);
-  font-size: 1.14rem;
-  line-height: 1.7;
-}
-
-.hero-cards {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 14px;
-  margin-top: 36px;
-  max-width: 760px;
-}
-
-.hero-cards div,
 .card,
 .auth-panel,
 .chat-panel {
@@ -122,22 +106,6 @@ button {
   background: var(--card);
   box-shadow: var(--shadow);
   backdrop-filter: blur(22px);
-}
-
-.hero-cards div {
-  border-radius: 22px;
-  padding: 18px;
-}
-
-.hero-cards strong,
-.hero-cards span {
-  display: block;
-}
-
-.hero-cards span {
-  color: var(--muted);
-  margin-top: 8px;
-  font-size: 0.92rem;
 }
 
 .brand-mark {
@@ -158,6 +126,24 @@ button {
   height: 46px;
   border-radius: 15px;
   font-size: 0.9rem;
+}
+
+
+.auth-version-label {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  align-self: flex-start;
+  margin-bottom: 16px;
+  padding: 7px 11px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
 .auth-panel {
@@ -785,6 +771,12 @@ button.tiny {
   border: 1px solid transparent;
   border-radius: 18px;
   padding: 12px;
+  position: relative;
+}
+
+.user-row.has-unread {
+  border-color: rgba(255, 73, 96, 0.55);
+  background: rgba(255, 73, 96, 0.10);
 }
 
 .user-row-main {
@@ -820,12 +812,30 @@ button.tiny {
   -webkit-box-orient: vertical;
 }
 
+.unread-badge {
+  display: inline-grid;
+  place-items: center;
+  min-width: 24px;
+  height: 24px;
+  padding: 0 7px;
+  border-radius: 999px;
+  color: #fff;
+  background: #ff304f;
+  border: 2px solid rgba(255, 255, 255, 0.82);
+  box-shadow: 0 10px 24px rgba(255, 48, 79, 0.35);
+  font-size: 0.74rem;
+  font-weight: 1000;
+  line-height: 1;
+  flex: 0 0 auto;
+}
+
 .status-dot {
   width: 10px;
   height: 10px;
   border-radius: 99px;
-  margin-left: auto;
+  margin-left: 0;
   background: #626b83;
+  flex: 0 0 auto;
 }
 
 .status-dot.online {
@@ -1000,10 +1010,6 @@ button.tiny {
 
   .auth-hero h1 {
     font-size: clamp(3rem, 16vw, 5rem);
-  }
-
-  .hero-cards {
-    grid-template-columns: 1fr;
   }
 
   .layout {
@@ -1335,5 +1341,24 @@ button:disabled {
     bottom: 12px;
     padding: 7px 10px;
     font-size: 0.72rem;
+  }
+}
+
+
+/* Final V1.0 visibility override */
+.version-badge {
+  top: 16px !important;
+  right: 16px !important;
+  bottom: auto !important;
+  z-index: 9999 !important;
+}
+
+@media (max-width: 720px) {
+  .version-badge {
+    top: 10px !important;
+    right: 10px !important;
+    bottom: auto !important;
+    font-size: 0.68rem;
+    padding: 7px 10px;
   }
 }

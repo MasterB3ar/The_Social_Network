@@ -74,7 +74,15 @@ app.use(helmet({ contentSecurityPolicy: false }));
 app.use(cors());
 app.use(express.json({ limit: '1mb' }));
 app.use(morgan('dev'));
-app.use(express.static(PUBLIC_DIR));
+app.use(express.static(PUBLIC_DIR, {
+  setHeaders(res, filePath) {
+    if (/\.(html|css|js)$/i.test(filePath)) {
+      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+      res.setHeader('Pragma', 'no-cache');
+      res.setHeader('Expires', '0');
+    }
+  }
+}));
 
 function emptyDatabase() {
   return { users: [], posts: [], messages: [], rooms: [], roomMessages: [] };
@@ -628,6 +636,39 @@ function publicMessage(message) {
   };
 }
 
+function hasReadMessage(message, userId) {
+  return Array.isArray(message.readBy) && message.readBy.includes(userId);
+}
+
+function getUnreadMessageCount(db, currentUserId, otherUserId) {
+  return db.messages.filter((message) =>
+    message.from === otherUserId &&
+    message.to === currentUserId &&
+    !hasReadMessage(message, currentUserId)
+  ).length;
+}
+
+async function markConversationRead(db, currentUserId, otherUserId) {
+  let changed = false;
+  const key = conversationId(currentUserId, otherUserId);
+
+  db.messages.forEach((message) => {
+    if (message.conversationId !== key || message.to !== currentUserId) return;
+    if (!Array.isArray(message.readBy)) message.readBy = message.from && message.to ? [message.from, message.to] : [];
+    if (!message.readBy.includes(currentUserId)) {
+      message.readBy.push(currentUserId);
+      changed = true;
+    }
+  });
+
+  if (changed) {
+    await writeDb(db);
+    io.to(currentUserId).emit('messages-read', { userId: otherUserId, unreadCount: 0 });
+  }
+
+  return changed;
+}
+
 
 function migrateRecordField(record, field) {
   if (!record || typeof record !== 'object') return false;
@@ -691,6 +732,14 @@ function migrateDatabaseAtRest() {
 
   db.messages.forEach((message) => {
     if (migrateRecordField(message, 'text')) changed = true;
+    if (!Array.isArray(message.readBy)) {
+      // Existing messages from older TSN versions are treated as already read so updating does not create old unread badges.
+      message.readBy = [message.from, message.to].filter(Boolean);
+      changed = true;
+    } else if (message.from && !message.readBy.includes(message.from)) {
+      message.readBy.push(message.from);
+      changed = true;
+    }
   });
 
   if (!Array.isArray(db.rooms)) {
@@ -1010,9 +1059,13 @@ app.get('/api/users', requireAuth, (req, res) => {
   const q = cleanText(req.query.q || '', 80).toLowerCase();
   const users = req.db.users
     .filter((user) => user.id !== req.user.id && !isBanned(user))
-    .map((user) => ({ ...publicUser(user), online: onlineUsers.has(user.id) }))
+    .map((user) => ({
+      ...publicUser(user),
+      online: onlineUsers.has(user.id),
+      unreadCount: getUnreadMessageCount(req.db, req.user.id, user.id)
+    }))
     .filter((user) => !q || user.name.toLowerCase().includes(q) || user.username.toLowerCase().includes(q) || String(user.bio || '').toLowerCase().includes(q))
-    .sort((a, b) => Number(b.online) - Number(a.online) || a.name.localeCompare(b.name));
+    .sort((a, b) => Number(b.unreadCount > 0) - Number(a.unreadCount > 0) || Number(b.online) - Number(a.online) || a.name.localeCompare(b.name));
 
   res.json({ users });
 });
@@ -1315,7 +1368,7 @@ app.delete('/api/rooms/:roomId/messages/:messageId', requireAuth, async (req, re
   res.json({ ok: true, roomId: room.id, messageId: deleted.id });
 });
 
-app.get('/api/messages/:userId', requireAuth, (req, res) => {
+app.get('/api/messages/:userId', requireAuth, async (req, res) => {
   const other = req.db.users.find((user) => user.id === req.params.userId);
   if (!other) return res.status(404).json({ error: 'User not found.' });
 
@@ -1325,7 +1378,16 @@ app.get('/api/messages/:userId', requireAuth, (req, res) => {
     .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt))
     .map(publicMessage);
 
-  res.json({ user: publicUser(other), messages });
+  await markConversationRead(req.db, req.user.id, other.id);
+  res.json({ user: { ...publicUser(other), unreadCount: 0 }, messages });
+});
+
+app.post('/api/messages/:userId/read', requireAuth, async (req, res) => {
+  const other = req.db.users.find((user) => user.id === req.params.userId);
+  if (!other) return res.status(404).json({ error: 'User not found.' });
+
+  await markConversationRead(req.db, req.user.id, other.id);
+  res.json({ ok: true, userId: other.id, unreadCount: 0 });
 });
 
 app.delete('/api/messages/:messageId', requireAuth, requireAdmin, async (req, res) => {
@@ -1390,6 +1452,7 @@ io.on('connection', (socket) => {
         conversationId: conversationId(user.id, recipient.id),
         from: user.id,
         to: recipient.id,
+        readBy: [user.id],
         ...encryptedTextObject('text', text),
         createdAt: new Date().toISOString()
       };

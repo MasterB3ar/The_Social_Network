@@ -8,6 +8,7 @@ A full-stack social media starter app with accounts, public posts, private chat,
 - Simple account passwords allowed: 4+ characters, so `1234` works if a user wants that
 - Public feed with posts, comments, likes, and user-owned delete controls
 - Private real-time chat with Socket.IO
+- Red unread-message badges for direct messages
 - 7 TSN Rooms:
   - anyone can enter and chat in rooms with no password
   - unclaimed rooms can be claimed by one user

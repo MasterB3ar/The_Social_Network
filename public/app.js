@@ -64,6 +64,38 @@ function canDeleteOwnOrAdmin(authorId) {
   return Boolean(state.me && (state.me.isAdmin || authorId === state.me.id));
 }
 
+function unreadBadgeText(count) {
+  const number = Number(count) || 0;
+  if (number <= 0) return '';
+  return number > 99 ? '99+' : String(number);
+}
+
+function setUnreadForUser(userId, count) {
+  const user = state.users.find((candidate) => candidate.id === userId);
+  if (!user) return false;
+  user.unreadCount = Math.max(0, Number(count) || 0);
+  return true;
+}
+
+function incrementUnreadForUser(userId) {
+  const user = state.users.find((candidate) => candidate.id === userId);
+  if (!user) return false;
+  user.unreadCount = Math.max(0, Number(user.unreadCount) || 0) + 1;
+  return true;
+}
+
+async function markConversationRead(userId) {
+  if (!userId) return;
+  setUnreadForUser(userId, 0);
+  renderUsers();
+
+  try {
+    await api(`/api/messages/${userId}/read`, { method: 'POST' });
+  } catch {
+    // A later users refresh will repair the badge if this request fails.
+  }
+}
+
 function showToast(message) {
   toast.textContent = message;
   toast.classList.remove('hidden');
@@ -1025,13 +1057,14 @@ function renderUsers() {
     const isActive = state.activeChatUser?.id === user.id;
     const bio = String(user.bio || '').trim() || 'No bio yet.';
     return `
-      <button class="user-row ${isActive ? 'active' : ''}" data-user-id="${escapeHtml(user.id)}">
+      <button class="user-row ${isActive ? 'active' : ''} ${Number(user.unreadCount) > 0 ? 'has-unread' : ''}" data-user-id="${escapeHtml(user.id)}">
         <div class="avatar">${escapeHtml(initials(user.name))}</div>
         <div class="user-row-main">
           <strong>${escapeHtml(user.name)}</strong>
           <span>@${escapeHtml(user.username)}</span>
           <span class="user-bio">${escapeHtml(bio)}</span>
         </div>
+        ${Number(user.unreadCount) > 0 ? `<span class="unread-badge" aria-label="${escapeHtml(user.unreadCount)} unread direct messages">${escapeHtml(unreadBadgeText(user.unreadCount))}</span>` : ''}
         <span class="status-dot ${user.online ? 'online' : ''}"></span>
       </button>
     `;
@@ -1094,8 +1127,12 @@ async function openChat(user) {
     const data = await api(`/api/messages/${user.id}`);
     state.activeChatUser = data.user;
     const latestUser = state.users.find((candidate) => candidate.id === data.user.id);
-    if (latestUser) state.activeChatUser.online = latestUser.online;
+    if (latestUser) {
+      latestUser.unreadCount = 0;
+      state.activeChatUser.online = latestUser.online;
+    }
     state.activeMessages = data.messages;
+    renderUsers();
     renderChat();
     $('#messageInput').focus();
   } catch (error) {
@@ -1192,16 +1229,30 @@ function connectSocket() {
       const exists = state.activeMessages.some((candidate) => candidate.id === message.id);
       if (!exists) state.activeMessages.push(message);
       renderChat();
+      if (message.to === state.me.id) {
+        markConversationRead(message.from).catch(() => {});
+      }
     } else if (message.to === state.me.id) {
       const sender = state.users.find((user) => user.id === message.from);
+      if (!incrementUnreadForUser(message.from)) {
+        loadUsers($('#userSearch').value).catch(() => {});
+      } else {
+        renderUsers();
+      }
       showToast(`New message from ${sender?.name || 'someone'}`);
     }
+  });
+
+  state.socket.on('messages-read', ({ userId, unreadCount }) => {
+    setUnreadForUser(userId, unreadCount || 0);
+    renderUsers();
   });
 
   state.socket.on('message-deleted', ({ messageId }) => {
     const before = state.activeMessages.length;
     state.activeMessages = state.activeMessages.filter((message) => message.id !== messageId);
     if (state.activeMessages.length !== before) renderChat();
+    loadUsers($('#userSearch').value).catch(() => {});
   });
 
   state.socket.on('room-updated', (room) => {
