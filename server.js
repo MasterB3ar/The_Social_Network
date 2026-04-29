@@ -14,29 +14,35 @@ const { Server } = require('socket.io');
 
 const PORT = process.env.PORT || 3000;
 const DEFAULT_JWT_SECRET = 'dev-secret-change-before-release';
+const DEFAULT_DATA_ENCRYPTION_KEY = 'dev-data-encryption-key-change-before-release-32chars';
 const JWT_SECRET = process.env.JWT_SECRET || DEFAULT_JWT_SECRET;
+const DATA_ENCRYPTION_KEY = process.env.TSN_DATA_ENCRYPTION_KEY || process.env.JWT_SECRET || DEFAULT_DATA_ENCRYPTION_KEY;
 const DATA_DIR = process.env.DATA_DIR ? path.resolve(process.env.DATA_DIR) : path.join(__dirname, 'data');
 const DB_FILE = process.env.DB_FILE ? path.resolve(process.env.DB_FILE) : path.join(DATA_DIR, 'db.json');
 const PUBLIC_DIR = path.join(__dirname, 'public');
 const DEMO_PASSWORD = process.env.TSN_DEMO_PASSWORD || 'TSN-Demo!9vK2p-Q8rM';
+const DEMO_PASSWORD_HASH = process.env.TSN_DEMO_PASSWORD_HASH || '';
 const LAYERS = [
   {
     id: 1,
     name: 'Layer 1: Backstage',
     tagline: 'A private starter room for trusted TSN users.',
-    password: process.env.TSN_LAYER_1_PASSWORD || 'TSN-Layer1!8qN4-vZ2m-R7tP'
+    password: process.env.TSN_LAYER_1_PASSWORD || 'TSN-Layer1!8qN4-vZ2m-R7tP',
+    passwordHash: process.env.TSN_LAYER_1_PASSWORD_HASH || ''
   },
   {
     id: 2,
     name: 'Layer 2: Inner Circle',
     tagline: 'A deeper room that only opens after Layer 1.',
-    password: process.env.TSN_LAYER_2_PASSWORD || 'TSN-Layer2!5xC9-mH6a-B3yL'
+    password: process.env.TSN_LAYER_2_PASSWORD || 'TSN-Layer2!5xC9-mH6a-B3yL',
+    passwordHash: process.env.TSN_LAYER_2_PASSWORD_HASH || ''
   },
   {
     id: 3,
     name: 'Layer 3: Core Vault',
     tagline: 'The deepest TSN room. Requires all previous layers.',
-    password: process.env.TSN_LAYER_3_PASSWORD || 'TSN-Layer3!2pW7-kD8s-N4rX'
+    password: process.env.TSN_LAYER_3_PASSWORD || 'TSN-Layer3!2pW7-kD8s-N4rX',
+    passwordHash: process.env.TSN_LAYER_3_PASSWORD_HASH || ''
   }
 ];
 const DEMO_USERS = [
@@ -147,9 +153,131 @@ function safeStringEqual(a, b) {
   return crypto.timingSafeEqual(left, right);
 }
 
+const FIELD_ENCRYPTION_KEY = crypto.createHash('sha256').update(String(DATA_ENCRYPTION_KEY)).digest();
+const LOOKUP_HMAC_KEY = crypto.createHash('sha256').update(`lookup:${DATA_ENCRYPTION_KEY}`).digest();
+
+function encryptField(value) {
+  const text = String(value ?? '');
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv('aes-256-gcm', FIELD_ENCRYPTION_KEY, iv);
+  const encrypted = Buffer.concat([cipher.update(text, 'utf8'), cipher.final()]);
+  const tag = cipher.getAuthTag();
+  return `v1:${iv.toString('base64url')}:${tag.toString('base64url')}:${encrypted.toString('base64url')}`;
+}
+
+function decryptField(value) {
+  const text = String(value || '');
+  if (!text.startsWith('v1:')) return text;
+
+  try {
+    const [, ivText, tagText, encryptedText] = text.split(':');
+    const decipher = crypto.createDecipheriv('aes-256-gcm', FIELD_ENCRYPTION_KEY, Buffer.from(ivText, 'base64url'));
+    decipher.setAuthTag(Buffer.from(tagText, 'base64url'));
+    return Buffer.concat([
+      decipher.update(Buffer.from(encryptedText, 'base64url')),
+      decipher.final()
+    ]).toString('utf8');
+  } catch (error) {
+    console.error('Encrypted field could not be decrypted:', error.message);
+    return '';
+  }
+}
+
+function lookupHash(scope, normalizedValue) {
+  const value = String(normalizedValue || '');
+  if (!value) return '';
+  return crypto.createHmac('sha256', LOOKUP_HMAC_KEY).update(`${scope}:${value}`).digest('hex');
+}
+
+function setEncryptedUserField(user, field, value) {
+  user[`${field}Enc`] = encryptField(value);
+  delete user[field];
+}
+
+function getUserField(user, field) {
+  if (!user) return '';
+  const encrypted = user[`${field}Enc`];
+  if (encrypted) return decryptField(encrypted);
+  return String(user[field] || '');
+}
+
+function encryptedTextObject(field, value) {
+  return { [`${field}Enc`]: encryptField(value) };
+}
+
+function getEncryptedObjectField(object, field) {
+  if (!object) return '';
+  const encrypted = object[`${field}Enc`];
+  if (encrypted) return decryptField(encrypted);
+  return String(object[field] || '');
+}
+
+function encryptedUserIdentity({ name, username, email, bio }) {
+  return {
+    nameEnc: encryptField(name),
+    usernameEnc: encryptField(username),
+    emailEnc: encryptField(email),
+    bioEnc: encryptField(bio || ''),
+    usernameHash: lookupHash('username', normalizeUsername(username)),
+    emailHash: lookupHash('email', normalizeEmail(email))
+  };
+}
+
+function userMatchesUsername(user, username) {
+  const normalized = normalizeUsername(username);
+  return Boolean(normalized) && (
+    user.usernameHash === lookupHash('username', normalized) ||
+    normalizeUsername(getUserField(user, 'username')) === normalized
+  );
+}
+
+function userMatchesEmail(user, email) {
+  const normalized = normalizeEmail(email);
+  return Boolean(normalized) && (
+    user.emailHash === lookupHash('email', normalized) ||
+    normalizeEmail(getUserField(user, 'email')) === normalized
+  );
+}
+
+function findUserByLogin(users, loginValue) {
+  const raw = String(loginValue || '');
+  const email = normalizeEmail(raw);
+  const username = normalizeUsername(raw);
+  return users.find((candidate) => userMatchesEmail(candidate, email) || userMatchesUsername(candidate, username));
+}
+
+function secretFingerprint(value) {
+  return crypto.createHash('sha256').update(String(value || '')).digest('hex');
+}
+
+async function demoPasswordHash() {
+  if (DEMO_PASSWORD_HASH) return DEMO_PASSWORD_HASH;
+  return bcrypt.hash(DEMO_PASSWORD, 12);
+}
+
+async function verifyLayerPassword(layer, password) {
+  if (layer.passwordHash) return bcrypt.compare(password, layer.passwordHash);
+  return safeStringEqual(password, layer.password);
+}
+
 if (process.env.NODE_ENV === 'production') {
-  ['JWT_SECRET', 'TSN_DEMO_PASSWORD', 'TSN_LAYER_1_PASSWORD', 'TSN_LAYER_2_PASSWORD', 'TSN_LAYER_3_PASSWORD'].forEach((name) => {
+  ['JWT_SECRET', 'TSN_DATA_ENCRYPTION_KEY'].forEach((name) => {
     if (!process.env[name]) console.warn(`Security warning: ${name} is not set. Add it in your hosting environment before public launch.`);
+  });
+
+  if (!process.env.TSN_DEMO_PASSWORD_HASH && !process.env.TSN_DEMO_PASSWORD) {
+    console.warn('Security warning: set TSN_DEMO_PASSWORD_HASH or TSN_DEMO_PASSWORD before public launch.');
+  }
+
+  [1, 2, 3].forEach((layerId) => {
+    const hashName = `TSN_LAYER_${layerId}_PASSWORD_HASH`;
+    const plainName = `TSN_LAYER_${layerId}_PASSWORD`;
+    if (!process.env[hashName] && !process.env[plainName]) {
+      console.warn(`Security warning: set ${hashName} or ${plainName} before public launch.`);
+    }
+    if (!process.env[hashName] && process.env[plainName]) {
+      console.warn(`Security note: ${hashName} is better than ${plainName} because the layer secret is stored as a bcrypt hash.`);
+    }
   });
 }
 
@@ -157,17 +285,17 @@ function publicUser(user) {
   if (!user) return null;
   return {
     id: user.id,
-    name: user.name,
-    username: user.username,
-    email: user.email,
-    bio: user.bio || '',
+    name: getUserField(user, 'name'),
+    username: getUserField(user, 'username'),
+    email: getUserField(user, 'email'),
+    bio: getUserField(user, 'bio'),
     createdAt: user.createdAt,
     unlockedLayers: Array.isArray(user.unlockedLayers) ? user.unlockedLayers : []
   };
 }
 
 function signToken(user) {
-  return jwt.sign({ sub: user.id, username: user.username }, JWT_SECRET, { expiresIn: '7d' });
+  return jwt.sign({ sub: user.id }, JWT_SECRET, { expiresIn: '7d' });
 }
 
 function verifyToken(token) {
@@ -196,10 +324,17 @@ function requireAuth(req, res, next) {
 function attachPostPeople(post, users) {
   const author = users.find((user) => user.id === post.authorId);
   return {
-    ...post,
+    id: post.id,
+    authorId: post.authorId,
+    body: getEncryptedObjectField(post, 'body'),
+    likes: Array.isArray(post.likes) ? post.likes : [],
+    createdAt: post.createdAt,
     author: publicUser(author),
     comments: (post.comments || []).map((comment) => ({
-      ...comment,
+      id: comment.id,
+      authorId: comment.authorId,
+      body: getEncryptedObjectField(comment, 'body'),
+      createdAt: comment.createdAt,
       author: publicUser(users.find((user) => user.id === comment.authorId))
     }))
   };
@@ -239,9 +374,89 @@ function publicLayer(layer, user) {
 function attachLayerPostPeople(post, users) {
   const author = users.find((user) => user.id === post.authorId);
   return {
-    ...post,
+    id: post.id,
+    layerId: post.layerId,
+    authorId: post.authorId,
+    body: getEncryptedObjectField(post, 'body'),
+    createdAt: post.createdAt,
     author: publicUser(author)
   };
+}
+
+function publicMessage(message) {
+  return {
+    id: message.id,
+    conversationId: message.conversationId,
+    from: message.from,
+    to: message.to,
+    text: getEncryptedObjectField(message, 'text'),
+    createdAt: message.createdAt
+  };
+}
+
+
+function migrateRecordField(record, field) {
+  if (!record || typeof record !== 'object') return false;
+  const encryptedField = `${field}Enc`;
+  let changed = false;
+
+  if (Object.prototype.hasOwnProperty.call(record, field)) {
+    if (!record[encryptedField]) record[encryptedField] = encryptField(record[field]);
+    delete record[field];
+    changed = true;
+  }
+
+  return changed;
+}
+
+function migrateDatabaseAtRest() {
+  const db = readDb();
+  let changed = false;
+
+  db.users.forEach((user) => {
+    const plainUsername = user.username;
+    const plainEmail = user.email;
+
+    ['name', 'username', 'email', 'bio'].forEach((field) => {
+      if (migrateRecordField(user, field)) changed = true;
+    });
+
+    if (!user.usernameHash) {
+      const username = plainUsername || getUserField(user, 'username');
+      if (username) {
+        user.usernameHash = lookupHash('username', normalizeUsername(username));
+        changed = true;
+      }
+    }
+
+    if (!user.emailHash) {
+      const email = plainEmail || getUserField(user, 'email');
+      if (email) {
+        user.emailHash = lookupHash('email', normalizeEmail(email));
+        changed = true;
+      }
+    }
+  });
+
+  db.posts.forEach((post) => {
+    if (migrateRecordField(post, 'body')) changed = true;
+    (post.comments || []).forEach((comment) => {
+      if (migrateRecordField(comment, 'body')) changed = true;
+    });
+  });
+
+  db.messages.forEach((message) => {
+    if (migrateRecordField(message, 'text')) changed = true;
+  });
+
+  db.layerPosts.forEach((post) => {
+    if (migrateRecordField(post, 'body')) changed = true;
+  });
+
+  if (changed) {
+    fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2));
+    console.log('Migrated legacy plaintext database fields to encrypted fields.');
+  }
 }
 
 app.get('/api/health', (req, res) => {
@@ -255,6 +470,15 @@ app.get('/api/health', (req, res) => {
       storage: {
         ok: storage.ok,
         dataDir: storage.dataDir
+      },
+      security: {
+        accountPasswords: 'bcrypt-hashed',
+        userIdentityFields: 'aes-256-gcm encrypted',
+        posts: 'aes-256-gcm encrypted at rest',
+        comments: 'aes-256-gcm encrypted at rest',
+        privateMessages: 'aes-256-gcm encrypted at rest',
+        layerPosts: 'aes-256-gcm encrypted at rest',
+        usernameLookup: 'hmac-sha256'
       }
     });
   } catch (error) {
@@ -286,16 +510,18 @@ app.post('/api/auth/register', async (req, res) => {
   }
 
   const db = readDb();
-  const taken = db.users.some((user) => user.username === username || (submittedEmail && user.email === submittedEmail));
+  const taken = db.users.some((user) => userMatchesUsername(user, username) || (submittedEmail && userMatchesEmail(user, submittedEmail)));
   if (taken) return res.status(409).json({ error: 'Username or email is already used.' });
 
   const passwordHash = await bcrypt.hash(password, 12);
   const user = {
     id: id('usr'),
-    name,
-    username,
-    email,
-    bio: 'New on TSN.',
+    ...encryptedUserIdentity({
+      name,
+      username,
+      email,
+      bio: 'New on TSN.'
+    }),
     passwordHash,
     unlockedLayers: [],
     createdAt: new Date().toISOString()
@@ -307,11 +533,11 @@ app.post('/api/auth/register', async (req, res) => {
 });
 
 app.post('/api/auth/login', async (req, res) => {
-  const login = normalizeEmail(req.body.login || req.body.email || req.body.username);
+  const login = req.body.login || req.body.email || req.body.username;
   const password = String(req.body.password || '');
   const db = readDb();
 
-  const user = db.users.find((candidate) => candidate.email === login || candidate.username === login);
+  const user = findUserByLogin(db.users, login);
   if (!user) return res.status(401).json({ error: 'Wrong login or password.' });
 
   const ok = await bcrypt.compare(password, user.passwordHash);
@@ -325,14 +551,16 @@ app.post('/api/auth/guest', async (req, res) => {
   let username = '';
   do {
     username = `guest_${crypto.randomInt(1000, 9999)}`;
-  } while (db.users.some((user) => user.username === username));
+  } while (db.users.some((user) => userMatchesUsername(user, username)));
 
   const user = {
     id: id('usr'),
-    name: `Guest ${username.slice(-4)}`,
-    username,
-    email: `${username}@tsn.local`,
-    bio: 'Temporary guest account on TSN.',
+    ...encryptedUserIdentity({
+      name: `Guest ${username.slice(-4)}`,
+      username,
+      email: `${username}@tsn.local`,
+      bio: 'Temporary guest account on TSN.'
+    }),
     passwordHash: await bcrypt.hash(crypto.randomUUID(), 12),
     unlockedLayers: [],
     createdAt: new Date().toISOString()
@@ -349,24 +577,27 @@ app.post('/api/auth/demo', async (req, res) => {
   if (!blueprint) return res.status(404).json({ error: 'Demo account not found.' });
 
   const db = readDb();
-  let user = db.users.find((candidate) => candidate.username === blueprint.username);
+  let user = db.users.find((candidate) => userMatchesUsername(candidate, blueprint.username));
+  const fingerprint = secretFingerprint(DEMO_PASSWORD_HASH || DEMO_PASSWORD);
 
   if (!user) {
     user = {
       id: id('usr'),
-      name: blueprint.name,
-      username: blueprint.username,
-      email: blueprint.email,
-      bio: blueprint.bio,
-      passwordHash: await bcrypt.hash(DEMO_PASSWORD, 12),
-      demoPasswordVersion: 3,
+      ...encryptedUserIdentity({
+        name: blueprint.name,
+        username: blueprint.username,
+        email: blueprint.email,
+        bio: blueprint.bio
+      }),
+      passwordHash: await demoPasswordHash(),
+      demoPasswordFingerprint: fingerprint,
       unlockedLayers: [],
       createdAt: new Date().toISOString()
     };
     db.users.push(user);
-  } else if (user.demoPasswordVersion !== 3) {
-    user.passwordHash = await bcrypt.hash(DEMO_PASSWORD, 12);
-    user.demoPasswordVersion = 3;
+  } else if (user.demoPasswordFingerprint !== fingerprint) {
+    user.passwordHash = await demoPasswordHash();
+    user.demoPasswordFingerprint = fingerprint;
   }
 
   const hasDemoPost = db.posts.some((post) => post.authorId === user.id);
@@ -374,7 +605,7 @@ app.post('/api/auth/demo', async (req, res) => {
     db.posts.push({
       id: id('post'),
       authorId: user.id,
-      body: blueprint.post,
+      ...encryptedTextObject('body', blueprint.post),
       likes: [],
       comments: [],
       createdAt: new Date().toISOString()
@@ -395,8 +626,8 @@ app.patch('/api/me', requireAuth, async (req, res) => {
   const name = cleanText(req.body.name, 60);
   const bio = cleanText(req.body.bio, 160);
 
-  if (name) user.name = name;
-  user.bio = bio;
+  if (name) setEncryptedUserField(user, 'name', name);
+  setEncryptedUserField(user, 'bio', bio);
   await writeDb(db);
   res.json({ user: publicUser(user) });
 });
@@ -405,8 +636,8 @@ app.get('/api/users', requireAuth, (req, res) => {
   const q = cleanText(req.query.q || '', 80).toLowerCase();
   const users = req.db.users
     .filter((user) => user.id !== req.user.id)
-    .filter((user) => !q || user.name.toLowerCase().includes(q) || user.username.includes(q))
     .map((user) => ({ ...publicUser(user), online: onlineUsers.has(user.id) }))
+    .filter((user) => !q || user.name.toLowerCase().includes(q) || user.username.toLowerCase().includes(q))
     .sort((a, b) => Number(b.online) - Number(a.online) || a.name.localeCompare(b.name));
 
   res.json({ users });
@@ -427,7 +658,7 @@ app.post('/api/posts', requireAuth, async (req, res) => {
   const post = {
     id: id('post'),
     authorId: req.user.id,
-    body,
+    ...encryptedTextObject('body', body),
     likes: [],
     comments: [],
     createdAt: new Date().toISOString()
@@ -467,7 +698,7 @@ app.post('/api/posts/:postId/comments', requireAuth, async (req, res) => {
   const comment = {
     id: id('comment'),
     authorId: req.user.id,
-    body,
+    ...encryptedTextObject('body', body),
     createdAt: new Date().toISOString()
   };
   post.comments = Array.isArray(post.comments) ? post.comments : [];
@@ -478,7 +709,6 @@ app.post('/api/posts/:postId/comments', requireAuth, async (req, res) => {
   io.emit('post-updated', fullPost);
   res.status(201).json({ post: fullPost });
 });
-
 
 app.get('/api/layers', requireAuth, (req, res) => {
   res.json({
@@ -499,7 +729,8 @@ app.post('/api/layers/:layerId/unlock', requireAuth, async (req, res) => {
   }
 
   const password = String(req.body.password || '');
-  if (!password || !safeStringEqual(password, layer.password)) {
+  const passwordOk = password ? await verifyLayerPassword(layer, password) : false;
+  if (!passwordOk) {
     return res.status(401).json({ error: `Wrong Layer ${layer.id} password.` });
   }
 
@@ -541,7 +772,7 @@ app.post('/api/layers/:layerId/posts', requireAuth, async (req, res) => {
     id: id('layerpost'),
     layerId: layer.id,
     authorId: req.user.id,
-    body,
+    ...encryptedTextObject('body', body),
     createdAt: new Date().toISOString()
   };
   db.layerPosts.push(post);
@@ -557,7 +788,8 @@ app.get('/api/messages/:userId', requireAuth, (req, res) => {
   const key = conversationId(req.user.id, other.id);
   const messages = req.db.messages
     .filter((message) => message.conversationId === key)
-    .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+    .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt))
+    .map(publicMessage);
 
   res.json({ user: publicUser(other), messages });
 });
@@ -598,14 +830,15 @@ io.on('connection', (socket) => {
         conversationId: conversationId(user.id, recipient.id),
         from: user.id,
         to: recipient.id,
-        text,
+        ...encryptedTextObject('text', text),
         createdAt: new Date().toISOString()
       };
+      const safeMessage = publicMessage(message);
 
       db.messages.push(message);
       await writeDb(db);
-      io.to(user.id).to(recipient.id).emit('private-message', message);
-      if (typeof callback === 'function') callback({ ok: true, message });
+      io.to(user.id).to(recipient.id).emit('private-message', safeMessage);
+      if (typeof callback === 'function') callback({ ok: true, message: safeMessage });
     } catch (error) {
       if (typeof callback === 'function') callback({ ok: false, error: error.message });
     }
@@ -629,6 +862,8 @@ app.get('*', (req, res) => {
   res.sendFile(path.join(PUBLIC_DIR, 'index.html'));
 });
 
+migrateDatabaseAtRest();
+
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`TSN is running on port ${PORT}.`);
   console.log(`Database file: ${DB_FILE}`);
@@ -636,5 +871,9 @@ server.listen(PORT, '0.0.0.0', () => {
 
   if (process.env.NODE_ENV === 'production' && JWT_SECRET === DEFAULT_JWT_SECRET) {
     console.warn('WARNING: Set a strong JWT_SECRET before using TSN publicly.');
+  }
+
+  if (process.env.NODE_ENV === 'production' && DATA_ENCRYPTION_KEY === DEFAULT_DATA_ENCRYPTION_KEY) {
+    console.warn('WARNING: Set TSN_DATA_ENCRYPTION_KEY before using TSN publicly.');
   }
 });
