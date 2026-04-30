@@ -575,6 +575,8 @@ button.tiny {
 
 .post {
   overflow: hidden;
+  display: grid;
+  gap: 14px;
 }
 
 .post-header,
@@ -658,6 +660,8 @@ button.tiny {
 
 .message-content span {
   min-width: 0;
+  line-height: 1.45;
+  white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
 
@@ -672,10 +676,11 @@ button.tiny {
 }
 
 .post-body {
-  margin: 16px 0;
+  margin: 0;
   color: #f4f6ff;
   line-height: 1.65;
   white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .post-actions {
@@ -701,31 +706,40 @@ button.tiny {
 }
 
 .comments {
-  display: grid;
+  display: flex;
+  flex-direction: column;
   gap: 12px;
-  margin-top: 16px;
   max-height: 260px;
   overflow-y: auto;
   overscroll-behavior: contain;
-  padding-right: 6px;
+  padding: 8px 6px 8px 0;
+  border-top: 1px solid var(--border);
 }
 
 .comment {
   align-items: flex-start;
+  flex: 0 0 auto;
+  width: 100%;
   padding: 12px;
-  background: rgba(255,255,255,0.045);
+  background: rgba(255,255,255,0.055);
+  border: 1px solid rgba(255,255,255,0.08);
   border-radius: 16px;
 }
 
 .comment p {
   margin: 4px 0 0;
   color: #dde3f5;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .comment-form {
   display: flex;
   gap: 10px;
-  margin-top: 14px;
+  margin-top: 0;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
 }
 
 .comment-form input {
@@ -917,6 +931,7 @@ button.tiny {
 
 .message {
   max-width: 82%;
+  flex: 0 0 auto;
   flex-direction: column;
   gap: 4px;
   align-self: flex-start;
@@ -1218,6 +1233,7 @@ button:disabled {
 
 .room-message {
   display: grid;
+  min-height: max-content;
   gap: 12px;
   padding: 14px;
   border: 1px solid var(--border);
@@ -1657,6 +1673,7 @@ button:disabled {
 
 .admin-message-item {
   display: grid;
+  min-height: max-content;
   gap: 9px;
   padding: 13px;
   border: 1px solid rgba(255,255,255,0.11);
