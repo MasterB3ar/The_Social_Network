@@ -1,217 +1,147 @@
-# Deploy TSN on Render
+# Deploy TSN V1.0 to Render without wiping data
 
-This project is ready to deploy to Render as a Node.js web service.
+This TSN version is Render-ready and uses persistent storage for accounts, posts, passwords, chats, rooms, and encrypted profiles.
 
-## Security model in this version
+## Why data was getting deleted
 
-- Account passwords are bcrypt-hashed in the database.
-- Usernames, names, emails, and bios are AES-256-GCM encrypted in the database.
-- Posts, comments, private chat messages, and layer-board posts are AES-256-GCM encrypted in the database.
-- Username/email login uses HMAC lookup hashes, so the app can find accounts without storing plain usernames/emails.
-- Demo and layer passwords can be stored on Render as bcrypt hashes.
-- Legacy plaintext fields from older TSN versions are automatically encrypted when the server starts.
+TSN stores its database in a JSON file. If that JSON file lives inside the deployed app folder, it can be replaced when you upload a new version. On Render, free web services also use an ephemeral filesystem, meaning filesystem changes can be lost after restarts or deploys.
 
-Do not change `TSN_DATA_ENCRYPTION_KEY` after users exist. Old encrypted profile fields, posts, comments, messages, and layer posts depend on it.
-
-## Best option for testing: free Render web service
-
-Use the included `render.yaml`.
-
-This is the fastest option and should work for testing the website with friends. It uses:
+The fix in this version is:
 
 ```text
-Runtime: Node
-Plan: free
-Region: frankfurt
-Build Command: npm install
-Start Command: npm start
-Health Check Path: /api/health
-DATA_DIR=/tmp/tsn-data
-```
-
-Important: free mode uses Render's temporary filesystem. Accounts, encrypted posts/comments, layer unlocks, encrypted profiles, and encrypted messages can reset when the service restarts or redeploys.
-
-## Best option for saved accounts/messages: persistent disk
-
-Use `render.persistent.yaml` instead.
-
-1. Delete or rename the normal `render.yaml`.
-2. Rename `render.persistent.yaml` to `render.yaml`.
-3. Deploy using Render Blueprint.
-
-This uses:
-
-```text
-Plan: starter
-Disk mount path: /var/data
-Disk size: 1 GB
 DATA_DIR=/var/data
 ```
 
-Persistent disks require a paid Render web service instance.
+with a Render persistent disk mounted at:
 
-## Generate hashed layer/demo secrets
+```text
+/var/data
+```
 
-Run this locally for each demo/layer password:
+## Before deploying
+
+Create strong values for:
+
+```env
+JWT_SECRET=<long random secret>
+TSN_DATA_ENCRYPTION_KEY=<different long random secret>
+TSN_DEMO_PASSWORD_HASH=<bcrypt hash>
+TSN_ADMIN_SETUP_PASSWORD_HASH=<bcrypt hash>
+```
+
+Generate hashes locally:
 
 ```bash
 npm install
-npm run hash-secret -- "YourStrongSecretPassword!2026"
+npm run hash-secret -- "YourStrongDemoPassword!2026"
+npm run hash-secret -- "YourStrongAdminPassword!2026"
 ```
 
-The command prints a bcrypt hash. Paste the hash into Render, not the real password.
+Do **not** change `TSN_DATA_ENCRYPTION_KEY` after real users/messages exist.
 
-Generate one hash for each of these:
-
-```text
-TSN_DEMO_PASSWORD_HASH
-TSN_LAYER_1_PASSWORD_HASH
-TSN_LAYER_2_PASSWORD_HASH
-TSN_LAYER_3_PASSWORD_HASH
-```
-
-Keep the real Layer 1/2/3 passwords somewhere safe, because people still need to type the real passwords into the website.
-
-## Deploy steps
+## Recommended Render deploy
 
 1. Unzip the project.
-2. Create a new GitHub repository.
-3. Upload all project files to the repository.
-4. Generate your demo/layer password hashes.
-5. Go to Render.
-6. Click **New +**.
-7. Choose **Blueprint**.
-8. Connect your GitHub repository.
-9. Render will read `render.yaml` automatically.
-10. Fill the secret values that use `sync: false`.
-11. Click **Apply** / **Deploy**.
+2. Upload the **contents** of the `tsn-social-network` folder to GitHub.
+3. Go to Render.
+4. Click **New +**.
+5. Choose **Blueprint**.
+6. Connect the GitHub repo.
+7. Render reads `render.yaml`.
+8. Render creates a paid Starter service with a persistent disk at `/var/data`.
+9. Add the secret environment variables when Render asks.
+10. Deploy.
 
-## Required Render environment variables
+The included `render.yaml` is the persistent version.
 
-The Blueprint generates these automatically:
+## Manual Render Web Service settings
 
-```text
-JWT_SECRET
-TSN_DATA_ENCRYPTION_KEY
-```
-
-You enter these manually:
-
-```text
-TSN_DEMO_PASSWORD_HASH=<bcrypt hash for demo password>
-TSN_LAYER_1_PASSWORD_HASH=<bcrypt hash for layer 1 password>
-TSN_LAYER_2_PASSWORD_HASH=<bcrypt hash for layer 2 password>
-TSN_LAYER_3_PASSWORD_HASH=<bcrypt hash for layer 3 password>
-```
-
-Optional fallback if you do not want to generate hashes:
-
-```text
-TSN_DEMO_PASSWORD=<strong demo password>
-TSN_LAYER_1_PASSWORD=<strong layer 1 password>
-TSN_LAYER_2_PASSWORD=<strong layer 2 password>
-TSN_LAYER_3_PASSWORD=<strong layer 3 password>
-```
-
-The hash variables are better because the real layer/demo passwords are not stored in Render.
-
-## Manual Render setup, without Blueprint
-
-Choose **New + → Web Service** and use:
+Use these if you do not use Blueprint:
 
 ```text
 Runtime: Node
+Plan: Starter or higher
 Build Command: npm install
 Start Command: npm start
 Health Check Path: /api/health
+Disk mount path: /var/data
+Disk size: 1 GB
 ```
 
-Environment variables for free testing:
+Environment variables:
 
-```text
-NODE_ENV=production
-NODE_VERSION=24.14.1
-DATA_DIR=/tmp/tsn-data
-JWT_SECRET=<generate a long random secret>
-TSN_DATA_ENCRYPTION_KEY=<generate a different long random secret>
-TSN_DEMO_PASSWORD_HASH=<bcrypt hash for demo password>
-TSN_LAYER_1_PASSWORD_HASH=<bcrypt hash for layer 1 password>
-TSN_LAYER_2_PASSWORD_HASH=<bcrypt hash for layer 2 password>
-TSN_LAYER_3_PASSWORD_HASH=<bcrypt hash for layer 3 password>
-```
-
-Environment variables for paid persistent disk:
-
-```text
+```env
 NODE_ENV=production
 NODE_VERSION=24.14.1
 DATA_DIR=/var/data
-JWT_SECRET=<generate a long random secret>
-TSN_DATA_ENCRYPTION_KEY=<generate a different long random secret>
-TSN_DEMO_PASSWORD_HASH=<bcrypt hash for demo password>
-TSN_LAYER_1_PASSWORD_HASH=<bcrypt hash for layer 1 password>
-TSN_LAYER_2_PASSWORD_HASH=<bcrypt hash for layer 2 password>
-TSN_LAYER_3_PASSWORD_HASH=<bcrypt hash for layer 3 password>
+JWT_SECRET=<generate>
+TSN_DATA_ENCRYPTION_KEY=<generate>
+TSN_DEMO_PASSWORD_HASH=<bcrypt hash>
+TSN_ADMIN_SETUP_PASSWORD_HASH=<bcrypt hash>
+TSN_CONTENT_FILTER_ENABLED=true
+TSN_BLOCKED_WORDS=
 ```
 
-Then add a disk:
+## Free testing only
+
+If you want free testing, rename:
 
 ```text
-Mount path: /var/data
-Size: 1 GB
+render.free.yaml
 ```
 
-## Test after deploy
-
-Open the Render URL. It will look like:
+to:
 
 ```text
-https://tsn-social-network.onrender.com
-```
-
-Then test chat:
-
-1. Login as Demo User 1 in one browser.
-2. Open a private/incognito window.
-3. Login as Demo User 2.
-4. Click the other user in the People list.
-5. Send a message.
-
-## Troubleshooting
-
-### It says `Cannot find package.json`
-
-Your GitHub repo probably has the project inside an extra folder. The repo root must contain:
-
-```text
-package.json
-server.js
 render.yaml
-public/
 ```
 
-### The service deploys but accounts disappear
+But do not use that for a real site, because it uses:
 
-You used the free config. Use the paid persistent-disk config, or later move TSN to PostgreSQL/MongoDB.
+```env
+DATA_DIR=/tmp/tsn-data
+```
 
-### Names, posts, comments, or messages show empty after changing secrets
+and data can reset.
 
-You changed `TSN_DATA_ENCRYPTION_KEY` after data was created. Put the old key back, or reset the database.
+## Updating TSN on Render
 
-### The service is unhealthy
+1. Do **not** delete the Render disk.
+2. Do **not** change `DATA_DIR=/var/data`.
+3. Do **not** change `TSN_DATA_ENCRYPTION_KEY`.
+4. Push the new code to GitHub.
+5. Render redeploys.
+6. Accounts/posts/chats/rooms stay in `/var/data/db.json`.
 
-Open the URL below in your browser:
+## Local backup before large updates
+
+```bash
+npm run backup
+```
+
+Restore if needed:
+
+```bash
+npm run restore -- /full/path/to/db-backup.json
+```
+
+## Health check
+
+Open:
 
 ```text
-https://your-service-name.onrender.com/api/health
+https://your-render-url.onrender.com/api/health
 ```
 
-If storage is not ready, check `DATA_DIR` and whether the disk mount path matches it.
+Check that it shows:
 
-### Chat does not update live
+```text
+dataDir: /var/data
+```
 
-Refresh both browser windows. Render supports normal Node web services and Socket.IO should work as long as the service is awake.
+If it shows `/tmp/tsn-data`, your service is still using free temporary storage.
 
-## Security before real public launch
 
-Before real users join, disable public guest/demo login, add rate limiting, add password reset, add moderation/admin tools, and move from the JSON file database to PostgreSQL or MongoDB.
+## TSN V1.0 admin message review
+
+Admins can review all stored feed posts, comments, direct messages, and room messages, including password-protected rooms. Messages remain encrypted at rest and are decrypted server-side only for authorized admin moderation. The login screen includes a moderation notice for users.

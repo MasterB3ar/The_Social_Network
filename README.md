@@ -1,36 +1,117 @@
-# The Social Network (TSN)
+# TSN V1.0
 
-A full-stack social media starter app with accounts, encrypted profiles, encrypted posts/comments, encrypted private chat messages, encrypted layer-board posts, and 3 password-gated deeper layers.
+A full-stack social media starter app with accounts, public posts, private chat, **7 shared rooms that users can claim, rename, and optionally password-protect**, admin moderation including an all-message review view, server-side content filtering, public bios, encrypted-at-rest storage, and update-safe persistent data.
 
-## Features
+## Main features
 
-- Register/login accounts
-- Username-or-email login
-- Guest and demo login for testing
-- Account passwords are stored as bcrypt hashes
-- User identity fields are encrypted at rest with AES-256-GCM
-  - `nameEnc`
-  - `usernameEnc`
-  - `emailEnc`
-  - `bioEnc`
-- User-generated content is encrypted at rest with AES-256-GCM
-  - post bodies use `bodyEnc`
-  - comment bodies use `bodyEnc`
-  - private chat messages use `textEnc`
-  - layer-board posts use `bodyEnc`
-- Login/search lookup uses non-reversible HMAC hashes instead of plain usernames/emails
-  - `usernameHash`
-  - `emailHash`
-- Optional bcrypt-hashed demo/layer secrets for Render
-- Strong account password rules
-- Public feed with posts, likes, and comments
-- User profiles and bios
-- People search
-- Online/offline presence
-- Realtime private chat with Socket.IO
-- 3 deeper password-gated layers
-- Private post board inside each unlocked layer
-- Render deployment files included
+- Username login, guest login, and demo login
+- Simple account passwords allowed: 4+ characters, so `1234` works if a user wants that
+- Public feed with posts, comments, likes, and user-owned delete controls
+- Private real-time chat with Socket.IO
+- Message threads keep their scroll position when new messages arrive, so they do not jump to the top
+- Red unread-message badges for direct messages
+- 7 TSN Rooms:
+  - default room names are only `Room 1`, `Room 2`, `Room 3`, etc.
+  - anyone can enter and chat in rooms with no password
+  - unclaimed rooms can be claimed by one user
+  - room owners/admins can rename claimed rooms
+  - room owners/admins can add, change, or remove an optional room password
+  - room passwords are hashed, not stored as readable text
+  - the room owner, message author, or an admin can delete room messages
+  - room owners/admins can release claimed rooms, which resets the name, removes the password, and deletes all messages in that room
+- Public user bios in People/search/chat
+- Admin tools:
+  - claim admin with a server-side setup password
+  - delete posts, comments, private messages, and room messages
+  - review all stored messages in one admin-only view: feed posts, comments, private direct messages, open room messages, and password-room messages
+  - kick, ban, and unban accounts
+  - create a server-side database backup
+- Server-side blocked-language filter
+- Render-ready deployment files
+- Persistent database location so updates do **not** wipe accounts/posts/messages
+
+
+## Admin message review
+
+When you claim admin rights, TSN shows an **All messages** panel in the middle feed area. It can load and search:
+
+```text
+Feed posts
+Feed comments
+Private direct messages
+Open room messages
+Password-protected room messages
+```
+
+Admins can delete items directly from this panel. Messages are still encrypted at rest in the database, but the server decrypts them for admin moderation. For transparency, the login page tells users that admins can review messages for safety/moderation.
+
+## Important data-storage change
+
+Older TSN versions stored the live database here:
+
+```text
+./data/db.json
+```
+
+That is bad for updates, because replacing the project folder or redeploying can overwrite it.
+
+This version stores the live database outside the app code by default:
+
+```text
+~/.tsn-social-network/db.json
+```
+
+Backups are saved here:
+
+```text
+~/.tsn-social-network/backups
+```
+
+On first start, if this version finds an older `./data/db.json` with real user data, it automatically copies it into the persistent data folder.
+
+## Render persistence
+
+The included `render.yaml` now uses a persistent disk:
+
+```text
+DATA_DIR=/var/data
+```
+
+That is the correct setup for long-term accounts, posts, passwords, chats, and rooms.
+
+Render free services use an ephemeral filesystem, so data can disappear after restarts or deploys. For free testing only, use:
+
+```text
+render.free.yaml
+```
+
+For a real TSN site, use the normal `render.yaml`.
+
+## Encryption and hashing
+
+Encrypted at rest:
+
+```text
+Display names       -> nameEnc
+Usernames           -> usernameEnc
+Bios                -> bioEnc
+Posts/comments      -> bodyEnc
+Private messages    -> textEnc
+Room messages       -> textEnc
+Custom room names   -> nameEnc
+```
+
+Hashed instead of encrypted:
+
+```text
+Account passwords   -> bcrypt hash
+Demo password       -> bcrypt hash supported
+Admin setup secret  -> bcrypt hash supported
+Room passwords      -> bcrypt hash
+Username lookup     -> HMAC-SHA256 lookup hash
+```
+
+Important: do **not** change `TSN_DATA_ENCRYPTION_KEY` after people have created accounts or messages, because old encrypted data will no longer decrypt.
 
 ## Run locally
 
@@ -46,161 +127,92 @@ Open:
 http://localhost:3000
 ```
 
-## Encryption and hashing
+For the safest local setup, leave `DATA_DIR` unset in `.env`. Then TSN uses:
 
-Important distinction:
+```text
+~/.tsn-social-network/db.json
+```
 
-- Account passwords are **hashed**, not encrypted. This is safer because the app never needs to read the original password again.
-- Usernames, display names, emails, and bios are **encrypted** because the app needs to display them after login.
-- Posts, comments, private chat messages, and layer-board messages are also **encrypted at rest**.
-- Username/email login still works because TSN stores a non-reversible HMAC lookup hash.
-- Legacy plaintext fields from older TSN versions are automatically migrated to encrypted fields on server startup.
+## Backup and restore
 
-Do not change `TSN_DATA_ENCRYPTION_KEY` after real users exist. If you change it, old encrypted usernames/names/emails/bios/posts/comments/messages cannot be decrypted.
+Create a manual backup:
 
-## Default local passwords
+```bash
+npm run backup
+```
 
-Demo accounts:
+Restore a backup:
+
+```bash
+npm run restore -- /full/path/to/db-backup.json
+```
+
+The server also makes an automatic backup before startup migration when it detects existing user data.
+
+## Updating TSN without wiping data
+
+1. Stop the server.
+2. Run:
+
+```bash
+npm run backup
+```
+
+3. Replace the app code with the new version.
+4. Keep your old `.env` secrets, especially `TSN_DATA_ENCRYPTION_KEY`.
+5. Start the server again:
+
+```bash
+npm install
+npm start
+```
+
+Do not copy a new empty `data/db.json` over your live database. This version no longer includes a live `data/db.json` file.
+
+## Local defaults
+
+Demo account password:
 
 ```text
 TSN-Demo!9vK2p-Q8rM
 ```
 
-Layer passwords:
+Admin setup password:
 
 ```text
-Layer 1: TSN-Layer1!8qN4-vZ2m-R7tP
-Layer 2: TSN-Layer2!5xC9-mH6a-B3yL
-Layer 3: TSN-Layer3!2pW7-kD8s-N4rX
+TSN-Admin!ChangeMe-2026
 ```
 
-Change these in `.env` before sharing your site.
+For local testing, log in, open **Admin access**, and enter the admin setup password.
 
-## More secure layer/demo secrets
+## More secure demo/admin secrets
 
-Instead of storing real demo/layer passwords in Render, generate bcrypt hashes.
-
-Example:
+Generate bcrypt hashes:
 
 ```bash
-npm run hash-secret -- "MyStrongLayer1Password!2026"
+npm run hash-secret -- "YourStrongPassword!2026"
 ```
 
-Copy the printed hash into `.env` or Render:
+Then use:
 
 ```env
-TSN_LAYER_1_PASSWORD_HASH=<paste-the-hash-here>
+TSN_DEMO_PASSWORD_HASH=<paste hash here>
+TSN_ADMIN_SETUP_PASSWORD_HASH=<paste hash here>
 ```
 
-Do the same for:
+On Render, prefer the hash variables instead of real password variables.
+
+## Project structure
 
 ```text
-TSN_DEMO_PASSWORD_HASH
-TSN_LAYER_1_PASSWORD_HASH
-TSN_LAYER_2_PASSWORD_HASH
-TSN_LAYER_3_PASSWORD_HASH
+server.js                  Express + Socket.IO backend
+public/index.html          Front-end HTML
+public/app.js              Front-end app logic
+public/styles.css          Design
+scripts/hash-secret.js     Creates bcrypt hashes for Render secrets
+scripts/backup-db.js       Backs up the live database
+scripts/restore-db.js      Restores a database backup
+render.yaml                Render config with persistent disk
+render.free.yaml           Free testing config, data can reset
+data/README.md             Explains why live data is not stored in the project
 ```
-
-If a `*_PASSWORD_HASH` value is set, TSN uses it instead of the plain `*_PASSWORD` value.
-
-## Deploy on Render
-
-This project includes two Render Blueprint files:
-
-```text
-render.yaml               Free testing deploy
-render.persistent.yaml    Paid deploy with saved data on a persistent disk
-```
-
-### Free testing deploy
-
-Use the included `render.yaml` as-is.
-
-It uses:
-
-```text
-Runtime: Node
-Plan: free
-Build Command: npm install
-Start Command: npm start
-Health Check Path: /api/health
-DATA_DIR=/tmp/tsn-data
-```
-
-This is easy and good for testing. Data can reset after restarts or redeploys.
-
-### Saved-data deploy
-
-Use this if you want accounts, encrypted messages, encrypted posts/comments, encrypted profiles, encrypted layer posts, and layer unlocks to survive restarts.
-
-1. Rename `render.persistent.yaml` to `render.yaml`.
-2. Deploy with Render Blueprint.
-3. Use the Starter plan with a disk mounted at `/var/data`.
-
-It uses:
-
-```text
-Plan: starter
-Disk mount path: /var/data
-DATA_DIR=/var/data
-```
-
-Persistent disks require a paid Render service.
-
-## Required Render secrets
-
-Render generates these automatically from the Blueprint:
-
-```text
-JWT_SECRET
-TSN_DATA_ENCRYPTION_KEY
-```
-
-You need to enter these manually. Use bcrypt hashes, not the real passwords:
-
-```text
-TSN_DEMO_PASSWORD_HASH=<bcrypt hash>
-TSN_LAYER_1_PASSWORD_HASH=<bcrypt hash>
-TSN_LAYER_2_PASSWORD_HASH=<bcrypt hash>
-TSN_LAYER_3_PASSWORD_HASH=<bcrypt hash>
-```
-
-Keep the original real layer passwords somewhere safe, because users must still type the real passwords to unlock each layer.
-
-## Project files
-
-```text
-server.js                  Express + Socket.IO API server
-public/index.html          Front-end layout
-public/styles.css          Styling
-public/app.js              Front-end behavior
-scripts/hash-secret.js     Bcrypt hash generator for demo/layer secrets
-render.yaml                Free Render Blueprint
-render.persistent.yaml     Paid persistent-disk Render Blueprint
-ONLINE_DEPLOY.md           Full Render deploy guide
-RENDER_READY_CHECKLIST.md  Quick checklist
-.env.example               Local environment example
-.env.render.example        Render environment example
-data/db.json               Local JSON database
-```
-
-## Test chat
-
-1. Open the site normally and click **Demo User 1**.
-2. Open the site in private/incognito mode and click **Demo User 2**.
-3. Click the other user in the People panel.
-4. Send messages.
-
-## Health check
-
-Open:
-
-```text
-/api/health
-```
-
-It should return `ok: true` and include the encrypted storage status for profiles, posts, comments, messages, and layer posts.
-
-## Important before real public launch
-
-This app uses a JSON file database to stay simple. That is okay for testing and learning. Before real public use, move the database to PostgreSQL or MongoDB, disable/protect guest/demo login, add rate limiting, add password reset, add moderation/admin tools, and add proper key rotation/backups.
