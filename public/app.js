@@ -87,6 +87,36 @@ function incrementUnreadForUser(userId) {
   return true;
 }
 
+
+function getScrollSnapshot(element) {
+  if (!element) return null;
+  const distanceFromBottom = element.scrollHeight - element.scrollTop - element.clientHeight;
+  return {
+    distanceFromBottom,
+    wasNearBottom: distanceFromBottom <= 96,
+    hadOverflow: element.scrollHeight > element.clientHeight
+  };
+}
+
+function restoreMessageScroll(element, snapshot, { forceBottom = false } = {}) {
+  if (!element) return;
+
+  const apply = () => {
+    if (forceBottom || !snapshot || snapshot.wasNearBottom || !snapshot.hadOverflow) {
+      element.scrollTop = element.scrollHeight;
+      return;
+    }
+
+    element.scrollTop = Math.max(
+      0,
+      element.scrollHeight - element.clientHeight - snapshot.distanceFromBottom
+    );
+  };
+
+  apply();
+  requestAnimationFrame(apply);
+}
+
 async function markConversationRead(userId) {
   if (!userId) return;
   setUnreadForUser(userId, 0);
@@ -744,7 +774,7 @@ if (roomMessageBtn) {
       if (!state.roomMessages.some((message) => message.id === data.message.id)) {
         state.roomMessages.push(data.message);
       }
-      renderRoomPanel();
+      renderRoomPanel({ forceBottom: true });
       showToast(`Sent to Room ${state.activeRoom.id}`);
     } catch (error) {
       showToast(error.message);
@@ -835,8 +865,9 @@ function canDeleteRoomMessage(message) {
   );
 }
 
-function renderRoomPanel() {
+function renderRoomPanel({ forceBottom = false } = {}) {
   if (!state.activeRoom || !roomPanel) return;
+  const scrollSnapshot = getScrollSnapshot(roomMessagesList);
 
   const room = state.activeRoom;
   $('#activeRoomLabel').textContent = `Room ${room.id}`;
@@ -875,6 +906,7 @@ function renderRoomPanel() {
 
   if (!state.roomMessages.length) {
     roomMessagesList.innerHTML = '<div class="empty">No messages in this room yet.</div>';
+    restoreMessageScroll(roomMessagesList, scrollSnapshot, { forceBottom });
     return;
   }
 
@@ -893,6 +925,8 @@ function renderRoomPanel() {
       <p>${escapeHtml(message.text)}</p>
     </article>
   `).join('');
+
+  restoreMessageScroll(roomMessagesList, scrollSnapshot, { forceBottom });
 }
 
 async function loadRooms() {
@@ -955,7 +989,7 @@ async function openRoom(roomId) {
     state.activeRoom = data.room;
     state.roomMessages = data.messages;
     renderRooms();
-    renderRoomPanel();
+    renderRoomPanel({ forceBottom: true });
     $('#roomMessageInput').focus();
   } catch (error) {
     if (error.locked) state.roomMessages = [];
@@ -1220,9 +1254,10 @@ function renderUsers() {
   });
 }
 
-function renderChat() {
+function renderChat({ forceBottom = false } = {}) {
   const user = state.activeChatUser;
   if (!user) return;
+  const scrollSnapshot = getScrollSnapshot(messagesList);
 
   $('#chatAvatar').textContent = initials(user.name);
   $('#chatName').textContent = user.name;
@@ -1256,14 +1291,14 @@ function renderChat() {
     }
   }
 
-  messagesList.scrollTop = messagesList.scrollHeight;
+  restoreMessageScroll(messagesList, scrollSnapshot, { forceBottom });
 }
 
 async function openChat(user) {
   state.activeChatUser = user;
   state.activeMessages = [];
   renderUsers();
-  renderChat();
+  renderChat({ forceBottom: true });
 
   try {
     const data = await api(`/api/messages/${user.id}`);
@@ -1275,7 +1310,7 @@ async function openChat(user) {
     }
     state.activeMessages = data.messages;
     renderUsers();
-    renderChat();
+    renderChat({ forceBottom: true });
     $('#messageInput').focus();
   } catch (error) {
     showToast(error.message);
@@ -1375,7 +1410,7 @@ function connectSocket() {
     if (isActiveConversation) {
       const exists = state.activeMessages.some((candidate) => candidate.id === message.id);
       if (!exists) state.activeMessages.push(message);
-      renderChat();
+      renderChat({ forceBottom: message.from === state.me?.id });
       if (message.to === state.me.id) {
         markConversationRead(message.from).catch(() => {});
       }
@@ -1422,7 +1457,7 @@ function connectSocket() {
       const exists = state.roomMessages.some((candidate) => candidate.id === message.id);
       if (!exists) state.roomMessages.push(message);
       state.roomMessages.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
-      renderRoomPanel();
+      renderRoomPanel({ forceBottom: message.authorId === state.me?.id });
     } else {
       const room = state.rooms.find((candidate) => candidate.id === message.roomId);
       showToast(`New message in ${room?.name || `Room ${message.roomId}`}`);
