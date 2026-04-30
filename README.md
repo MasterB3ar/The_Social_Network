@@ -111,7 +111,7 @@ Room passwords      -> bcrypt hash
 Username lookup     -> HMAC-SHA256 lookup hash
 ```
 
-Important: do **not** change `TSN_DATA_ENCRYPTION_KEY` after people have created accounts or messages, because old encrypted data will no longer decrypt.
+Important: do **not** change `TSN_DATA_ENCRYPTION_KEY` after people have created accounts or messages. Login and encrypted messages depend on that key. If you accidentally changed it and still know the old key, set `TSN_OLD_DATA_ENCRYPTION_KEYS=old-key-here` so TSN can read old accounts and repair username lookup on login.
 
 ## Run locally
 
@@ -159,7 +159,7 @@ npm run backup
 ```
 
 3. Replace the app code with the new version.
-4. Keep your old `.env` secrets, especially `TSN_DATA_ENCRYPTION_KEY`.
+4. Keep your old `.env` secrets, especially `TSN_DATA_ENCRYPTION_KEY`. Do not replace it with the value from the new `.env.example`.
 5. Start the server again:
 
 ```bash
@@ -168,6 +168,20 @@ npm start
 ```
 
 Do not copy a new empty `data/db.json` over your live database. This version no longer includes a live `data/db.json` file.
+
+## Login troubleshooting
+
+If login stops working immediately after an update, check these first:
+
+```text
+1. Make sure your old database was not replaced.
+2. Make sure your old TSN_DATA_ENCRYPTION_KEY is still the same.
+3. If you changed the key but still know the old one, add:
+   TSN_OLD_DATA_ENCRYPTION_KEYS=your-old-key
+4. Restart the server and try logging in again.
+```
+
+New accounts are still protected with bcrypt password hashes. Usernames/messages remain encrypted at rest.
 
 ## Local defaults
 
@@ -216,3 +230,12 @@ render.yaml                Render config with persistent disk
 render.free.yaml           Free testing config, data can reset
 data/README.md             Explains why live data is not stored in the project
 ```
+
+## Login Fix Note
+
+This build fixes a bug where TSN could show “Logged in” but stay on the login screen if a non-auth app data load failed during startup. Authentication now loads first, then feed/users/rooms load separately so the user stays logged in.
+
+
+## V1.0 comment/message spacing fix
+
+This build fixes a layout bug where messages/comments could look squeezed together after new activity. Direct messages, comments, room messages, and admin message rows now keep their own spacing and wrap long text cleanly.

@@ -287,8 +287,25 @@ function safeStringEqual(a, b) {
   return crypto.timingSafeEqual(left, right);
 }
 
-const FIELD_ENCRYPTION_KEY = crypto.createHash('sha256').update(String(DATA_ENCRYPTION_KEY)).digest();
-const LOOKUP_HMAC_KEY = crypto.createHash('sha256').update(`lookup:${DATA_ENCRYPTION_KEY}`).digest();
+const DATA_KEY_CANDIDATES = [...new Set([
+  DATA_ENCRYPTION_KEY,
+  ...String(process.env.TSN_OLD_DATA_ENCRYPTION_KEYS || '')
+    .split(',')
+    .map((key) => key.trim())
+    .filter(Boolean),
+  process.env.JWT_SECRET || '',
+  DEFAULT_JWT_SECRET,
+  DEFAULT_DATA_ENCRYPTION_KEY
+].filter(Boolean))];
+
+const CRYPTO_KEY_CANDIDATES = DATA_KEY_CANDIDATES.map((value) => ({
+  value,
+  fieldKey: crypto.createHash('sha256').update(String(value)).digest(),
+  lookupKey: crypto.createHash('sha256').update(`lookup:${value}`).digest()
+}));
+
+const FIELD_ENCRYPTION_KEY = CRYPTO_KEY_CANDIDATES[0].fieldKey;
+const LOOKUP_HMAC_KEY = CRYPTO_KEY_CANDIDATES[0].lookupKey;
 
 function encryptField(value) {
   const text = String(value ?? '');
@@ -303,24 +320,38 @@ function decryptField(value) {
   const text = String(value || '');
   if (!text.startsWith('v1:')) return text;
 
-  try {
-    const [, ivText, tagText, encryptedText] = text.split(':');
-    const decipher = crypto.createDecipheriv('aes-256-gcm', FIELD_ENCRYPTION_KEY, Buffer.from(ivText, 'base64url'));
-    decipher.setAuthTag(Buffer.from(tagText, 'base64url'));
-    return Buffer.concat([
-      decipher.update(Buffer.from(encryptedText, 'base64url')),
-      decipher.final()
-    ]).toString('utf8');
-  } catch (error) {
-    console.error('Encrypted field could not be decrypted:', error.message);
-    return '';
+  const [, ivText, tagText, encryptedText] = text.split(':');
+  for (const keySet of CRYPTO_KEY_CANDIDATES) {
+    try {
+      const decipher = crypto.createDecipheriv('aes-256-gcm', keySet.fieldKey, Buffer.from(ivText, 'base64url'));
+      decipher.setAuthTag(Buffer.from(tagText, 'base64url'));
+      return Buffer.concat([
+        decipher.update(Buffer.from(encryptedText, 'base64url')),
+        decipher.final()
+      ]).toString('utf8');
+    } catch {
+      // Try the next configured/legacy encryption key.
+    }
   }
+
+  console.error('Encrypted field could not be decrypted. Check TSN_DATA_ENCRYPTION_KEY or TSN_OLD_DATA_ENCRYPTION_KEYS.');
+  return '';
+}
+
+function lookupHashWithKey(scope, normalizedValue, lookupKey) {
+  const value = String(normalizedValue || '');
+  if (!value) return '';
+  return crypto.createHmac('sha256', lookupKey).update(`${scope}:${value}`).digest('hex');
+}
+
+function lookupHashes(scope, normalizedValue) {
+  const value = String(normalizedValue || '');
+  if (!value) return [];
+  return CRYPTO_KEY_CANDIDATES.map((keySet) => lookupHashWithKey(scope, value, keySet.lookupKey));
 }
 
 function lookupHash(scope, normalizedValue) {
-  const value = String(normalizedValue || '');
-  if (!value) return '';
-  return crypto.createHmac('sha256', LOOKUP_HMAC_KEY).update(`${scope}:${value}`).digest('hex');
+  return lookupHashes(scope, normalizedValue)[0] || '';
 }
 
 function setEncryptedUserField(user, field, value) {
@@ -357,10 +388,23 @@ function encryptedUserIdentity({ name, username, bio }) {
 
 function userMatchesUsername(user, username) {
   const normalized = normalizeUsername(username);
-  return Boolean(normalized) && (
-    user.usernameHash === lookupHash('username', normalized) ||
+  if (!normalized) return false;
+  const possibleHashes = lookupHashes('username', normalized);
+  return (
+    possibleHashes.includes(user.usernameHash) ||
     normalizeUsername(getUserField(user, 'username')) === normalized
   );
+}
+
+function repairUserLookupHashIfNeeded(user, username) {
+  const normalized = normalizeUsername(username);
+  if (!user || !normalized) return false;
+  const currentHash = lookupHash('username', normalized);
+  if (currentHash && user.usernameHash !== currentHash) {
+    user.usernameHash = currentHash;
+    return true;
+  }
+  return false;
 }
 
 function findUserByLogin(users, loginValue) {
@@ -964,11 +1008,19 @@ app.post('/api/auth/login', async (req, res) => {
   const db = readDb();
 
   const user = findUserByLogin(db.users, login);
-  if (!user) return res.status(401).json({ error: 'Wrong username or password.' });
+  if (!user) {
+    const hasEncryptedUsers = db.users.some((candidate) => candidate.usernameEnc || candidate.usernameHash);
+    const hint = hasEncryptedUsers
+      ? 'Wrong username or password. If this started right after updating TSN, make sure the same TSN_DATA_ENCRYPTION_KEY is still set, or add the old key to TSN_OLD_DATA_ENCRYPTION_KEYS.'
+      : 'Wrong username or password.';
+    return res.status(401).json({ error: hint });
+  }
   if (isBanned(user)) return res.status(403).json({ error: 'This account has been banned.' });
 
   const ok = await bcrypt.compare(password, user.passwordHash);
   if (!ok) return res.status(401).json({ error: 'Wrong username or password.' });
+
+  if (repairUserLookupHashIfNeeded(user, login)) await writeDb(db);
 
   res.json({ token: signToken(user), user: publicUser(user) });
 });

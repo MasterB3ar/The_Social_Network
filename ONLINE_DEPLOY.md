@@ -25,6 +25,7 @@ Create strong values for:
 ```env
 JWT_SECRET=<long random secret>
 TSN_DATA_ENCRYPTION_KEY=<different long random secret>
+TSN_OLD_DATA_ENCRYPTION_KEYS=
 TSN_DEMO_PASSWORD_HASH=<bcrypt hash>
 TSN_ADMIN_SETUP_PASSWORD_HASH=<bcrypt hash>
 ```
@@ -37,7 +38,7 @@ npm run hash-secret -- "YourStrongDemoPassword!2026"
 npm run hash-secret -- "YourStrongAdminPassword!2026"
 ```
 
-Do **not** change `TSN_DATA_ENCRYPTION_KEY` after real users/messages exist.
+Do **not** change `TSN_DATA_ENCRYPTION_KEY` after real users/messages exist. If you accidentally changed it and still know the old value, add it as `TSN_OLD_DATA_ENCRYPTION_KEYS`.
 
 ## Recommended Render deploy
 
@@ -76,6 +77,7 @@ NODE_VERSION=24.14.1
 DATA_DIR=/var/data
 JWT_SECRET=<generate>
 TSN_DATA_ENCRYPTION_KEY=<generate>
+TSN_OLD_DATA_ENCRYPTION_KEYS=
 TSN_DEMO_PASSWORD_HASH=<bcrypt hash>
 TSN_ADMIN_SETUP_PASSWORD_HASH=<bcrypt hash>
 TSN_CONTENT_FILTER_ENABLED=true
@@ -108,7 +110,7 @@ and data can reset.
 
 1. Do **not** delete the Render disk.
 2. Do **not** change `DATA_DIR=/var/data`.
-3. Do **not** change `TSN_DATA_ENCRYPTION_KEY`.
+3. Do **not** change `TSN_DATA_ENCRYPTION_KEY`. If you accidentally changed it and still know the old value, add the old value to `TSN_OLD_DATA_ENCRYPTION_KEYS`.
 4. Push the new code to GitHub.
 5. Render redeploys.
 6. Accounts/posts/chats/rooms stay in `/var/data/db.json`.
@@ -145,3 +147,7 @@ If it shows `/tmp/tsn-data`, your service is still using free temporary storage.
 ## TSN V1.0 admin message review
 
 Admins can review all stored feed posts, comments, direct messages, and room messages, including password-protected rooms. Messages remain encrypted at rest and are decrypted server-side only for authorized admin moderation. The login screen includes a moderation notice for users.
+
+## Login Fix Note
+
+This build fixes a bug where TSN could show “Logged in” but stay on the login screen if a non-auth app data load failed during startup. Authentication now loads first, then feed/users/rooms load separately so the user stays logged in.
