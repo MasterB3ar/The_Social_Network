@@ -910,6 +910,9 @@ button.tiny {
   gap: 10px;
   padding: 18px;
   overflow: auto;
+  min-height: 0;
+  overscroll-behavior: contain;
+  overflow-anchor: none;
 }
 
 .message {
@@ -1207,7 +1210,9 @@ button:disabled {
   gap: 10px;
   max-height: 420px;
   overflow-y: auto;
+  min-height: 0;
   overscroll-behavior: contain;
+  overflow-anchor: none;
   padding-right: 6px;
 }
 
