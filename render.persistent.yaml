@@ -1,6 +1,5 @@
 # Render Blueprint for SAVED DATA.
-# This is the recommended Render config for TSN because the app stores its JSON
-# database on a persistent disk mounted at /var/data.
+# Before using this file, rename it to render.yaml.
 # Persistent disks require a paid Render web service instance.
 services:
   - type: web
@@ -29,9 +28,9 @@ services:
         generateValue: true
       - key: TSN_DEMO_PASSWORD_HASH
         sync: false
-      - key: TSN_ADMIN_SETUP_PASSWORD_HASH
+      - key: TSN_LAYER_1_PASSWORD_HASH
         sync: false
-      - key: TSN_CONTENT_FILTER_ENABLED
-        value: true
-      - key: TSN_BLOCKED_WORDS
+      - key: TSN_LAYER_2_PASSWORD_HASH
+        sync: false
+      - key: TSN_LAYER_3_PASSWORD_HASH
         sync: false

@@ -2,7 +2,6 @@ require('dotenv').config();
 
 const fs = require('fs');
 const path = require('path');
-const os = require('os');
 const http = require('http');
 const crypto = require('crypto');
 const express = require('express');
@@ -18,39 +17,46 @@ const DEFAULT_JWT_SECRET = 'dev-secret-change-before-release';
 const DEFAULT_DATA_ENCRYPTION_KEY = 'dev-data-encryption-key-change-before-release-32chars';
 const JWT_SECRET = process.env.JWT_SECRET || DEFAULT_JWT_SECRET;
 const DATA_ENCRYPTION_KEY = process.env.TSN_DATA_ENCRYPTION_KEY || process.env.JWT_SECRET || DEFAULT_DATA_ENCRYPTION_KEY;
-const PROJECT_DATA_DIR = path.join(__dirname, 'data');
-const LEGACY_DB_FILE = path.join(PROJECT_DATA_DIR, 'db.json');
-const DEFAULT_LOCAL_DATA_DIR = path.join(os.homedir(), '.tsn-social-network');
-const CONFIGURED_DATA_DIR = process.env.DATA_DIR ? path.resolve(process.env.DATA_DIR) : '';
-const DATA_DIR =
-  process.env.NODE_ENV !== 'production' && CONFIGURED_DATA_DIR === path.resolve(PROJECT_DATA_DIR)
-    ? DEFAULT_LOCAL_DATA_DIR
-    : CONFIGURED_DATA_DIR || DEFAULT_LOCAL_DATA_DIR;
+const DATA_DIR = process.env.DATA_DIR ? path.resolve(process.env.DATA_DIR) : path.join(__dirname, 'data');
 const DB_FILE = process.env.DB_FILE ? path.resolve(process.env.DB_FILE) : path.join(DATA_DIR, 'db.json');
-const DB_BACKUP_DIR = process.env.TSN_BACKUP_DIR ? path.resolve(process.env.TSN_BACKUP_DIR) : path.join(DATA_DIR, 'backups');
 const PUBLIC_DIR = path.join(__dirname, 'public');
 const DEMO_PASSWORD = process.env.TSN_DEMO_PASSWORD || 'TSN-Demo!9vK2p-Q8rM';
 const DEMO_PASSWORD_HASH = process.env.TSN_DEMO_PASSWORD_HASH || '';
-const ADMIN_SETUP_PASSWORD = process.env.TSN_ADMIN_SETUP_PASSWORD || 'TSN-Admin!ChangeMe-2026';
-const ADMIN_SETUP_PASSWORD_HASH = process.env.TSN_ADMIN_SETUP_PASSWORD_HASH || '';
-const ROOMS = Array.from({ length: 7 }, (_, index) => {
-  const id = index + 1;
-  return {
-    id,
-    name: `Room ${id}`,
-    tagline: 'Claim this room to rename it and optionally set a password.'
-  };
-});
+const LAYERS = [
+  {
+    id: 1,
+    name: 'Layer 1: Backstage',
+    tagline: 'A private starter room for trusted TSN users.',
+    password: process.env.TSN_LAYER_1_PASSWORD || 'TSN-Layer1!8qN4-vZ2m-R7tP',
+    passwordHash: process.env.TSN_LAYER_1_PASSWORD_HASH || ''
+  },
+  {
+    id: 2,
+    name: 'Layer 2: Inner Circle',
+    tagline: 'A deeper room that only opens after Layer 1.',
+    password: process.env.TSN_LAYER_2_PASSWORD || 'TSN-Layer2!5xC9-mH6a-B3yL',
+    passwordHash: process.env.TSN_LAYER_2_PASSWORD_HASH || ''
+  },
+  {
+    id: 3,
+    name: 'Layer 3: Core Vault',
+    tagline: 'The deepest TSN room. Requires all previous layers.',
+    password: process.env.TSN_LAYER_3_PASSWORD || 'TSN-Layer3!2pW7-kD8s-N4rX',
+    passwordHash: process.env.TSN_LAYER_3_PASSWORD_HASH || ''
+  }
+];
 const DEMO_USERS = [
   {
     name: 'Demo User 1',
     username: 'demo_one',
+    email: 'demo.one@tsn.local',
     bio: 'Generic demo account for testing TSN chat.',
     post: 'This is Demo User 1. Open People to test realtime chat.'
   },
   {
     name: 'Demo User 2',
     username: 'demo_two',
+    email: 'demo.two@tsn.local',
     bio: 'Second generic demo account for testing conversations.',
     post: 'This is Demo User 2. TSN demo chat is ready.'
   }
@@ -71,63 +77,13 @@ app.use(helmet({ contentSecurityPolicy: false }));
 app.use(cors());
 app.use(express.json({ limit: '1mb' }));
 app.use(morgan('dev'));
-app.use(express.static(PUBLIC_DIR, {
-  setHeaders(res, filePath) {
-    if (/\.(html|css|js)$/i.test(filePath)) {
-      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
-      res.setHeader('Pragma', 'no-cache');
-      res.setHeader('Expires', '0');
-    }
-  }
-}));
-
-function emptyDatabase() {
-  return { users: [], posts: [], messages: [], rooms: [], roomMessages: [] };
-}
-
-function databaseHasUserData(db) {
-  return Boolean(
-    db &&
-      (
-        (Array.isArray(db.users) && db.users.length) ||
-        (Array.isArray(db.posts) && db.posts.length) ||
-        (Array.isArray(db.messages) && db.messages.length) ||
-        (Array.isArray(db.roomMessages) && db.roomMessages.length) ||
-        (Array.isArray(db.rooms) && db.rooms.some((room) => room.ownerId || room.nameEnc || room.passwordHash))
-      )
-  );
-}
-
-function readJsonFile(filePath) {
-  return JSON.parse(fs.readFileSync(filePath, 'utf8') || '{}');
-}
-
-function writeJsonFileSync(filePath, data) {
-  fs.writeFileSync(filePath, JSON.stringify(data, null, 2));
-}
+app.use(express.static(PUBLIC_DIR));
 
 function ensureDatabase() {
   const dataDir = path.dirname(DB_FILE);
   if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
-
   if (!fs.existsSync(DB_FILE)) {
-    let initialDb = emptyDatabase();
-
-    // Older TSN versions stored data inside the project at ./data/db.json.
-    // Copy that database once into the persistent data directory instead of starting over.
-    if (path.resolve(LEGACY_DB_FILE) !== path.resolve(DB_FILE) && fs.existsSync(LEGACY_DB_FILE)) {
-      try {
-        const legacyDb = readJsonFile(LEGACY_DB_FILE);
-        if (databaseHasUserData(legacyDb)) {
-          initialDb = legacyDb;
-          console.log(`Imported existing legacy database from ${LEGACY_DB_FILE} into ${DB_FILE}.`);
-        }
-      } catch (error) {
-        console.warn(`Could not import legacy database from ${LEGACY_DB_FILE}: ${error.message}`);
-      }
-    }
-
-    writeJsonFileSync(DB_FILE, initialDb);
+    fs.writeFileSync(DB_FILE, JSON.stringify({ users: [], posts: [], messages: [], layerPosts: [] }, null, 2));
   }
 }
 
@@ -140,40 +96,18 @@ function readDb() {
       users: Array.isArray(db.users) ? db.users : [],
       posts: Array.isArray(db.posts) ? db.posts : [],
       messages: Array.isArray(db.messages) ? db.messages : [],
-      rooms: Array.isArray(db.rooms) ? db.rooms : [],
-      roomMessages: Array.isArray(db.roomMessages) ? db.roomMessages : []
+      layerPosts: Array.isArray(db.layerPosts) ? db.layerPosts : []
     };
   } catch (error) {
     console.error('Database read failed:', error);
-    return emptyDatabase();
+    return { users: [], posts: [], messages: [], layerPosts: [] };
   }
 }
 
 let writeQueue = Promise.resolve();
 function writeDb(db) {
-  writeQueue = writeQueue.then(async () => {
-    const tmpFile = `${DB_FILE}.${process.pid}.${Date.now()}.tmp`;
-    await fs.promises.writeFile(tmpFile, JSON.stringify(db, null, 2));
-    await fs.promises.rename(tmpFile, DB_FILE);
-  });
+  writeQueue = writeQueue.then(() => fs.promises.writeFile(DB_FILE, JSON.stringify(db, null, 2)));
   return writeQueue;
-}
-
-function storagePersistenceWarning() {
-  const normalized = path.resolve(DATA_DIR);
-  if (process.env.NODE_ENV !== 'production') return '';
-  if (normalized.startsWith('/tmp')) return 'DATA_DIR is under /tmp, so hosted data can disappear after restarts or deploys.';
-  if (normalized === path.resolve(PROJECT_DATA_DIR)) return 'DATA_DIR is inside the app source folder, so hosted data can be overwritten by updates.';
-  return '';
-}
-
-function backupDatabase(reason = 'manual') {
-  ensureDatabase();
-  if (!fs.existsSync(DB_BACKUP_DIR)) fs.mkdirSync(DB_BACKUP_DIR, { recursive: true });
-  const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-  const backupFile = path.join(DB_BACKUP_DIR, `db-${stamp}-${reason}.json`);
-  fs.copyFileSync(DB_FILE, backupFile);
-  return backupFile;
 }
 
 function getStorageStatus() {
@@ -183,9 +117,7 @@ function getStorageStatus() {
   return {
     ok: true,
     dataDir: DATA_DIR,
-    dbFile: DB_FILE,
-    backupDir: DB_BACKUP_DIR,
-    persistenceWarning: storagePersistenceWarning()
+    dbFile: DB_FILE
   };
 }
 
@@ -197,77 +129,8 @@ function cleanText(value, max = 2000) {
   return String(value || '').replace(/\s+/g, ' ').trim().slice(0, max);
 }
 
-const CONTENT_FILTER_ENABLED = String(process.env.TSN_CONTENT_FILTER_ENABLED || 'true').toLowerCase() !== 'false';
-const DEFAULT_BLOCKED_WORDS = [
-  'fuck', 'fucking', 'shit', 'bullshit', 'bitch', 'asshole', 'bastard', 'cunt',
-  'dick', 'pussy', 'whore', 'slut', 'twat', 'wanker', 'motherfucker',
-  'nigger', 'nigga', 'faggot', 'retard', 'kys', 'kill yourself'
-];
-const CUSTOM_BLOCKED_WORDS = String(process.env.TSN_BLOCKED_WORDS || '')
-  .split(',')
-  .map((word) => word.trim())
-  .filter(Boolean);
-const BLOCKED_WORDS = [...new Set([...DEFAULT_BLOCKED_WORDS, ...CUSTOM_BLOCKED_WORDS].map((word) => word.toLowerCase()))];
-
-function escapeRegExp(value) {
-  return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
-function normalizeForContentFilter(value) {
-  return String(value || '')
-    .normalize('NFKD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase()
-    .replace(/[@]/g, 'a')
-    .replace(/[0]/g, 'o')
-    .replace(/[1!|]/g, 'i')
-    .replace(/[3]/g, 'e')
-    .replace(/[4]/g, 'a')
-    .replace(/[$5]/g, 's')
-    .replace(/[7]/g, 't');
-}
-
-function buildBlockedWordPattern(word) {
-  const normalized = normalizeForContentFilter(word).trim();
-  const parts = normalized.split(/\s+/).filter(Boolean);
-  if (!parts.length) return null;
-
-  const pattern = parts
-    .map((part) => part.split('').map(escapeRegExp).join('[\\W_]*'))
-    .join('[\\W_]+');
-
-  return new RegExp(`(?:^|[^a-z0-9])${pattern}(?=$|[^a-z0-9])`, 'i');
-}
-
-const BLOCKED_WORD_PATTERNS = BLOCKED_WORDS
-  .map(buildBlockedWordPattern)
-  .filter(Boolean);
-
-function getContentFilterMatch(value) {
-  if (!CONTENT_FILTER_ENABLED) return null;
-  const normalized = normalizeForContentFilter(value);
-  return BLOCKED_WORD_PATTERNS.find((pattern) => pattern.test(normalized)) || null;
-}
-
-function contentFilterError(value, fieldName = 'Text') {
-  if (!getContentFilterMatch(value)) return null;
-  return `${fieldName} contains blocked language.`;
-}
-
-function rejectBlockedContent(res, value, fieldName = 'Text') {
-  const error = contentFilterError(value, fieldName);
-  if (!error) return false;
-  res.status(400).json({ error });
-  return true;
-}
-
-function assertContentAllowed(value, fieldName = 'Text') {
-  const error = contentFilterError(value, fieldName);
-  if (error) {
-    const blockedError = new Error(error);
-    blockedError.statusCode = 400;
-    throw blockedError;
-  }
+function normalizeEmail(email) {
+  return String(email || '').trim().toLowerCase();
 }
 
 function normalizeUsername(username) {
@@ -275,8 +138,11 @@ function normalizeUsername(username) {
 }
 
 function validateAccountPassword(password) {
-  if (password.length < 4) return 'Password must be at least 4 characters.';
-  if (password.length > 128) return 'Password must be 128 characters or fewer.';
+  if (password.length < 10) return 'Password must be at least 10 characters.';
+  if (!/[a-z]/.test(password)) return 'Password must include a lowercase letter.';
+  if (!/[A-Z]/.test(password)) return 'Password must include an uppercase letter.';
+  if (!/[0-9]/.test(password)) return 'Password must include a number.';
+  if (!/[^A-Za-z0-9]/.test(password)) return 'Password must include a symbol.';
   return null;
 }
 
@@ -346,12 +212,14 @@ function getEncryptedObjectField(object, field) {
   return String(object[field] || '');
 }
 
-function encryptedUserIdentity({ name, username, bio }) {
+function encryptedUserIdentity({ name, username, email, bio }) {
   return {
     nameEnc: encryptField(name),
     usernameEnc: encryptField(username),
+    emailEnc: encryptField(email),
     bioEnc: encryptField(bio || ''),
-    usernameHash: lookupHash('username', normalizeUsername(username))
+    usernameHash: lookupHash('username', normalizeUsername(username)),
+    emailHash: lookupHash('email', normalizeEmail(email))
   };
 }
 
@@ -363,9 +231,19 @@ function userMatchesUsername(user, username) {
   );
 }
 
+function userMatchesEmail(user, email) {
+  const normalized = normalizeEmail(email);
+  return Boolean(normalized) && (
+    user.emailHash === lookupHash('email', normalized) ||
+    normalizeEmail(getUserField(user, 'email')) === normalized
+  );
+}
+
 function findUserByLogin(users, loginValue) {
-  const username = normalizeUsername(loginValue);
-  return users.find((candidate) => userMatchesUsername(candidate, username));
+  const raw = String(loginValue || '');
+  const email = normalizeEmail(raw);
+  const username = normalizeUsername(raw);
+  return users.find((candidate) => userMatchesEmail(candidate, email) || userMatchesUsername(candidate, username));
 }
 
 function secretFingerprint(value) {
@@ -377,10 +255,9 @@ async function demoPasswordHash() {
   return bcrypt.hash(DEMO_PASSWORD, 12);
 }
 
-async function verifyAdminSetupPassword(password) {
-  if (ADMIN_SETUP_PASSWORD_HASH) return bcrypt.compare(password, ADMIN_SETUP_PASSWORD_HASH);
-  if (process.env.NODE_ENV === 'production' && !process.env.TSN_ADMIN_SETUP_PASSWORD) return false;
-  return safeStringEqual(password, ADMIN_SETUP_PASSWORD);
+async function verifyLayerPassword(layer, password) {
+  if (layer.passwordHash) return bcrypt.compare(password, layer.passwordHash);
+  return safeStringEqual(password, layer.password);
 }
 
 if (process.env.NODE_ENV === 'production') {
@@ -392,55 +269,33 @@ if (process.env.NODE_ENV === 'production') {
     console.warn('Security warning: set TSN_DEMO_PASSWORD_HASH or TSN_DEMO_PASSWORD before public launch.');
   }
 
-  if (!process.env.TSN_ADMIN_SETUP_PASSWORD_HASH && !process.env.TSN_ADMIN_SETUP_PASSWORD) {
-    console.warn('Security warning: set TSN_ADMIN_SETUP_PASSWORD_HASH before public launch so only you can claim admin rights.');
-  }
-  if (!process.env.TSN_ADMIN_SETUP_PASSWORD_HASH && process.env.TSN_ADMIN_SETUP_PASSWORD) {
-    console.warn('Security note: TSN_ADMIN_SETUP_PASSWORD_HASH is better than TSN_ADMIN_SETUP_PASSWORD because the admin setup secret is stored as a bcrypt hash.');
-  }
-
-}
-
-function isBanned(user) {
-  return Boolean(user && user.bannedAt);
-}
-
-function getSessionVersion(user) {
-  const version = Number(user && user.sessionVersion);
-  return Number.isFinite(version) && version >= 0 ? version : 0;
+  [1, 2, 3].forEach((layerId) => {
+    const hashName = `TSN_LAYER_${layerId}_PASSWORD_HASH`;
+    const plainName = `TSN_LAYER_${layerId}_PASSWORD`;
+    if (!process.env[hashName] && !process.env[plainName]) {
+      console.warn(`Security warning: set ${hashName} or ${plainName} before public launch.`);
+    }
+    if (!process.env[hashName] && process.env[plainName]) {
+      console.warn(`Security note: ${hashName} is better than ${plainName} because the layer secret is stored as a bcrypt hash.`);
+    }
+  });
 }
 
 function publicUser(user) {
   if (!user) return null;
-  const role = user.role === 'admin' ? 'admin' : 'user';
   return {
     id: user.id,
     name: getUserField(user, 'name'),
     username: getUserField(user, 'username'),
+    email: getUserField(user, 'email'),
     bio: getUserField(user, 'bio'),
-    role,
-    isAdmin: role === 'admin',
-    banned: isBanned(user),
-    bannedAt: user.bannedAt || null,
-    createdAt: user.createdAt
-  };
-}
-
-function publicModerationUser(user) {
-  const safe = publicUser(user);
-  if (!safe) return null;
-  return {
-    ...safe,
-    online: onlineUsers.has(user.id),
-    banReason: user.banReason || '',
-    bannedBy: user.bannedBy || null,
-    kickedAt: user.kickedAt || null,
-    sessionVersion: getSessionVersion(user)
+    createdAt: user.createdAt,
+    unlockedLayers: Array.isArray(user.unlockedLayers) ? user.unlockedLayers : []
   };
 }
 
 function signToken(user) {
-  return jwt.sign({ sub: user.id, sv: getSessionVersion(user) }, JWT_SECRET, { expiresIn: '7d' });
+  return jwt.sign({ sub: user.id }, JWT_SECRET, { expiresIn: '7d' });
 }
 
 function verifyToken(token) {
@@ -459,21 +314,10 @@ function requireAuth(req, res, next) {
 
   const db = readDb();
   const user = db.users.find((candidate) => candidate.id === payload.sub);
-  if (!user) return res.status(401).json({ error: 'Account not found.', logout: true });
-  if (isBanned(user)) return res.status(403).json({ error: 'This account has been banned.', logout: true });
-  if (Number(payload.sv) !== getSessionVersion(user)) {
-    return res.status(401).json({ error: 'Your session has expired. Please log in again.', logout: true });
-  }
+  if (!user) return res.status(401).json({ error: 'Account not found.' });
 
   req.user = user;
   req.db = db;
-  next();
-}
-
-function requireAdmin(req, res, next) {
-  if (!req.user || req.user.role !== 'admin') {
-    return res.status(403).json({ error: 'Admin rights are required.' });
-  }
   next();
 }
 
@@ -500,107 +344,41 @@ function conversationId(a, b) {
   return [a, b].sort().join('__');
 }
 
-function getRoom(roomId) {
-  return ROOMS.find((room) => room.id === Number(roomId));
+function getLayer(layerId) {
+  return LAYERS.find((layer) => layer.id === Number(layerId));
 }
 
-function getRoomRecord(db, roomId) {
-  db.rooms = Array.isArray(db.rooms) ? db.rooms : [];
-  const idNumber = Number(roomId);
-  let record = db.rooms.find((room) => room.id === idNumber);
-  if (!record) {
-    record = {
-      id: idNumber,
-      ownerId: null,
-      claimedAt: null,
-      nameEnc: '',
-      passwordHash: '',
-      passwordVersion: 0
-    };
-    db.rooms.push(record);
-  }
-  if (record.passwordVersion === undefined) record.passwordVersion = 0;
-  if (record.passwordHash === undefined) record.passwordHash = '';
-  if (record.nameEnc === undefined) record.nameEnc = '';
-  return record;
+function getUnlockedLayers(user) {
+  return Array.isArray(user.unlockedLayers)
+    ? user.unlockedLayers.filter((layerId) => getLayer(layerId))
+    : [];
 }
 
-function getRoomDisplayName(room, record) {
-  const customName = getEncryptedObjectField(record, 'name').trim();
-  return customName || room.name;
+function hasUnlockedLayer(user, layerId) {
+  return getUnlockedLayers(user).includes(Number(layerId));
 }
 
-function getRoomAccessVersion(user, roomId) {
-  if (!user || !user.roomAccessVersions || typeof user.roomAccessVersions !== 'object') return -1;
-  const version = Number(user.roomAccessVersions[String(roomId)]);
-  return Number.isFinite(version) ? version : -1;
-}
-
-function userCanManageRoom(user, record) {
-  return Boolean(user && (user.role === 'admin' || record.ownerId === user.id));
-}
-
-function userCanAccessRoom(user, record) {
-  if (!record.passwordHash) return true;
-  if (userCanManageRoom(user, record)) return true;
-  return getRoomAccessVersion(user, record.id) === Number(record.passwordVersion || 0);
-}
-
-function clearRoomAccessForAllUsers(db, roomId) {
-  db.users.forEach((user) => {
-    if (user.roomAccessVersions && typeof user.roomAccessVersions === 'object') {
-      delete user.roomAccessVersions[String(roomId)];
-    }
-  });
-}
-
-function publicRoom(room, db, currentUser) {
-  const record = getRoomRecord(db, room.id);
-  const owner = record.ownerId ? db.users.find((user) => user.id === record.ownerId) : null;
-  const canManage = userCanManageRoom(currentUser, record);
-  const hasPassword = Boolean(record.passwordHash);
+function publicLayer(layer, user) {
+  const unlocked = hasUnlockedLayer(user, layer.id);
+  const previousUnlocked = layer.id === 1 || hasUnlockedLayer(user, layer.id - 1);
   return {
-    id: room.id,
-    name: getRoomDisplayName(room, record),
-    defaultName: room.name,
-    tagline: room.tagline,
-    ownerId: record.ownerId || null,
-    owner: owner ? publicUser(owner) : null,
-    claimed: Boolean(record.ownerId),
-    claimedAt: record.claimedAt || null,
-    hasPassword,
-    canAccess: userCanAccessRoom(currentUser, record),
-    canManage
+    id: layer.id,
+    name: layer.name,
+    tagline: layer.tagline,
+    unlocked,
+    available: previousUnlocked,
+    requiresPrevious: layer.id > 1 && !previousUnlocked
   };
 }
 
-function emitRoomUpdated(db, room) {
-  for (const socket of io.sockets.sockets.values()) {
-    const viewer = db.users.find((candidate) => candidate.id === socket.user?.id);
-    if (viewer && !isBanned(viewer)) {
-      socket.emit('room-updated', publicRoom(room, db, viewer));
-    }
-  }
-}
-
-function emitRoomMessage(db, room, message) {
-  for (const socket of io.sockets.sockets.values()) {
-    const viewer = db.users.find((candidate) => candidate.id === socket.user?.id);
-    const record = getRoomRecord(db, room.id);
-    if (viewer && !isBanned(viewer) && userCanAccessRoom(viewer, record)) {
-      socket.emit('room-message', message);
-    }
-  }
-}
-
-function attachRoomMessagePeople(message, users) {
-  const author = users.find((user) => user.id === message.authorId);
+function attachLayerPostPeople(post, users) {
+  const author = users.find((user) => user.id === post.authorId);
   return {
-    id: message.id,
-    roomId: message.roomId,
-    authorId: message.authorId,
-    text: getEncryptedObjectField(message, 'text'),
-    createdAt: message.createdAt,
+    id: post.id,
+    layerId: post.layerId,
+    authorId: post.authorId,
+    body: getEncryptedObjectField(post, 'body'),
+    createdAt: post.createdAt,
     author: publicUser(author)
   };
 }
@@ -614,142 +392,6 @@ function publicMessage(message) {
     text: getEncryptedObjectField(message, 'text'),
     createdAt: message.createdAt
   };
-}
-
-
-function adminMessageActor(user) {
-  const safe = publicUser(user);
-  return safe ? { id: safe.id, name: safe.name, username: safe.username, role: safe.role } : null;
-}
-
-function buildAdminMessageArchive(db) {
-  const users = Array.isArray(db.users) ? db.users : [];
-  const items = [];
-
-  const findUser = (userId) => users.find((user) => user.id === userId);
-  const makeSearchText = (item) => [
-    item.kind,
-    item.source,
-    item.roomName,
-    item.body,
-    item.author?.name,
-    item.author?.username,
-    item.fromUser?.name,
-    item.fromUser?.username,
-    item.toUser?.name,
-    item.toUser?.username
-  ].filter(Boolean).join(' ').toLowerCase();
-
-  const pushItem = (item) => {
-    items.push({ ...item, searchText: makeSearchText(item) });
-  };
-
-  (Array.isArray(db.posts) ? db.posts : []).forEach((post) => {
-    const author = adminMessageActor(findUser(post.authorId));
-    const postBody = getEncryptedObjectField(post, 'body');
-    pushItem({
-      id: `post:${post.id}`,
-      kind: 'feed-post',
-      label: 'Feed post',
-      source: 'Feed',
-      postId: post.id,
-      author,
-      body: postBody,
-      createdAt: post.createdAt
-    });
-
-    (Array.isArray(post.comments) ? post.comments : []).forEach((comment) => {
-      pushItem({
-        id: `comment:${post.id}:${comment.id}`,
-        kind: 'feed-comment',
-        label: 'Feed comment',
-        source: 'Feed',
-        postId: post.id,
-        commentId: comment.id,
-        author: adminMessageActor(findUser(comment.authorId)),
-        parentAuthor: author,
-        parentExcerpt: postBody.slice(0, 120),
-        body: getEncryptedObjectField(comment, 'body'),
-        createdAt: comment.createdAt
-      });
-    });
-  });
-
-  (Array.isArray(db.messages) ? db.messages : []).forEach((message) => {
-    pushItem({
-      id: `direct:${message.id}`,
-      kind: 'direct-message',
-      label: 'Private direct message',
-      source: 'Direct messages',
-      messageId: message.id,
-      conversationId: message.conversationId,
-      fromUser: adminMessageActor(findUser(message.from)),
-      toUser: adminMessageActor(findUser(message.to)),
-      body: getEncryptedObjectField(message, 'text'),
-      createdAt: message.createdAt,
-      readByCount: Array.isArray(message.readBy) ? message.readBy.length : 0
-    });
-  });
-
-  (Array.isArray(db.roomMessages) ? db.roomMessages : []).forEach((message) => {
-    const room = getRoom(message.roomId) || { id: Number(message.roomId), name: `Room ${message.roomId}` };
-    const record = getRoomRecord(db, room.id);
-    pushItem({
-      id: `room:${message.id}`,
-      kind: 'room-message',
-      label: record.passwordHash ? 'Password-room message' : 'Room message',
-      source: 'Rooms',
-      roomId: room.id,
-      roomName: getRoomDisplayName(room, record),
-      roomLocked: Boolean(record.passwordHash),
-      roomOwner: record.ownerId ? adminMessageActor(findUser(record.ownerId)) : null,
-      messageId: message.id,
-      author: adminMessageActor(findUser(message.authorId)),
-      body: getEncryptedObjectField(message, 'text'),
-      createdAt: message.createdAt
-    });
-  });
-
-  return items
-    .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
-}
-
-function publicAdminMessageItem(item) {
-  const { searchText, ...safeItem } = item;
-  return safeItem;
-}
-
-function hasReadMessage(message, userId) {
-  return Array.isArray(message.readBy) && message.readBy.includes(userId);
-}
-
-function getUnreadMessageCount(db, currentUserId, otherUserId) {
-  return db.messages.filter((message) =>
-    message.from === otherUserId &&
-    message.to === currentUserId &&
-    !hasReadMessage(message, currentUserId)
-  ).length;
-}
-
-async function markConversationRead(db, currentUserId, otherUserId) {
-  let changed = false;
-  const key = conversationId(currentUserId, otherUserId);
-
-  db.messages.forEach((message) => {
-    if (message.conversationId !== key || message.to !== currentUserId) return;
-    if (!Array.isArray(message.readBy)) message.readBy = message.from && message.to ? [message.from, message.to] : [];
-    if (!message.readBy.includes(currentUserId)) {
-      message.readBy.push(currentUserId);
-      changed = true;
-    }
-  });
-
-  if (changed) {
-    await writeDb(db);
-    io.to(currentUserId).emit('messages-read', { userId: otherUserId, unreadCount: 0 });
-  }
-
-  return changed;
 }
 
 
@@ -773,17 +415,9 @@ function migrateDatabaseAtRest() {
 
   db.users.forEach((user) => {
     const plainUsername = user.username;
-    if (user.sessionVersion === undefined) {
-      user.sessionVersion = 0;
-      changed = true;
-    }
+    const plainEmail = user.email;
 
-    if (!user.roomAccessVersions || typeof user.roomAccessVersions !== 'object' || Array.isArray(user.roomAccessVersions)) {
-      user.roomAccessVersions = {};
-      changed = true;
-    }
-
-    ['name', 'username', 'bio'].forEach((field) => {
+    ['name', 'username', 'email', 'bio'].forEach((field) => {
       if (migrateRecordField(user, field)) changed = true;
     });
 
@@ -795,12 +429,13 @@ function migrateDatabaseAtRest() {
       }
     }
 
-    ['email', 'emailEnc', 'emailHash'].forEach((field) => {
-      if (Object.prototype.hasOwnProperty.call(user, field)) {
-        delete user[field];
+    if (!user.emailHash) {
+      const email = plainEmail || getUserField(user, 'email');
+      if (email) {
+        user.emailHash = lookupHash('email', normalizeEmail(email));
         changed = true;
       }
-    });
+    }
   });
 
   db.posts.forEach((post) => {
@@ -812,58 +447,10 @@ function migrateDatabaseAtRest() {
 
   db.messages.forEach((message) => {
     if (migrateRecordField(message, 'text')) changed = true;
-    if (!Array.isArray(message.readBy)) {
-      // Existing messages from older TSN versions are treated as already read so updating does not create old unread badges.
-      message.readBy = [message.from, message.to].filter(Boolean);
-      changed = true;
-    } else if (message.from && !message.readBy.includes(message.from)) {
-      message.readBy.push(message.from);
-      changed = true;
-    }
   });
 
-  if (!Array.isArray(db.rooms)) {
-    db.rooms = [];
-    changed = true;
-  }
-
-  if (!Array.isArray(db.roomMessages)) {
-    db.roomMessages = [];
-    changed = true;
-  }
-
-  db.roomMessages.forEach((message) => {
-    if (migrateRecordField(message, 'text')) changed = true;
-  });
-
-  ROOMS.forEach((room) => {
-    let record = db.rooms.find((candidate) => candidate.id === room.id);
-    if (!record) {
-      record = { id: room.id, ownerId: null, claimedAt: null, nameEnc: '', passwordHash: '', passwordVersion: 0 };
-      db.rooms.push(record);
-      changed = true;
-    }
-
-    if (record.name && migrateRecordField(record, 'name')) changed = true;
-    const storedRoomName = record.nameEnc ? getEncryptedObjectField(record, 'name').trim() : '';
-    if (storedRoomName.startsWith(`Room ${room.id}: `)) {
-      // Earlier TSN versions shipped topic-style default names.
-      // Clear those defaults so existing databases now show plain "Room 1", "Room 2", etc.
-      record.nameEnc = '';
-      changed = true;
-    }
-    if (record.nameEnc === undefined) {
-      record.nameEnc = '';
-      changed = true;
-    }
-    if (record.passwordHash === undefined) {
-      record.passwordHash = '';
-      changed = true;
-    }
-    if (record.passwordVersion === undefined) {
-      record.passwordVersion = record.passwordHash ? 1 : 0;
-      changed = true;
-    }
+  db.layerPosts.forEach((post) => {
+    if (migrateRecordField(post, 'body')) changed = true;
   });
 
   if (changed) {
@@ -872,29 +459,17 @@ function migrateDatabaseAtRest() {
   }
 }
 
-app.post('/api/admin/backup', requireAuth, requireAdmin, (req, res) => {
-  try {
-    const backupFile = backupDatabase('admin');
-    res.json({ ok: true, backupFile });
-  } catch (error) {
-    res.status(500).json({ error: `Backup failed: ${error.message}` });
-  }
-});
-
 app.get('/api/health', (req, res) => {
   try {
     const storage = getStorageStatus();
     res.json({
       ok: true,
-      app: 'TSN V1.0',
-      shortName: 'TSN V1.0',
+      app: 'The Social Network',
+      shortName: 'TSN',
       environment: process.env.NODE_ENV || 'development',
       storage: {
         ok: storage.ok,
-        dataDir: storage.dataDir,
-        dbFile: storage.dbFile,
-        backupDir: storage.backupDir,
-        persistenceWarning: storage.persistenceWarning
+        dataDir: storage.dataDir
       },
       security: {
         accountPasswords: 'bcrypt-hashed',
@@ -902,20 +477,15 @@ app.get('/api/health', (req, res) => {
         posts: 'aes-256-gcm encrypted at rest',
         comments: 'aes-256-gcm encrypted at rest',
         privateMessages: 'aes-256-gcm encrypted at rest',
-        roomMessages: 'aes-256-gcm encrypted at rest',
-        usernameLookup: 'hmac-sha256',
-        sessions: 'versioned JWT sessions support admin kick/logout',
-        moderation: 'admins can delete content, kick accounts, ban accounts, unban accounts, and review all stored messages for moderation',
-        contentFilter: CONTENT_FILTER_ENABLED ? 'server-side blocked-language filter enabled' : 'disabled',
-        customBlockedWords: CUSTOM_BLOCKED_WORDS.length,
-        adminRights: 'claimable with server-side admin setup password'
+        layerPosts: 'aes-256-gcm encrypted at rest',
+        usernameLookup: 'hmac-sha256'
       }
     });
   } catch (error) {
     res.status(503).json({
       ok: false,
-      app: 'TSN V1.0',
-      shortName: 'TSN V1.0',
+      app: 'The Social Network',
+      shortName: 'TSN',
       error: 'Storage is not ready.',
       detail: error.message
     });
@@ -925,6 +495,8 @@ app.get('/api/health', (req, res) => {
 app.post('/api/auth/register', async (req, res) => {
   const name = cleanText(req.body.name, 60);
   const username = normalizeUsername(req.body.username);
+  const submittedEmail = normalizeEmail(req.body.email);
+  const email = submittedEmail || `${username}@tsn.local`;
   const password = String(req.body.password || '');
 
   if (!name || !username || !password) {
@@ -933,12 +505,13 @@ app.post('/api/auth/register', async (req, res) => {
   if (username.length < 3) return res.status(400).json({ error: 'Username must be at least 3 characters.' });
   const passwordError = validateAccountPassword(password);
   if (passwordError) return res.status(400).json({ error: passwordError });
-  if (rejectBlockedContent(res, name, 'Display name')) return;
-  if (rejectBlockedContent(res, username, 'Username')) return;
+  if (submittedEmail && !/^\S+@\S+\.\S+$/.test(submittedEmail)) {
+    return res.status(400).json({ error: 'Enter a valid email, or leave it empty.' });
+  }
 
   const db = readDb();
-  const taken = db.users.some((user) => userMatchesUsername(user, username));
-  if (taken) return res.status(409).json({ error: 'Username is already used.' });
+  const taken = db.users.some((user) => userMatchesUsername(user, username) || (submittedEmail && userMatchesEmail(user, submittedEmail)));
+  if (taken) return res.status(409).json({ error: 'Username or email is already used.' });
 
   const passwordHash = await bcrypt.hash(password, 12);
   const user = {
@@ -946,10 +519,11 @@ app.post('/api/auth/register', async (req, res) => {
     ...encryptedUserIdentity({
       name,
       username,
+      email,
       bio: 'New on TSN.'
     }),
     passwordHash,
-    sessionVersion: 0,
+    unlockedLayers: [],
     createdAt: new Date().toISOString()
   };
 
@@ -959,16 +533,15 @@ app.post('/api/auth/register', async (req, res) => {
 });
 
 app.post('/api/auth/login', async (req, res) => {
-  const login = req.body.username || req.body.login;
+  const login = req.body.login || req.body.email || req.body.username;
   const password = String(req.body.password || '');
   const db = readDb();
 
   const user = findUserByLogin(db.users, login);
-  if (!user) return res.status(401).json({ error: 'Wrong username or password.' });
-  if (isBanned(user)) return res.status(403).json({ error: 'This account has been banned.' });
+  if (!user) return res.status(401).json({ error: 'Wrong login or password.' });
 
   const ok = await bcrypt.compare(password, user.passwordHash);
-  if (!ok) return res.status(401).json({ error: 'Wrong username or password.' });
+  if (!ok) return res.status(401).json({ error: 'Wrong login or password.' });
 
   res.json({ token: signToken(user), user: publicUser(user) });
 });
@@ -985,10 +558,11 @@ app.post('/api/auth/guest', async (req, res) => {
     ...encryptedUserIdentity({
       name: `Guest ${username.slice(-4)}`,
       username,
+      email: `${username}@tsn.local`,
       bio: 'Temporary guest account on TSN.'
     }),
     passwordHash: await bcrypt.hash(crypto.randomUUID(), 12),
-    sessionVersion: 0,
+    unlockedLayers: [],
     createdAt: new Date().toISOString()
   };
 
@@ -1006,19 +580,18 @@ app.post('/api/auth/demo', async (req, res) => {
   let user = db.users.find((candidate) => userMatchesUsername(candidate, blueprint.username));
   const fingerprint = secretFingerprint(DEMO_PASSWORD_HASH || DEMO_PASSWORD);
 
-  if (user && isBanned(user)) return res.status(403).json({ error: 'This demo account has been banned.' });
-
   if (!user) {
     user = {
       id: id('usr'),
       ...encryptedUserIdentity({
         name: blueprint.name,
         username: blueprint.username,
+        email: blueprint.email,
         bio: blueprint.bio
       }),
       passwordHash: await demoPasswordHash(),
       demoPasswordFingerprint: fingerprint,
-      sessionVersion: 0,
+      unlockedLayers: [],
       createdAt: new Date().toISOString()
     };
     db.users.push(user);
@@ -1053,127 +626,19 @@ app.patch('/api/me', requireAuth, async (req, res) => {
   const name = cleanText(req.body.name, 60);
   const bio = cleanText(req.body.bio, 160);
 
-  if (name && rejectBlockedContent(res, name, 'Display name')) return;
-  if (bio && rejectBlockedContent(res, bio, 'Bio')) return;
-
   if (name) setEncryptedUserField(user, 'name', name);
   setEncryptedUserField(user, 'bio', bio);
   await writeDb(db);
   res.json({ user: publicUser(user) });
 });
 
-app.post('/api/admin/claim', requireAuth, async (req, res) => {
-  const password = String(req.body.password || '');
-  const ok = password ? await verifyAdminSetupPassword(password) : false;
-  if (!ok) return res.status(401).json({ error: 'Wrong admin setup password.' });
-
-  const db = req.db;
-  const user = db.users.find((candidate) => candidate.id === req.user.id);
-  if (!user) return res.status(401).json({ error: 'Account not found.' });
-
-  user.role = 'admin';
-  user.adminEnabledAt = new Date().toISOString();
-  await writeDb(db);
-
-  res.json({ user: publicUser(user) });
-});
-
-app.get('/api/admin/users', requireAuth, requireAdmin, (req, res) => {
-  const users = req.db.users
-    .map(publicModerationUser)
-    .sort((a, b) => Number(b.online) - Number(a.online) || Number(Boolean(b.banned)) - Number(Boolean(a.banned)) || a.name.localeCompare(b.name));
-
-  res.json({ users });
-});
-
-
-app.get('/api/admin/messages', requireAuth, requireAdmin, (req, res) => {
-  const type = cleanText(req.query.type || 'all', 32);
-  const q = cleanText(req.query.q || '', 120).toLowerCase();
-
-  let items = buildAdminMessageArchive(req.db);
-
-  if (type === 'feed') {
-    items = items.filter((item) => item.kind === 'feed-post' || item.kind === 'feed-comment');
-  } else if (type === 'direct') {
-    items = items.filter((item) => item.kind === 'direct-message');
-  } else if (type === 'rooms') {
-    items = items.filter((item) => item.kind === 'room-message');
-  } else if (type === 'locked-rooms') {
-    items = items.filter((item) => item.kind === 'room-message' && item.roomLocked);
-  }
-
-  if (q) {
-    items = items.filter((item) => item.searchText.includes(q));
-  }
-
-  res.json({
-    items: items.map(publicAdminMessageItem),
-    count: items.length,
-    generatedAt: new Date().toISOString(),
-    notice: 'Admin-only moderation view. Messages are encrypted at rest, then decrypted on the server for admins.'
-  });
-});
-
-app.post('/api/admin/users/:userId/kick', requireAuth, requireAdmin, async (req, res) => {
-  const db = req.db;
-  const target = db.users.find((candidate) => candidate.id === req.params.userId);
-  if (!target) return res.status(404).json({ error: 'User not found.' });
-  if (target.id === req.user.id) return res.status(400).json({ error: 'You cannot kick yourself.' });
-
-  target.sessionVersion = getSessionVersion(target) + 1;
-  target.kickedAt = new Date().toISOString();
-  target.kickedBy = req.user.id;
-  await writeDb(db);
-
-  forceLogoutUser(target.id, 'You were kicked by an admin.');
-  res.json({ ok: true, user: publicModerationUser(target) });
-});
-
-app.post('/api/admin/users/:userId/ban', requireAuth, requireAdmin, async (req, res) => {
-  const db = req.db;
-  const target = db.users.find((candidate) => candidate.id === req.params.userId);
-  if (!target) return res.status(404).json({ error: 'User not found.' });
-  if (target.id === req.user.id) return res.status(400).json({ error: 'You cannot ban yourself.' });
-  if (target.role === 'admin') return res.status(403).json({ error: 'You cannot ban another admin account.' });
-
-  const reason = cleanText(req.body.reason, 200);
-  if (reason && rejectBlockedContent(res, reason, 'Ban reason')) return;
-
-  target.bannedAt = new Date().toISOString();
-  target.bannedBy = req.user.id;
-  target.banReason = reason;
-  target.sessionVersion = getSessionVersion(target) + 1;
-  await writeDb(db);
-
-  forceLogoutUser(target.id, target.banReason ? `Your account was banned: ${target.banReason}` : 'Your account was banned by an admin.');
-  res.json({ ok: true, user: publicModerationUser(target) });
-});
-
-app.post('/api/admin/users/:userId/unban', requireAuth, requireAdmin, async (req, res) => {
-  const db = req.db;
-  const target = db.users.find((candidate) => candidate.id === req.params.userId);
-  if (!target) return res.status(404).json({ error: 'User not found.' });
-
-  delete target.bannedAt;
-  delete target.bannedBy;
-  delete target.banReason;
-  await writeDb(db);
-
-  res.json({ ok: true, user: publicModerationUser(target) });
-});
-
 app.get('/api/users', requireAuth, (req, res) => {
   const q = cleanText(req.query.q || '', 80).toLowerCase();
   const users = req.db.users
-    .filter((user) => user.id !== req.user.id && !isBanned(user))
-    .map((user) => ({
-      ...publicUser(user),
-      online: onlineUsers.has(user.id),
-      unreadCount: getUnreadMessageCount(req.db, req.user.id, user.id)
-    }))
-    .filter((user) => !q || user.name.toLowerCase().includes(q) || user.username.toLowerCase().includes(q) || String(user.bio || '').toLowerCase().includes(q))
-    .sort((a, b) => Number(b.unreadCount > 0) - Number(a.unreadCount > 0) || Number(b.online) - Number(a.online) || a.name.localeCompare(b.name));
+    .filter((user) => user.id !== req.user.id)
+    .map((user) => ({ ...publicUser(user), online: onlineUsers.has(user.id) }))
+    .filter((user) => !q || user.name.toLowerCase().includes(q) || user.username.toLowerCase().includes(q))
+    .sort((a, b) => Number(b.online) - Number(a.online) || a.name.localeCompare(b.name));
 
   res.json({ users });
 });
@@ -1188,7 +653,6 @@ app.get('/api/posts', requireAuth, (req, res) => {
 app.post('/api/posts', requireAuth, async (req, res) => {
   const body = cleanText(req.body.body, 600);
   if (!body) return res.status(400).json({ error: 'Post cannot be empty.' });
-  if (rejectBlockedContent(res, body, 'Post')) return;
 
   const db = req.db;
   const post = {
@@ -1205,22 +669,6 @@ app.post('/api/posts', requireAuth, async (req, res) => {
   const fullPost = attachPostPeople(post, db.users);
   io.emit('post-created', fullPost);
   res.status(201).json({ post: fullPost });
-});
-
-app.delete('/api/posts/:postId', requireAuth, async (req, res) => {
-  const db = req.db;
-  const index = db.posts.findIndex((candidate) => candidate.id === req.params.postId);
-  if (index < 0) return res.status(404).json({ error: 'Post not found.' });
-
-  const post = db.posts[index];
-  if (req.user.role !== 'admin' && post.authorId !== req.user.id) {
-    return res.status(403).json({ error: 'You can only delete your own posts.' });
-  }
-
-  const [deleted] = db.posts.splice(index, 1);
-  await writeDb(db);
-  io.emit('post-deleted', { postId: deleted.id });
-  res.json({ ok: true, postId: deleted.id });
 });
 
 app.post('/api/posts/:postId/like', requireAuth, async (req, res) => {
@@ -1242,7 +690,6 @@ app.post('/api/posts/:postId/like', requireAuth, async (req, res) => {
 app.post('/api/posts/:postId/comments', requireAuth, async (req, res) => {
   const body = cleanText(req.body.body, 240);
   if (!body) return res.status(400).json({ error: 'Comment cannot be empty.' });
-  if (rejectBlockedContent(res, body, 'Comment')) return;
 
   const db = req.db;
   const post = db.posts.find((candidate) => candidate.id === req.params.postId);
@@ -1263,228 +710,78 @@ app.post('/api/posts/:postId/comments', requireAuth, async (req, res) => {
   res.status(201).json({ post: fullPost });
 });
 
-app.delete('/api/posts/:postId/comments/:commentId', requireAuth, async (req, res) => {
-  const db = req.db;
-  const post = db.posts.find((candidate) => candidate.id === req.params.postId);
-  if (!post) return res.status(404).json({ error: 'Post not found.' });
-
-  post.comments = Array.isArray(post.comments) ? post.comments : [];
-  const index = post.comments.findIndex((candidate) => candidate.id === req.params.commentId);
-  if (index < 0) return res.status(404).json({ error: 'Comment not found.' });
-
-  const comment = post.comments[index];
-  if (req.user.role !== 'admin' && comment.authorId !== req.user.id) {
-    return res.status(403).json({ error: 'You can only delete your own comments.' });
-  }
-
-  post.comments.splice(index, 1);
-  await writeDb(db);
-
-  const fullPost = attachPostPeople(post, db.users);
-  io.emit('post-updated', fullPost);
-  res.json({ ok: true, post: fullPost, commentId: req.params.commentId });
-});
-
-app.get('/api/rooms', requireAuth, (req, res) => {
+app.get('/api/layers', requireAuth, (req, res) => {
   res.json({
-    rooms: ROOMS.map((room) => publicRoom(room, req.db, req.user))
+    layers: LAYERS.map((layer) => publicLayer(layer, req.user))
   });
 });
 
-app.post('/api/rooms/:roomId/claim', requireAuth, async (req, res) => {
-  const room = getRoom(req.params.roomId);
-  if (!room) return res.status(404).json({ error: 'Room not found.' });
+app.post('/api/layers/:layerId/unlock', requireAuth, async (req, res) => {
+  const layer = getLayer(req.params.layerId);
+  if (!layer) return res.status(404).json({ error: 'Layer not found.' });
 
   const db = req.db;
-  const record = getRoomRecord(db, room.id);
-  if (record.ownerId && record.ownerId !== req.user.id) {
-    return res.status(409).json({ error: 'This room has already been claimed.' });
-  }
-
-  record.ownerId = req.user.id;
-  record.claimedAt = record.claimedAt || new Date().toISOString();
-  await writeDb(db);
-
-  const safeRoom = publicRoom(room, db, req.user);
-  emitRoomUpdated(db, room);
-  res.json({ room: safeRoom, rooms: ROOMS.map((candidate) => publicRoom(candidate, db, req.user)) });
-});
-
-app.patch('/api/rooms/:roomId/settings', requireAuth, async (req, res) => {
-  const room = getRoom(req.params.roomId);
-  if (!room) return res.status(404).json({ error: 'Room not found.' });
-
-  const db = req.db;
-  const record = getRoomRecord(db, room.id);
-  if (!record.ownerId) return res.status(400).json({ error: 'Claim this room before changing its name or password.' });
-  if (!userCanManageRoom(req.user, record)) {
-    return res.status(403).json({ error: 'Only the room owner or an admin can edit this room.' });
-  }
-
-  let changed = false;
-
-  if (Object.prototype.hasOwnProperty.call(req.body, 'name')) {
-    const name = cleanText(req.body.name, 40);
-    if (name.length < 3) return res.status(400).json({ error: 'Room name must be at least 3 characters.' });
-    if (rejectBlockedContent(res, name, 'Room name')) return;
-    record.nameEnc = encryptField(name);
-    changed = true;
-  }
-
-  if (req.body.clearPassword === true) {
-    record.passwordHash = '';
-    record.passwordVersion = Number(record.passwordVersion || 0) + 1;
-    clearRoomAccessForAllUsers(db, room.id);
-    changed = true;
-  } else if (Object.prototype.hasOwnProperty.call(req.body, 'password')) {
-    const password = String(req.body.password || '').trim();
-    if (password) {
-      if (password.length < 4) return res.status(400).json({ error: 'Room password must be at least 4 characters, or leave it empty for no password.' });
-      if (password.length > 80) return res.status(400).json({ error: 'Room password must be 80 characters or fewer.' });
-      record.passwordHash = await bcrypt.hash(password, 12);
-      record.passwordVersion = Number(record.passwordVersion || 0) + 1;
-      clearRoomAccessForAllUsers(db, room.id);
-      changed = true;
-    }
-  }
-
-  if (!changed) return res.status(400).json({ error: 'Nothing changed.' });
-
-  await writeDb(db);
-  const safeRoom = publicRoom(room, db, req.user);
-  emitRoomUpdated(db, room);
-  res.json({ room: safeRoom, rooms: ROOMS.map((candidate) => publicRoom(candidate, db, req.user)) });
-});
-
-app.post('/api/rooms/:roomId/unlock', requireAuth, async (req, res) => {
-  const room = getRoom(req.params.roomId);
-  if (!room) return res.status(404).json({ error: 'Room not found.' });
-
-  const db = req.db;
-  const record = getRoomRecord(db, room.id);
-  if (!record.passwordHash) {
-    return res.json({ room: publicRoom(room, db, req.user), unlocked: true });
-  }
-  if (userCanManageRoom(req.user, record)) {
-    return res.json({ room: publicRoom(room, db, req.user), unlocked: true });
-  }
-
-  const password = String(req.body.password || '').trim();
-  if (!password) return res.status(400).json({ error: 'Enter the room password.' });
-
-  const ok = await bcrypt.compare(password, record.passwordHash);
-  if (!ok) return res.status(403).json({ error: 'Wrong room password.' });
-
   const user = db.users.find((candidate) => candidate.id === req.user.id);
-  user.roomAccessVersions = user.roomAccessVersions && typeof user.roomAccessVersions === 'object' ? user.roomAccessVersions : {};
-  user.roomAccessVersions[String(room.id)] = Number(record.passwordVersion || 0);
-  await writeDb(db);
+  if (!user) return res.status(401).json({ error: 'Account not found.' });
 
-  const safeRoom = publicRoom(room, db, user);
-  emitRoomUpdated(db, room);
-  res.json({ room: safeRoom, unlocked: true });
+  if (layer.id > 1 && !hasUnlockedLayer(user, layer.id - 1)) {
+    return res.status(403).json({ error: `Unlock Layer ${layer.id - 1} first.` });
+  }
+
+  const password = String(req.body.password || '');
+  const passwordOk = password ? await verifyLayerPassword(layer, password) : false;
+  if (!passwordOk) {
+    return res.status(401).json({ error: `Wrong Layer ${layer.id} password.` });
+  }
+
+  user.unlockedLayers = getUnlockedLayers(user);
+  if (!user.unlockedLayers.includes(layer.id)) user.unlockedLayers.push(layer.id);
+  user.unlockedLayers.sort((a, b) => a - b);
+
+  await writeDb(db);
+  res.json({
+    user: publicUser(user),
+    layer: publicLayer(layer, user),
+    layers: LAYERS.map((candidate) => publicLayer(candidate, user))
+  });
 });
 
-app.post('/api/rooms/:roomId/release', requireAuth, async (req, res) => {
-  const room = getRoom(req.params.roomId);
-  if (!room) return res.status(404).json({ error: 'Room not found.' });
+app.get('/api/layers/:layerId/posts', requireAuth, (req, res) => {
+  const layer = getLayer(req.params.layerId);
+  if (!layer) return res.status(404).json({ error: 'Layer not found.' });
+  if (!hasUnlockedLayer(req.user, layer.id)) return res.status(403).json({ error: 'Unlock this layer first.' });
+
+  const posts = [...req.db.layerPosts]
+    .filter((post) => post.layerId === layer.id)
+    .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+    .map((post) => attachLayerPostPeople(post, req.db.users));
+
+  res.json({ layer: publicLayer(layer, req.user), posts });
+});
+
+app.post('/api/layers/:layerId/posts', requireAuth, async (req, res) => {
+  const layer = getLayer(req.params.layerId);
+  if (!layer) return res.status(404).json({ error: 'Layer not found.' });
+  if (!hasUnlockedLayer(req.user, layer.id)) return res.status(403).json({ error: 'Unlock this layer first.' });
+
+  const body = cleanText(req.body.body, 600);
+  if (!body) return res.status(400).json({ error: 'Layer post cannot be empty.' });
 
   const db = req.db;
-  const record = getRoomRecord(db, room.id);
-  if (!record.ownerId) return res.status(400).json({ error: 'This room is not claimed.' });
-  if (!userCanManageRoom(req.user, record)) {
-    return res.status(403).json({ error: 'Only the room owner or an admin can release this room.' });
-  }
-
-  const deletedMessageCount = Array.isArray(db.roomMessages)
-    ? db.roomMessages.filter((message) => Number(message.roomId) === room.id).length
-    : 0;
-
-  record.ownerId = null;
-  record.claimedAt = null;
-  record.nameEnc = '';
-  record.passwordHash = '';
-  record.passwordVersion = Number(record.passwordVersion || 0) + 1;
-  clearRoomAccessForAllUsers(db, room.id);
-  db.roomMessages = Array.isArray(db.roomMessages)
-    ? db.roomMessages.filter((message) => Number(message.roomId) !== room.id)
-    : [];
-  await writeDb(db);
-
-  const safeRoom = publicRoom(room, db, req.user);
-  emitRoomUpdated(db, room);
-  io.emit('room-messages-cleared', { roomId: room.id, deletedCount: deletedMessageCount });
-  res.json({ room: safeRoom, rooms: ROOMS.map((candidate) => publicRoom(candidate, db, req.user)), deletedCount: deletedMessageCount });
-});
-
-app.get('/api/rooms/:roomId/messages', requireAuth, (req, res) => {
-  const room = getRoom(req.params.roomId);
-  if (!room) return res.status(404).json({ error: 'Room not found.' });
-
-  const record = getRoomRecord(req.db, room.id);
-  if (!userCanAccessRoom(req.user, record)) {
-    return res.status(403).json({ error: 'This room is locked. Enter the room password first.', locked: true, room: publicRoom(room, req.db, req.user) });
-  }
-
-  const messages = [...req.db.roomMessages]
-    .filter((message) => Number(message.roomId) === room.id)
-    .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt))
-    .map((message) => attachRoomMessagePeople(message, req.db.users));
-
-  res.json({ room: publicRoom(room, req.db, req.user), messages });
-});
-
-app.post('/api/rooms/:roomId/messages', requireAuth, async (req, res) => {
-  const room = getRoom(req.params.roomId);
-  if (!room) return res.status(404).json({ error: 'Room not found.' });
-
-  const db = req.db;
-  const record = getRoomRecord(db, room.id);
-  if (!userCanAccessRoom(req.user, record)) {
-    return res.status(403).json({ error: 'This room is locked. Enter the room password first.', locked: true, room: publicRoom(room, db, req.user) });
-  }
-
-  const text = cleanText(req.body.text || req.body.body, 600);
-  if (!text) return res.status(400).json({ error: 'Room message cannot be empty.' });
-  if (rejectBlockedContent(res, text, 'Room message')) return;
-
-  const message = {
-    id: id('roommsg'),
-    roomId: room.id,
+  const post = {
+    id: id('layerpost'),
+    layerId: layer.id,
     authorId: req.user.id,
-    ...encryptedTextObject('text', text),
+    ...encryptedTextObject('body', body),
     createdAt: new Date().toISOString()
   };
-  db.roomMessages.push(message);
+  db.layerPosts.push(post);
   await writeDb(db);
 
-  const safeMessage = attachRoomMessagePeople(message, db.users);
-  emitRoomMessage(db, room, safeMessage);
-  res.status(201).json({ message: safeMessage });
+  res.status(201).json({ post: attachLayerPostPeople(post, db.users) });
 });
 
-app.delete('/api/rooms/:roomId/messages/:messageId', requireAuth, async (req, res) => {
-  const room = getRoom(req.params.roomId);
-  if (!room) return res.status(404).json({ error: 'Room not found.' });
-
-  const db = req.db;
-  const index = db.roomMessages.findIndex((candidate) => Number(candidate.roomId) === room.id && candidate.id === req.params.messageId);
-  if (index < 0) return res.status(404).json({ error: 'Room message not found.' });
-
-  const message = db.roomMessages[index];
-  const record = getRoomRecord(db, room.id);
-  const canDelete = req.user.role === 'admin' || message.authorId === req.user.id || record.ownerId === req.user.id;
-  if (!canDelete) {
-    return res.status(403).json({ error: 'You can only delete your own room messages unless you own the room or are an admin.' });
-  }
-
-  const [deleted] = db.roomMessages.splice(index, 1);
-  await writeDb(db);
-  io.emit('room-message-deleted', { roomId: room.id, messageId: deleted.id });
-  res.json({ ok: true, roomId: room.id, messageId: deleted.id });
-});
-
-app.get('/api/messages/:userId', requireAuth, async (req, res) => {
+app.get('/api/messages/:userId', requireAuth, (req, res) => {
   const other = req.db.users.find((user) => user.id === req.params.userId);
   if (!other) return res.status(404).json({ error: 'User not found.' });
 
@@ -1494,38 +791,10 @@ app.get('/api/messages/:userId', requireAuth, async (req, res) => {
     .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt))
     .map(publicMessage);
 
-  await markConversationRead(req.db, req.user.id, other.id);
-  res.json({ user: { ...publicUser(other), unreadCount: 0 }, messages });
-});
-
-app.post('/api/messages/:userId/read', requireAuth, async (req, res) => {
-  const other = req.db.users.find((user) => user.id === req.params.userId);
-  if (!other) return res.status(404).json({ error: 'User not found.' });
-
-  await markConversationRead(req.db, req.user.id, other.id);
-  res.json({ ok: true, userId: other.id, unreadCount: 0 });
-});
-
-app.delete('/api/messages/:messageId', requireAuth, requireAdmin, async (req, res) => {
-  const db = req.db;
-  const index = db.messages.findIndex((candidate) => candidate.id === req.params.messageId);
-  if (index < 0) return res.status(404).json({ error: 'Message not found.' });
-
-  const [deleted] = db.messages.splice(index, 1);
-  await writeDb(db);
-
-  io.to(deleted.from).to(deleted.to).emit('message-deleted', { messageId: deleted.id, conversationId: deleted.conversationId });
-  res.json({ ok: true, messageId: deleted.id, conversationId: deleted.conversationId });
+  res.json({ user: publicUser(other), messages });
 });
 
 const onlineUsers = new Map();
-
-function forceLogoutUser(userId, reason) {
-  onlineUsers.delete(userId);
-  io.to(userId).emit('force-logout', { reason });
-  io.in(userId).disconnectSockets(true);
-  io.emit('presence', { userId, online: false });
-}
 
 io.use((socket, next) => {
   const token = socket.handshake.auth && socket.handshake.auth.token;
@@ -1535,10 +804,6 @@ io.use((socket, next) => {
   const db = readDb();
   const user = db.users.find((candidate) => candidate.id === payload.sub);
   if (!user) return next(new Error('User not found'));
-  if (isBanned(user)) return next(new Error('Account banned'));
-  if (Number(payload.sv) !== getSessionVersion(user)) {
-    return next(new Error('Session expired'));
-  }
 
   socket.user = user;
   next();
@@ -1555,20 +820,16 @@ io.on('connection', (socket) => {
       const to = String(payload.to || '');
       const text = cleanText(payload.text, 1000);
       if (!to || !text) throw new Error('Message needs a recipient and text.');
-      assertContentAllowed(text, 'Message');
 
       const db = readDb();
-      const sender = db.users.find((candidate) => candidate.id === user.id);
-      if (!sender || isBanned(sender)) throw new Error('Your account is not allowed to send messages.');
       const recipient = db.users.find((candidate) => candidate.id === to);
-      if (!recipient || isBanned(recipient)) throw new Error('Recipient not found.');
+      if (!recipient) throw new Error('Recipient not found.');
 
       const message = {
         id: id('msg'),
         conversationId: conversationId(user.id, recipient.id),
         from: user.id,
         to: recipient.id,
-        readBy: [user.id],
         ...encryptedTextObject('text', text),
         createdAt: new Date().toISOString()
       };
@@ -1601,27 +862,12 @@ app.get('*', (req, res) => {
   res.sendFile(path.join(PUBLIC_DIR, 'index.html'));
 });
 
-try {
-  ensureDatabase();
-  const beforeMigrationDb = readDb();
-  if (databaseHasUserData(beforeMigrationDb)) {
-    const backupFile = backupDatabase('pre-start');
-    console.log(`Database backup created before startup migration: ${backupFile}`);
-  }
-} catch (error) {
-  console.warn(`Startup backup skipped: ${error.message}`);
-}
-
 migrateDatabaseAtRest();
 
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`TSN is running on port ${PORT}.`);
   console.log(`Database file: ${DB_FILE}`);
-  console.log(`Backup directory: ${DB_BACKUP_DIR}`);
-  const warning = storagePersistenceWarning();
-  if (warning) console.warn(`Persistence warning: ${warning}`);
   console.log('Easy login is available: Continue as Guest or Demo User 1/2.');
-  console.log('Admin rights can be claimed inside the app with TSN_ADMIN_SETUP_PASSWORD or TSN_ADMIN_SETUP_PASSWORD_HASH.');
 
   if (process.env.NODE_ENV === 'production' && JWT_SECRET === DEFAULT_JWT_SECRET) {
     console.warn('WARNING: Set a strong JWT_SECRET before using TSN publicly.');
