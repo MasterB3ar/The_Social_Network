@@ -500,20 +500,38 @@ function isRemovedEasyLoginUser(user) {
 
 function removeEasyLoginUsersFromDatabase(db) {
   const removedIds = new Set((db.users || []).filter(isRemovedEasyLoginUser).map((user) => user.id));
-  if (!removedIds.size) return { changed: false, usersRemoved: 0, globalMessagesRemoved: 0, privateMessagesRemoved: 0 };
+  if (!removedIds.size) {
+    return { changed: false, usersRemoved: 0, globalMessagesRemoved: 0, privateMessagesRemoved: 0, commentsRemoved: 0, likesRemoved: 0 };
+  }
 
   const beforeGlobal = db.globalMessages.length;
   const beforePrivate = db.messages.length;
+  let commentsRemoved = 0;
+  let likesRemoved = 0;
 
   db.users = db.users.filter((user) => !removedIds.has(user.id));
-  db.globalMessages = db.globalMessages.filter((message) => !removedIds.has(message.authorId));
+  db.globalMessages = db.globalMessages
+    .filter((message) => !removedIds.has(message.authorId))
+    .map((message) => {
+      const beforeComments = Array.isArray(message.comments) ? message.comments.length : 0;
+      const beforeLikes = Array.isArray(message.likes) ? message.likes.length : 0;
+      message.comments = (Array.isArray(message.comments) ? message.comments : [])
+        .filter((comment) => !removedIds.has(comment.authorId));
+      message.likes = (Array.isArray(message.likes) ? message.likes : [])
+        .filter((userId) => !removedIds.has(userId));
+      commentsRemoved += beforeComments - message.comments.length;
+      likesRemoved += beforeLikes - message.likes.length;
+      return message;
+    });
   db.messages = db.messages.filter((message) => !removedIds.has(message.from) && !removedIds.has(message.to));
 
   return {
     changed: true,
     usersRemoved: removedIds.size,
     globalMessagesRemoved: beforeGlobal - db.globalMessages.length,
-    privateMessagesRemoved: beforePrivate - db.messages.length
+    privateMessagesRemoved: beforePrivate - db.messages.length,
+    commentsRemoved,
+    likesRemoved
   };
 }
 
@@ -742,15 +760,75 @@ function attachRoomMessagePeople(message, users) {
   };
 }
 
-function attachGlobalMessagePeople(message, users) {
+function publicGlobalComment(comment, users) {
+  const author = users.find((user) => user.id === comment.authorId);
+  return {
+    id: comment.id,
+    authorId: comment.authorId,
+    text: getEncryptedObjectField(comment, 'text'),
+    createdAt: comment.createdAt,
+    author: publicUser(author)
+  };
+}
+
+function normalizeGlobalMessageInteractions(message) {
+  let changed = false;
+  if (!Array.isArray(message.likes)) {
+    message.likes = [];
+    changed = true;
+  }
+  if (!Array.isArray(message.comments)) {
+    message.comments = [];
+    changed = true;
+  }
+
+  const uniqueLikes = [...new Set(message.likes.filter(Boolean).map(String))];
+  if (uniqueLikes.length !== message.likes.length || uniqueLikes.some((userId, index) => userId !== message.likes[index])) {
+    message.likes = uniqueLikes;
+    changed = true;
+  }
+
+  message.comments.forEach((comment) => {
+    if (!comment.id) {
+      comment.id = id('gcomment');
+      changed = true;
+    }
+    if (!comment.createdAt) {
+      comment.createdAt = message.createdAt || new Date().toISOString();
+      changed = true;
+    }
+  });
+
+  return changed;
+}
+
+function attachGlobalMessagePeople(message, users, viewerId = '') {
+  normalizeGlobalMessageInteractions(message);
   const author = users.find((user) => user.id === message.authorId);
+  const comments = [...message.comments]
+    .sort((a, b) => new Date(a.createdAt || 0) - new Date(b.createdAt || 0))
+    .map((comment) => publicGlobalComment(comment, users));
+
   return {
     id: message.id,
     authorId: message.authorId,
     text: getEncryptedObjectField(message, 'text'),
     createdAt: message.createdAt,
-    author: publicUser(author)
+    author: publicUser(author),
+    likesCount: message.likes.length,
+    likedByMe: viewerId ? message.likes.includes(viewerId) : false,
+    commentsCount: comments.length,
+    comments
   };
+}
+
+function emitGlobalMessageUpdated(db, message) {
+  for (const socket of io.sockets.sockets.values()) {
+    const viewer = db.users.find((candidate) => candidate.id === socket.user?.id);
+    if (viewer && !isBanned(viewer)) {
+      socket.emit('global-message-updated', attachGlobalMessagePeople(message, db.users, viewer.id));
+    }
+  }
 }
 
 function publicMessage(message) {
@@ -792,6 +870,7 @@ function buildAdminMessageArchive(db) {
   };
 
   (Array.isArray(db.globalMessages) ? db.globalMessages : []).forEach((message) => {
+    normalizeGlobalMessageInteractions(message);
     pushItem({
       id: `global:${message.id}`,
       kind: 'global-message',
@@ -800,7 +879,25 @@ function buildAdminMessageArchive(db) {
       messageId: message.id,
       author: adminMessageActor(findUser(message.authorId)),
       body: getEncryptedObjectField(message, 'text'),
-      createdAt: message.createdAt
+      createdAt: message.createdAt,
+      likesCount: message.likes.length,
+      commentsCount: message.comments.length
+    });
+
+    message.comments.forEach((comment) => {
+      pushItem({
+        id: `global-comment:${message.id}:${comment.id}`,
+        kind: 'global-comment',
+        label: 'global kommentar',
+        source: 'Kommentar til global chat',
+        messageId: message.id,
+        commentId: comment.id,
+        author: adminMessageActor(findUser(comment.authorId)),
+        body: getEncryptedObjectField(comment, 'text'),
+        parentBody: getEncryptedObjectField(message, 'text'),
+        parentAuthor: adminMessageActor(findUser(message.authorId)),
+        createdAt: comment.createdAt
+      });
     });
   });
 
@@ -933,6 +1030,10 @@ async function migrateDatabaseAtRest() {
 
   db.globalMessages.forEach((message) => {
     if (migrateRecordField(message, 'text')) changed = true;
+    if (normalizeGlobalMessageInteractions(message)) changed = true;
+    message.comments.forEach((comment) => {
+      if (migrateRecordField(comment, 'text')) changed = true;
+    });
   });
 
   db.messages.forEach((message) => {
@@ -1168,7 +1269,7 @@ app.get('/api/admin/messages', requireAuth, requireAdmin, (req, res) => {
   let items = buildAdminMessageArchive(req.db);
 
   if (type === 'global') {
-    items = items.filter((item) => item.kind === 'global-message');
+    items = items.filter((item) => item.kind === 'global-message' || item.kind === 'global-comment');
   } else if (type === 'direct') {
     items = items.filter((item) => item.kind === 'direct-message');
   }
@@ -1253,7 +1354,7 @@ app.get('/api/global/messages', requireAuth, (req, res) => {
   const messages = [...(req.db.globalMessages || [])]
     .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt))
     .slice(-limit)
-    .map((message) => attachGlobalMessagePeople(message, req.db.users));
+    .map((message) => attachGlobalMessagePeople(message, req.db.users, req.user.id));
 
   res.json({ messages });
 });
@@ -1267,6 +1368,8 @@ app.post('/api/global/messages', requireAuth, async (req, res) => {
   const message = {
     id: id('globalmsg'),
     authorId: req.user.id,
+    likes: [],
+    comments: [],
     ...encryptedTextObject('text', text),
     createdAt: new Date().toISOString()
   };
@@ -1279,9 +1382,77 @@ app.post('/api/global/messages', requireAuth, async (req, res) => {
 
   await writeDb(db);
 
-  const safeMessage = attachGlobalMessagePeople(message, db.users);
-  io.emit('global-message', safeMessage);
-  res.status(201).json({ message: safeMessage });
+  emitGlobalMessageUpdated(db, message);
+  res.status(201).json({ message: attachGlobalMessagePeople(message, db.users, req.user.id) });
+});
+
+app.post('/api/global/messages/:messageId/like', requireAuth, async (req, res) => {
+  const db = req.db;
+  db.globalMessages = Array.isArray(db.globalMessages) ? db.globalMessages : [];
+  const message = db.globalMessages.find((candidate) => candidate.id === req.params.messageId);
+  if (!message) return res.status(404).json({ error: 'Globalt opslag blev ikke fundet.' });
+
+  normalizeGlobalMessageInteractions(message);
+  const existingIndex = message.likes.indexOf(req.user.id);
+  const liked = existingIndex < 0;
+  if (liked) {
+    message.likes.push(req.user.id);
+  } else {
+    message.likes.splice(existingIndex, 1);
+  }
+
+  await writeDb(db);
+  emitGlobalMessageUpdated(db, message);
+  res.json({ ok: true, liked, message: attachGlobalMessagePeople(message, db.users, req.user.id) });
+});
+
+app.post('/api/global/messages/:messageId/comments', requireAuth, async (req, res) => {
+  const text = cleanText(req.body.text || req.body.body, 400);
+  if (!text) return res.status(400).json({ error: 'Kommentar må ikke være tom.' });
+  if (rejectBlockedContent(res, text, 'Kommentar')) return;
+
+  const db = req.db;
+  db.globalMessages = Array.isArray(db.globalMessages) ? db.globalMessages : [];
+  const message = db.globalMessages.find((candidate) => candidate.id === req.params.messageId);
+  if (!message) return res.status(404).json({ error: 'Globalt opslag blev ikke fundet.' });
+
+  normalizeGlobalMessageInteractions(message);
+  const comment = {
+    id: id('gcomment'),
+    authorId: req.user.id,
+    ...encryptedTextObject('text', text),
+    createdAt: new Date().toISOString()
+  };
+
+  message.comments.push(comment);
+  if (message.comments.length > 200) {
+    message.comments = message.comments.slice(-200);
+  }
+
+  await writeDb(db);
+  emitGlobalMessageUpdated(db, message);
+  res.status(201).json({ comment: publicGlobalComment(comment, db.users), message: attachGlobalMessagePeople(message, db.users, req.user.id) });
+});
+
+app.delete('/api/global/messages/:messageId/comments/:commentId', requireAuth, async (req, res) => {
+  const db = req.db;
+  db.globalMessages = Array.isArray(db.globalMessages) ? db.globalMessages : [];
+  const message = db.globalMessages.find((candidate) => candidate.id === req.params.messageId);
+  if (!message) return res.status(404).json({ error: 'Globalt opslag blev ikke fundet.' });
+
+  normalizeGlobalMessageInteractions(message);
+  const index = message.comments.findIndex((candidate) => candidate.id === req.params.commentId);
+  if (index < 0) return res.status(404).json({ error: 'Kommentaren blev ikke fundet.' });
+
+  const comment = message.comments[index];
+  if (req.user.role !== 'admin' && comment.authorId !== req.user.id) {
+    return res.status(403).json({ error: 'Du kan kun slette dine egne kommentarer, medmindre du er admin.' });
+  }
+
+  const [deleted] = message.comments.splice(index, 1);
+  await writeDb(db);
+  emitGlobalMessageUpdated(db, message);
+  res.json({ ok: true, messageId: message.id, commentId: deleted.id });
 });
 
 app.delete('/api/global/messages/:messageId', requireAuth, async (req, res) => {

@@ -1,16 +1,18 @@
 # TSN V1.1 — dansk chat-only version
 
-TSN er nu gjort enkel og dansk: appen har kun **global chat** og **privat chat**.
+TSN er nu gjort enkel og dansk: appen har kun **globale opslag** og **privat chat**.
 
 ## Hvad er med?
 
 - Dansk brugerflade
 - Login og opret konto
-- Global chat for alle brugere
+- Globale opslag for alle brugere
+- Likes på globale opslag
+- Kommentarer på globale opslag
 - Privat 1-til-1 chat
 - Ulæste private beskeder
 - Admin-panel med bruger-moderation
-- Admin-visning til at gennemgå og slette globale/private beskeder
+- Admin-visning til at gennemgå og slette globale opslag, kommentarer og private beskeder
 - MongoDB Atlas support
 - Render deployment support
 - Cron/keep-awake support via `/api/ping`
@@ -81,4 +83,4 @@ Se også `CRON_KEEP_AWAKE.md`.
 
 ## Gamle features
 
-Feed/posts/rooms er deaktiveret i denne version. API-ruterne returnerer `410`, fordi TSN V1.1 kun understøtter global chat og privat chat.
+Det gamle feed/posts/rooms-system er stadig deaktiveret. De globale opslag bruger den lette global-chat-database, men har nu likes og kommentarer. De gamle API-ruter returnerer `410`, fordi TSN V1.1 kun understøtter globale opslag og privat chat.
