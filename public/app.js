@@ -245,39 +245,6 @@ registerForm.addEventListener('submit', async (event) => {
   }
 });
 
-const guestLoginBtn = $('#guestLoginBtn');
-if (guestLoginBtn) {
-  guestLoginBtn.addEventListener('click', async () => {
-    authError.textContent = '';
-    try {
-      guestLoginBtn.disabled = true;
-      const data = await api('/api/auth/guest', { method: 'POST' });
-      await finishAuth(data, 'Gæstekonto oprettet');
-    } catch (error) {
-      authError.textContent = error.message;
-    } finally {
-      guestLoginBtn.disabled = false;
-    }
-  });
-}
-
-document.querySelectorAll('[data-demo-login]').forEach((button) => {
-  button.addEventListener('click', async () => {
-    authError.textContent = '';
-    try {
-      button.disabled = true;
-      const data = await api('/api/auth/demo', {
-        method: 'POST',
-        body: JSON.stringify({ username: button.dataset.demoLogin })
-      });
-      await finishAuth(data, 'Logget ind som ' + button.textContent.trim());
-    } catch (error) {
-      authError.textContent = error.message;
-    } finally {
-      button.disabled = false;
-    }
-  });
-});
 
 $('#logoutBtn').addEventListener('click', () => forceLocalLogout('Logget ud'));
 
@@ -630,7 +597,7 @@ function renderUsers() {
   renderStats();
 
   if (!state.users.length) {
-    usersList.innerHTML = '<div class="empty">Der er ingen andre brugere endnu. Opret en anden konto i en anden browser for at teste privat chat.</div>';
+    usersList.innerHTML = '';
     return;
   }
 

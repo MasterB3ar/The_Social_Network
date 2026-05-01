@@ -5,7 +5,7 @@ TSN er nu gjort enkel og dansk: appen har kun **global chat** og **privat chat**
 ## Hvad er med?
 
 - Dansk brugerflade
-- Login, opret konto, gæstelogin og demo-login
+- Login og opret konto
 - Global chat for alle brugere
 - Privat 1-til-1 chat
 - Ulæste private beskeder

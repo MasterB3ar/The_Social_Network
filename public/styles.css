@@ -1057,37 +1057,6 @@ button.tiny {
   }
 }
 
-.easy-login {
-  display: grid;
-  gap: 12px;
-  margin-top: 8px;
-}
-
-.easy-login-heading {
-  display: grid;
-  grid-template-columns: 1fr auto 1fr;
-  align-items: center;
-  gap: 10px;
-  color: var(--muted);
-  font-size: 0.78rem;
-  text-transform: uppercase;
-  letter-spacing: 0.12em;
-}
-
-.easy-login-heading span {
-  height: 1px;
-  background: var(--border);
-}
-
-.demo-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 10px;
-}
-
-.wide {
-  width: 100%;
-}
 
 .auth-hint,
 .save-note {

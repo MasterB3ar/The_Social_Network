@@ -35,8 +35,6 @@ const MONGODB_DB_NAME = process.env.MONGODB_DB_NAME || 'tsn';
 const MONGODB_STATE_COLLECTION = process.env.MONGODB_STATE_COLLECTION || 'app_state';
 const MONGODB_STATE_ID = process.env.MONGODB_STATE_ID || 'main';
 const PUBLIC_DIR = path.join(__dirname, 'public');
-const DEMO_PASSWORD = process.env.TSN_DEMO_PASSWORD || 'TSN-Demo!9vK2p-Q8rM';
-const DEMO_PASSWORD_HASH = process.env.TSN_DEMO_PASSWORD_HASH || '';
 const ADMIN_SETUP_PASSWORD = process.env.TSN_ADMIN_SETUP_PASSWORD || 'TSN-Admin!ChangeMe-2026';
 const ADMIN_SETUP_PASSWORD_HASH = process.env.TSN_ADMIN_SETUP_PASSWORD_HASH || '';
 const ROOMS = Array.from({ length: 7 }, (_, index) => {
@@ -47,21 +45,6 @@ const ROOMS = Array.from({ length: 7 }, (_, index) => {
     tagline: 'Claim this room to rename it and optionally set a password.'
   };
 });
-const DEMO_USERS = [
-  {
-    name: 'Demo-bruger 1',
-    username: 'demo_one',
-    bio: 'Generisk demo-konto til test af TSN-chat.',
-    post: 'Dette er Demo-bruger 1. Åbn Personer for at teste realtime-chat.'
-  },
-  {
-    name: 'Demo-bruger 2',
-    username: 'demo_two',
-    bio: 'Anden generisk demo-konto til test af samtaler.',
-    post: 'Dette er Demo-bruger 2. TSN-demochatten er klar.'
-  }
-];
-
 const app = express();
 app.set('trust proxy', 1);
 
@@ -510,13 +493,28 @@ function findUserByLogin(users, loginValue) {
   return users.find((candidate) => userMatchesUsername(candidate, username));
 }
 
-function secretFingerprint(value) {
-  return crypto.createHash('sha256').update(String(value || '')).digest('hex');
+function isRemovedEasyLoginUser(user) {
+  const username = normalizeUsername(getUserField(user, 'username'));
+  return username === 'demo_one' || username === 'demo_two' || /^guest_\d{4}$/.test(username);
 }
 
-async function demoPasswordHash() {
-  if (DEMO_PASSWORD_HASH) return DEMO_PASSWORD_HASH;
-  return bcrypt.hash(DEMO_PASSWORD, 12);
+function removeEasyLoginUsersFromDatabase(db) {
+  const removedIds = new Set((db.users || []).filter(isRemovedEasyLoginUser).map((user) => user.id));
+  if (!removedIds.size) return { changed: false, usersRemoved: 0, globalMessagesRemoved: 0, privateMessagesRemoved: 0 };
+
+  const beforeGlobal = db.globalMessages.length;
+  const beforePrivate = db.messages.length;
+
+  db.users = db.users.filter((user) => !removedIds.has(user.id));
+  db.globalMessages = db.globalMessages.filter((message) => !removedIds.has(message.authorId));
+  db.messages = db.messages.filter((message) => !removedIds.has(message.from) && !removedIds.has(message.to));
+
+  return {
+    changed: true,
+    usersRemoved: removedIds.size,
+    globalMessagesRemoved: beforeGlobal - db.globalMessages.length,
+    privateMessagesRemoved: beforePrivate - db.messages.length
+  };
 }
 
 async function verifyAdminSetupPassword(password) {
@@ -530,9 +528,6 @@ if (process.env.NODE_ENV === 'production') {
     if (!process.env[name]) console.warn(`Security warning: ${name} is not set. Add it in your hosting environment before public launch.`);
   });
 
-  if (!process.env.TSN_DEMO_PASSWORD_HASH && !process.env.TSN_DEMO_PASSWORD) {
-    console.warn('Security warning: set TSN_DEMO_PASSWORD_HASH or TSN_DEMO_PASSWORD before public launch.');
-  }
 
   if (!process.env.TSN_ADMIN_SETUP_PASSWORD_HASH && !process.env.TSN_ADMIN_SETUP_PASSWORD) {
     console.warn('Security warning: set TSN_ADMIN_SETUP_PASSWORD_HASH before public launch so only you can claim admin rights.');
@@ -918,6 +913,12 @@ async function migrateDatabaseAtRest() {
     });
   });
 
+  const easyLoginCleanup = removeEasyLoginUsersFromDatabase(db);
+  if (easyLoginCleanup.changed) {
+    changed = true;
+    console.log(`Removed ${easyLoginCleanup.usersRemoved} guest/demo user(s), ${easyLoginCleanup.globalMessagesRemoved} global message(s), and ${easyLoginCleanup.privateMessagesRemoved} private message(s).`);
+  }
+
   db.posts.forEach((post) => {
     if (migrateRecordField(post, 'body')) changed = true;
     (post.comments || []).forEach((comment) => {
@@ -1113,65 +1114,6 @@ app.post('/api/auth/login', async (req, res) => {
 
   if (repairUserLookupHashIfNeeded(user, login)) await writeDb(db);
 
-  res.json({ token: signToken(user), user: publicUser(user) });
-});
-
-app.post('/api/auth/guest', async (req, res) => {
-  const db = readDb();
-  let username = '';
-  do {
-    username = `guest_${crypto.randomInt(1000, 9999)}`;
-  } while (db.users.some((user) => userMatchesUsername(user, username)));
-
-  const user = {
-    id: id('usr'),
-    ...encryptedUserIdentity({
-      name: `Gæst ${username.slice(-4)}`,
-      username,
-      bio: 'Midlertidig gæstekonto på TSN.'
-    }),
-    passwordHash: await bcrypt.hash(crypto.randomUUID(), 12),
-    sessionVersion: 0,
-    createdAt: new Date().toISOString()
-  };
-
-  db.users.push(user);
-  await writeDb(db);
-  res.status(201).json({ token: signToken(user), user: publicUser(user) });
-});
-
-app.post('/api/auth/demo', async (req, res) => {
-  const username = normalizeUsername(req.body.username);
-  const blueprint = DEMO_USERS.find((demo) => demo.username === username);
-  if (!blueprint) return res.status(404).json({ error: 'Demo-konto blev ikke fundet.' });
-
-  const db = readDb();
-  let user = db.users.find((candidate) => userMatchesUsername(candidate, blueprint.username));
-  const fingerprint = secretFingerprint(DEMO_PASSWORD_HASH || DEMO_PASSWORD);
-
-  if (user && isBanned(user)) return res.status(403).json({ error: 'Denne demo-konto er banned.' });
-
-  if (!user) {
-    user = {
-      id: id('usr'),
-      ...encryptedUserIdentity({
-        name: blueprint.name,
-        username: blueprint.username,
-        bio: blueprint.bio
-      }),
-      passwordHash: await demoPasswordHash(),
-      demoPasswordFingerprint: fingerprint,
-      sessionVersion: 0,
-      createdAt: new Date().toISOString()
-    };
-    db.users.push(user);
-  } else if (user.demoPasswordFingerprint !== fingerprint) {
-    user.passwordHash = await demoPasswordHash();
-    user.demoPasswordFingerprint = fingerprint;
-  }
-
-
-  await writeDb(db);
   res.json({ token: signToken(user), user: publicUser(user) });
 });
 
@@ -1507,7 +1449,6 @@ async function startServer() {
       console.log(`Backup directory: ${DB_BACKUP_DIR}`);
       const warning = storagePersistenceWarning();
       if (warning) console.warn(`Persistence warning: ${warning}`);
-      console.log('Easy login is available: Continue as Guest or Demo User 1/2.');
       console.log('TSN V1.1 mode: global chat + private chat only.');
       console.log('Admin rights can be claimed inside the app with TSN_ADMIN_SETUP_PASSWORD or TSN_ADMIN_SETUP_PASSWORD_HASH.');
 

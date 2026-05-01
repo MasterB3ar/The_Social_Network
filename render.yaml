@@ -30,8 +30,6 @@ services:
         generateValue: true
       - key: TSN_OLD_DATA_ENCRYPTION_KEYS
         sync: false
-      - key: TSN_DEMO_PASSWORD_HASH
-        sync: false
       - key: TSN_ADMIN_SETUP_PASSWORD
         sync: false
       - key: TSN_ADMIN_SETUP_PASSWORD_HASH
