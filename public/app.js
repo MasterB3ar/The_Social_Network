@@ -3,6 +3,7 @@ const state = {
   me: null,
   users: [],
   globalMessages: [],
+  activeGlobalMessageId: null,
   socket: null,
   activeChatUser: null,
   activeMessages: [],
@@ -457,9 +458,17 @@ $('#globalMessageForm').addEventListener('submit', async (event) => {
 
 if (globalMessagesList) {
   globalMessagesList.addEventListener('click', async (event) => {
+    const backButton = event.target.closest('[data-close-global-detail]');
     const likeButton = event.target.closest('[data-like-global-message]');
     const deleteMessageButton = event.target.closest('[data-delete-global-message]');
     const deleteCommentButton = event.target.closest('[data-delete-global-comment]');
+    const openButton = event.target.closest('[data-open-global-message]');
+
+    if (backButton) {
+      state.activeGlobalMessageId = null;
+      renderGlobalMessages({ forceBottom: false });
+      return;
+    }
 
     try {
       if (likeButton) {
@@ -490,14 +499,35 @@ if (globalMessagesList) {
         const messageId = deleteMessageButton.dataset.deleteGlobalMessage;
         await api(`/api/global/messages/${messageId}`, { method: 'DELETE' });
         state.globalMessages = state.globalMessages.filter((message) => message.id !== messageId);
+        if (state.activeGlobalMessageId === messageId) state.activeGlobalMessageId = null;
         renderGlobalMessages();
         showToast('Globalt opslag slettet');
+        return;
+      }
+
+      if (openButton) {
+        const messageId = openButton.dataset.openGlobalMessage;
+        if (messageId) {
+          state.activeGlobalMessageId = messageId;
+          renderGlobalMessages({ forceBottom: false });
+        }
       }
     } catch (error) {
       showToast(error.message);
     }
   });
 
+  globalMessagesList.addEventListener('keydown', (event) => {
+    if (event.key !== 'Enter' && event.key !== ' ') return;
+    const openButton = event.target.closest('[data-open-global-message]');
+    if (!openButton) return;
+    event.preventDefault();
+    const messageId = openButton.dataset.openGlobalMessage;
+    if (messageId) {
+      state.activeGlobalMessageId = messageId;
+      renderGlobalMessages({ forceBottom: false });
+    }
+  });
   globalMessagesList.addEventListener('submit', async (event) => {
     const form = event.target.closest('[data-global-comment-form]');
     if (!form) return;
@@ -618,75 +648,118 @@ function renderMe() {
   renderAdminTools();
 }
 
+function getGlobalMessageById(messageId) {
+  return state.globalMessages.find((message) => message.id === messageId) || null;
+}
+
+function renderGlobalPostCard(message, { detail = false } = {}) {
+  const mine = message.authorId === state.me?.id;
+  const authorName = message.author?.name || 'Ukendt';
+  const likesCount = Number(message.likesCount) || 0;
+  const comments = Array.isArray(message.comments) ? message.comments : [];
+  const liked = Boolean(message.likedByMe);
+  const likeLabel = liked ? 'Synes godt om ✓' : 'Synes godt om';
+  const likeCountLabel = likesCount === 1 ? '1 like' : `${likesCount} likes`;
+  const commentCountLabel = comments.length === 1 ? '1 kommentar' : `${comments.length} kommentarer`;
+  const clickableAttrs = detail ? '' : ` data-open-global-message="${escapeHtml(message.id)}" role="button" tabindex="0"`;
+  const detailClass = detail ? 'global-message-detail' : 'global-message-preview';
+
+  return `
+    <article class="global-message ${detailClass} ${mine ? 'mine' : ''}"${clickableAttrs}>
+      <div class="post-row-top">
+        <div class="post-person">
+          <div class="avatar">${escapeHtml(initials(authorName))}</div>
+          <div>
+            <strong>${escapeHtml(authorName)}</strong>
+            <span>@${escapeHtml(message.author?.username || 'ukendt')} · ${escapeHtml(formatTime(message.createdAt))}</span>
+          </div>
+        </div>
+        ${canDeleteMessage(message.authorId) ? `<button class="admin-delete" type="button" data-delete-global-message="${escapeHtml(message.id)}">Slet</button>` : ''}
+      </div>
+      <p class="global-post-text">${escapeHtml(message.text)}</p>
+      <div class="global-post-actions">
+        <button class="like-button ${liked ? 'liked' : ''}" type="button" data-like-global-message="${escapeHtml(message.id)}">${escapeHtml(likeLabel)}</button>
+        <span>${escapeHtml(likeCountLabel)}</span>
+        <span>${escapeHtml(commentCountLabel)}</span>
+        ${detail ? '' : `<button class="secondary tiny open-comments-button" type="button" data-open-global-message="${escapeHtml(message.id)}">Åbn kommentarer</button>`}
+      </div>
+    </article>
+  `;
+}
+
+function renderGlobalComments(message) {
+  const comments = Array.isArray(message.comments) ? message.comments : [];
+  const commentsHtml = comments.length ? comments.map((comment) => {
+    const commentAuthorName = comment.author?.name || 'Ukendt';
+    return `
+      <article class="global-comment">
+        <div class="global-comment-avatar">${escapeHtml(initials(commentAuthorName))}</div>
+        <div class="global-comment-body">
+          <div class="global-comment-meta">
+            <strong>${escapeHtml(commentAuthorName)}</strong>
+            <span>@${escapeHtml(comment.author?.username || 'ukendt')} · ${escapeHtml(formatTime(comment.createdAt))}</span>
+            ${canDeleteMessage(comment.authorId) ? `<button class="comment-delete" type="button" data-message-id="${escapeHtml(message.id)}" data-delete-global-comment="${escapeHtml(comment.id)}">Slet</button>` : ''}
+          </div>
+          <p>${escapeHtml(comment.text)}</p>
+        </div>
+      </article>
+    `;
+  }).join('') : '<div class="global-comments-empty">Ingen kommentarer endnu.</div>';
+
+  return `
+    <div class="global-comments detail-comments">
+      <div class="detail-comments-head">
+        <strong>Kommentarer</strong>
+        <span>${comments.length === 1 ? '1 kommentar' : `${comments.length} kommentarer`}</span>
+      </div>
+      ${commentsHtml}
+      <form class="global-comment-form" data-global-comment-form="${escapeHtml(message.id)}">
+        <input name="comment" maxlength="400" placeholder="Skriv en kommentar..." autocomplete="off" />
+        <button class="secondary tiny" type="submit">Kommentér</button>
+      </form>
+    </div>
+  `;
+}
+
+function renderGlobalDetail(message) {
+  return `
+    <div class="global-detail-view">
+      <button class="ghost detail-back-button" type="button" data-close-global-detail>← Tilbage til globale opslag</button>
+      ${renderGlobalPostCard(message, { detail: true })}
+      ${renderGlobalComments(message)}
+    </div>
+  `;
+}
+
 function renderGlobalMessages({ forceBottom = false } = {}) {
   renderStats();
   if (!globalMessagesList) return;
   const scrollSnapshot = getScrollSnapshot(globalMessagesList);
+  const globalMessageForm = $('#globalMessageForm');
 
   if (!state.globalMessages.length) {
+    state.activeGlobalMessageId = null;
     globalMessagesList.innerHTML = '<div class="empty">Der er ingen globale opslag endnu. Skriv det første.</div>';
+    globalMessageForm?.classList.remove('hidden');
     restoreMessageScroll(globalMessagesList, scrollSnapshot, { forceBottom });
     return;
   }
 
-  globalMessagesList.innerHTML = state.globalMessages.map((message) => {
-    const mine = message.authorId === state.me?.id;
-    const authorName = message.author?.name || 'Ukendt';
-    const likesCount = Number(message.likesCount) || 0;
-    const comments = Array.isArray(message.comments) ? message.comments : [];
-    const liked = Boolean(message.likedByMe);
-    const likeLabel = liked ? 'Synes godt om ✓' : 'Synes godt om';
-    const likeCountLabel = likesCount === 1 ? '1 like' : `${likesCount} likes`;
-    const commentCountLabel = comments.length === 1 ? '1 kommentar' : `${comments.length} kommentarer`;
-    const commentsHtml = comments.length ? comments.map((comment) => {
-      const commentAuthorName = comment.author?.name || 'Ukendt';
-      return `
-        <article class="global-comment">
-          <div class="global-comment-avatar">${escapeHtml(initials(commentAuthorName))}</div>
-          <div class="global-comment-body">
-            <div class="global-comment-meta">
-              <strong>${escapeHtml(commentAuthorName)}</strong>
-              <span>@${escapeHtml(comment.author?.username || 'ukendt')} · ${escapeHtml(formatTime(comment.createdAt))}</span>
-              ${canDeleteMessage(comment.authorId) ? `<button class="comment-delete" type="button" data-message-id="${escapeHtml(message.id)}" data-delete-global-comment="${escapeHtml(comment.id)}">Slet</button>` : ''}
-            </div>
-            <p>${escapeHtml(comment.text)}</p>
-          </div>
-        </article>
-      `;
-    }).join('') : '<div class="global-comments-empty">Ingen kommentarer endnu.</div>';
+  if (state.activeGlobalMessageId) {
+    const activeMessage = getGlobalMessageById(state.activeGlobalMessageId);
+    if (activeMessage) {
+      globalMessageForm?.classList.add('hidden');
+      globalMessagesList.innerHTML = renderGlobalDetail(activeMessage);
+      restoreMessageScroll(globalMessagesList, scrollSnapshot, { forceBottom: false });
+      return;
+    }
+    state.activeGlobalMessageId = null;
+  }
 
-    return `
-      <article class="global-message ${mine ? 'mine' : ''}">
-        <div class="post-row-top">
-          <div class="post-person">
-            <div class="avatar">${escapeHtml(initials(authorName))}</div>
-            <div>
-              <strong>${escapeHtml(authorName)}</strong>
-              <span>@${escapeHtml(message.author?.username || 'ukendt')} · ${escapeHtml(formatTime(message.createdAt))}</span>
-            </div>
-          </div>
-          ${canDeleteMessage(message.authorId) ? `<button class="admin-delete" type="button" data-delete-global-message="${escapeHtml(message.id)}">Slet</button>` : ''}
-        </div>
-        <p class="global-post-text">${escapeHtml(message.text)}</p>
-        <div class="global-post-actions">
-          <button class="like-button ${liked ? 'liked' : ''}" type="button" data-like-global-message="${escapeHtml(message.id)}">${escapeHtml(likeLabel)}</button>
-          <span>${escapeHtml(likeCountLabel)}</span>
-          <span>${escapeHtml(commentCountLabel)}</span>
-        </div>
-        <div class="global-comments">
-          ${commentsHtml}
-          <form class="global-comment-form" data-global-comment-form="${escapeHtml(message.id)}">
-            <input name="comment" maxlength="400" placeholder="Skriv en kommentar..." autocomplete="off" />
-            <button class="secondary tiny" type="submit">Kommentér</button>
-          </form>
-        </div>
-      </article>
-    `;
-  }).join('');
-
+  globalMessageForm?.classList.remove('hidden');
+  globalMessagesList.innerHTML = state.globalMessages.map((message) => renderGlobalPostCard(message)).join('');
   restoreMessageScroll(globalMessagesList, scrollSnapshot, { forceBottom });
 }
-
 function renderUsers() {
   renderStats();
 
@@ -988,6 +1061,7 @@ function connectSocket() {
   state.socket.on('global-message-deleted', ({ messageId }) => {
     const before = state.globalMessages.length;
     state.globalMessages = state.globalMessages.filter((message) => message.id !== messageId);
+    if (state.activeGlobalMessageId === messageId) state.activeGlobalMessageId = null;
     if (state.globalMessages.length !== before) renderGlobalMessages();
     if (state.me?.isAdmin && state.adminMessages.length) loadAdminMessages().catch(() => {});
   });

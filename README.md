@@ -8,7 +8,8 @@ TSN er nu gjort enkel og dansk: appen har kun **globale opslag** og **privat cha
 - Login og opret konto
 - Globale opslag for alle brugere
 - Likes på globale opslag
-- Kommentarer på globale opslag
+- Klik-ind visning for hvert globalt opslag
+- Kommentarer inde på det enkelte globale opslag
 - Privat 1-til-1 chat
 - Ulæste private beskeder
 - Admin-panel med bruger-moderation
@@ -83,4 +84,4 @@ Se også `CRON_KEEP_AWAKE.md`.
 
 ## Gamle features
 
-Det gamle feed/posts/rooms-system er stadig deaktiveret. De globale opslag bruger den lette global-chat-database, men har nu likes og kommentarer. De gamle API-ruter returnerer `410`, fordi TSN V1.1 kun understøtter globale opslag og privat chat.
+Det gamle feed/posts/rooms-system er stadig deaktiveret. De globale opslag bruger den lette global-chat-database, men har nu likes og en separat klik-ind kommentarvisning. De gamle API-ruter returnerer `410`, fordi TSN V1.1 kun understøtter globale opslag og privat chat.
