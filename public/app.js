@@ -130,6 +130,17 @@ function restoreMessageScroll(element, snapshot, { forceBottom = false } = {}) {
   requestAnimationFrame(apply);
 }
 
+function scrollElementToTop(element) {
+  if (!element) return;
+
+  const apply = () => {
+    element.scrollTop = 0;
+  };
+
+  apply();
+  requestAnimationFrame(apply);
+}
+
 function showToast(message) {
   if (!toast) return;
   toast.textContent = message;
@@ -466,7 +477,7 @@ if (globalMessagesList) {
 
     if (backButton) {
       state.activeGlobalMessageId = null;
-      renderGlobalMessages({ forceBottom: false });
+      renderGlobalMessages({ forceTop: true });
       return;
     }
 
@@ -509,7 +520,7 @@ if (globalMessagesList) {
         const messageId = openButton.dataset.openGlobalMessage;
         if (messageId) {
           state.activeGlobalMessageId = messageId;
-          renderGlobalMessages({ forceBottom: false });
+          renderGlobalMessages({ forceTop: true });
         }
       }
     } catch (error) {
@@ -525,7 +536,7 @@ if (globalMessagesList) {
     const messageId = openButton.dataset.openGlobalMessage;
     if (messageId) {
       state.activeGlobalMessageId = messageId;
-      renderGlobalMessages({ forceBottom: false });
+      renderGlobalMessages({ forceTop: true });
     }
   });
   globalMessagesList.addEventListener('submit', async (event) => {
@@ -731,7 +742,7 @@ function renderGlobalDetail(message) {
   `;
 }
 
-function renderGlobalMessages({ forceBottom = false } = {}) {
+function renderGlobalMessages({ forceBottom = false, forceTop = false } = {}) {
   renderStats();
   if (!globalMessagesList) return;
   const scrollSnapshot = getScrollSnapshot(globalMessagesList);
@@ -750,7 +761,11 @@ function renderGlobalMessages({ forceBottom = false } = {}) {
     if (activeMessage) {
       globalMessageForm?.classList.add('hidden');
       globalMessagesList.innerHTML = renderGlobalDetail(activeMessage);
-      restoreMessageScroll(globalMessagesList, scrollSnapshot, { forceBottom: false });
+      if (forceTop) {
+        scrollElementToTop(globalMessagesList);
+      } else {
+        restoreMessageScroll(globalMessagesList, scrollSnapshot, { forceBottom: false });
+      }
       return;
     }
     state.activeGlobalMessageId = null;
