@@ -1,4 +1,4 @@
-# TSN V1.0 keep-awake ping
+# TSN V1.1 keep-awake ping
 
 TSN includes this endpoint:
 
@@ -6,43 +6,18 @@ TSN includes this endpoint:
 /api/ping
 ```
 
-Use this full URL:
+Use an external cron/monitor service to request it about every 10 minutes:
 
 ```text
 https://your-tsn-site.onrender.com/api/ping
 ```
 
-Set an external monitor/cron service to request it every 10 minutes.
+MongoDB keeps the data safe. The ping only helps reduce Render Free sleeping.
 
-## Free external monitor option
+You can also run the helper manually:
 
-Use a free uptime monitor such as cron-job.org or UptimeRobot:
-
-```text
-URL: https://your-tsn-site.onrender.com/api/ping
-Method: GET
-Interval: 10 minutes
+```bash
+TSN_PING_URL=https://your-tsn-site.onrender.com/api/ping npm run ping-self
 ```
 
-## Render Cron Job option
-
-This project includes:
-
-```text
-render.cron.yaml
-scripts/ping-self.js
-```
-
-But Render Cron Jobs are not free. Only use this if you accept the extra Render Cron Job cost.
-
-## Important warning
-
-A keep-awake ping is a workaround. It can reduce Render Free cold starts, but it should not be your only reliability plan.
-
-The real fix for data loss is MongoDB:
-
-```env
-MONGODB_URI=...
-```
-
-With MongoDB enabled, a Render restart/redeploy should not delete accounts, messages, rooms, passwords, bans, or posts.
+With MongoDB enabled, a Render restart/redeploy should not delete accounts, global messages, private messages, bans, or admin settings.

@@ -2,16 +2,11 @@ const state = {
   token: localStorage.getItem('tsn_token'),
   me: null,
   users: [],
-  posts: [],
+  globalMessages: [],
   socket: null,
   activeChatUser: null,
   activeMessages: [],
-  rooms: [],
-  activeRoom: null,
-  roomMessages: [],
   chatDrafts: {},
-  commentDrafts: {},
-  roomSettingDrafts: {},
   adminUsers: [],
   adminMessages: []
 };
@@ -22,14 +17,11 @@ const appScreen = $('#appScreen');
 const loginForm = $('#loginForm');
 const registerForm = $('#registerForm');
 const authError = $('#authError');
-const postsList = $('#postsList');
 const usersList = $('#usersList');
 const chatPanel = $('#chatPanel');
 const messagesList = $('#messagesList');
+const globalMessagesList = $('#globalMessagesList');
 const toast = $('#toast');
-const roomsList = $('#roomsList');
-const roomPanel = $('#roomPanel');
-const roomMessagesList = $('#roomMessagesList');
 const adminUsersList = $('#adminUsersList');
 const adminMessageViewer = $('#adminMessageViewer');
 const adminMessagesList = $('#adminMessagesList');
@@ -63,7 +55,7 @@ function formatTime(dateString) {
   return date.toLocaleDateString();
 }
 
-function canDeleteOwnOrAdmin(authorId) {
+function canDeleteMessage(authorId) {
   return Boolean(state.me && (state.me.isAdmin || authorId === state.me.id));
 }
 
@@ -86,7 +78,6 @@ function incrementUnreadForUser(userId) {
   user.unreadCount = Math.max(0, Number(user.unreadCount) || 0) + 1;
   return true;
 }
-
 
 function getScrollSnapshot(element) {
   if (!element) return null;
@@ -117,23 +108,29 @@ function restoreMessageScroll(element, snapshot, { forceBottom = false } = {}) {
   requestAnimationFrame(apply);
 }
 
-async function markConversationRead(userId) {
-  if (!userId) return;
-  setUnreadForUser(userId, 0);
-  renderUsers();
-
-  try {
-    await api(`/api/messages/${userId}/read`, { method: 'POST' });
-  } catch {
-    // A later users refresh will repair the badge if this request fails.
-  }
-}
-
 function showToast(message) {
+  if (!toast) return;
   toast.textContent = message;
   toast.classList.remove('hidden');
   clearTimeout(showToast.timeout);
   showToast.timeout = setTimeout(() => toast.classList.add('hidden'), 2400);
+}
+
+function setToken(token) {
+  state.token = token;
+  if (token) localStorage.setItem('tsn_token', token);
+  else localStorage.removeItem('tsn_token');
+}
+
+function showAuth() {
+  authScreen.classList.remove('hidden');
+  appScreen.classList.add('hidden');
+  chatPanel.classList.add('hidden');
+}
+
+function showApp() {
+  authScreen.classList.add('hidden');
+  appScreen.classList.remove('hidden');
 }
 
 function forceLocalLogout(message = 'You have been logged out.') {
@@ -144,12 +141,9 @@ function forceLocalLogout(message = 'You have been logged out.') {
   setToken(null);
   state.me = null;
   state.users = [];
-  state.posts = [];
+  state.globalMessages = [];
   state.activeChatUser = null;
   state.activeMessages = [];
-  state.rooms = [];
-  state.activeRoom = null;
-  state.roomMessages = [];
   state.adminUsers = [];
   state.adminMessages = [];
   renderAdminMessageViewer();
@@ -175,35 +169,19 @@ async function api(path, options = {}) {
   }
 
   if (!response.ok) {
-    if (data.logout) {
-      forceLocalLogout(data.error || 'Your session ended.');
-    }
-    throw new Error(data.error || 'Something went wrong.');
+    if (data.logout) forceLocalLogout(data.error || 'Your session ended.');
+    const error = new Error(data.error || 'Something went wrong.');
+    Object.assign(error, data);
+    error.status = response.status;
+    throw error;
   }
 
   return data;
 }
 
-function setToken(token) {
-  state.token = token;
-  if (token) localStorage.setItem('tsn_token', token);
-  else localStorage.removeItem('tsn_token');
-}
-
-function showAuth() {
-  authScreen.classList.remove('hidden');
-  appScreen.classList.add('hidden');
-  chatPanel.classList.add('hidden');
-}
-
-function showApp() {
-  authScreen.classList.add('hidden');
-  appScreen.classList.remove('hidden');
-}
-
 async function finishAuth(data, message = 'Logged in') {
   setToken(data.token);
-  await initApp();
+  await initApp({ fromLogin: true });
   showToast(message);
 }
 
@@ -258,7 +236,7 @@ registerForm.addEventListener('submit', async (event) => {
   }
 });
 
-const guestLoginBtn = document.querySelector('#guestLoginBtn');
+const guestLoginBtn = $('#guestLoginBtn');
 if (guestLoginBtn) {
   guestLoginBtn.addEventListener('click', async () => {
     authError.textContent = '';
@@ -292,9 +270,7 @@ document.querySelectorAll('[data-demo-login]').forEach((button) => {
   });
 });
 
-$('#logoutBtn').addEventListener('click', () => {
-  forceLocalLogout('Logged out');
-});
+$('#logoutBtn').addEventListener('click', () => forceLocalLogout('Logged out'));
 
 $('#refreshBtn').addEventListener('click', async () => {
   await loadEverything();
@@ -313,6 +289,8 @@ $('#profileForm').addEventListener('submit', async (event) => {
     });
     state.me = data.user;
     renderMe();
+    renderGlobalMessages();
+    renderChat();
     showToast('Profile saved');
   } catch (error) {
     showToast(error.message);
@@ -338,8 +316,7 @@ if (adminClaimForm) {
       renderMe();
       await loadAdminUsers();
       await loadAdminMessages();
-      renderPosts();
-      renderRoomPanel();
+      renderGlobalMessages();
       renderChat();
       showToast('Admin rights enabled');
     } catch (error) {
@@ -347,7 +324,6 @@ if (adminClaimForm) {
     }
   });
 }
-
 
 const refreshAdminUsersBtn = $('#refreshAdminUsersBtn');
 if (refreshAdminUsersBtn) {
@@ -373,7 +349,6 @@ if (createBackupBtn) {
     }
   });
 }
-
 
 const loadAdminMessagesBtn = $('#loadAdminMessagesBtn');
 if (loadAdminMessagesBtn) {
@@ -408,23 +383,15 @@ if (adminMessagesList) {
     try {
       await deleteAdminMessageItem(item);
       state.adminMessages = state.adminMessages.filter((candidate) => candidate.id !== item.id);
+      if (item.kind === 'global-message') {
+        state.globalMessages = state.globalMessages.filter((message) => message.id !== item.messageId);
+        renderGlobalMessages();
+      }
+      if (item.kind === 'direct-message') {
+        state.activeMessages = state.activeMessages.filter((message) => message.id !== item.messageId);
+        renderChat();
+      }
       renderAdminMessageViewer();
-      await Promise.all([loadPosts(), loadRooms()]);
-      if (state.activeRoom?.id) {
-        try {
-          const data = await api(`/api/rooms/${state.activeRoom.id}/messages`);
-          state.activeRoom = data.room;
-          state.roomMessages = data.messages;
-          renderRoomPanel();
-        } catch {}
-      }
-      if (state.activeChatUser) {
-        try {
-          const data = await api(`/api/messages/${state.activeChatUser.id}`);
-          state.activeMessages = data.messages;
-          renderChat();
-        } catch {}
-      }
       showToast('Message deleted');
     } catch (error) {
       showToast(error.message);
@@ -481,101 +448,44 @@ if (adminUsersList) {
   });
 }
 
-$('#postInput').addEventListener('input', () => {
-  $('#postCounter').textContent = `${$('#postInput').value.length}/600`;
-});
-
-$('#postBtn').addEventListener('click', async () => {
-  const body = $('#postInput').value.trim();
-  if (!body) return;
-
-  try {
-    const data = await api('/api/posts', {
-      method: 'POST',
-      body: JSON.stringify({ body })
-    });
-    $('#postInput').value = '';
-    $('#postCounter').textContent = '0/600';
-    upsertPost(data.post);
-    renderPosts();
-  } catch (error) {
-    showToast(error.message);
-  }
-});
-
-postsList.addEventListener('click', async (event) => {
-  const deletePostButton = event.target.closest('[data-delete-post]');
-  if (deletePostButton) {
-    if (!confirm('Delete this post?')) return;
-    try {
-      const postId = deletePostButton.dataset.deletePost;
-      await api(`/api/posts/${postId}`, { method: 'DELETE' });
-      state.posts = state.posts.filter((post) => post.id !== postId);
-      renderPosts();
-      showToast('Post deleted');
-    } catch (error) {
-      showToast(error.message);
-    }
-    return;
-  }
-
-  const deleteCommentButton = event.target.closest('[data-delete-comment]');
-  if (deleteCommentButton) {
-    if (!confirm('Delete this comment?')) return;
-    try {
-      const postId = deleteCommentButton.dataset.postId;
-      const commentId = deleteCommentButton.dataset.deleteComment;
-      const data = await api(`/api/posts/${postId}/comments/${commentId}`, { method: 'DELETE' });
-      upsertPost(data.post);
-      renderPosts();
-      showToast('Comment deleted');
-    } catch (error) {
-      showToast(error.message);
-    }
-    return;
-  }
-
-  const likeButton = event.target.closest('[data-like]');
-  if (!likeButton) return;
-
-  try {
-    const data = await api(`/api/posts/${likeButton.dataset.like}/like`, { method: 'POST' });
-    upsertPost(data.post);
-    renderPosts();
-  } catch (error) {
-    showToast(error.message);
-  }
-});
-
-postsList.addEventListener('input', (event) => {
-  const form = event.target.closest('[data-comment-form]');
-  if (!form) return;
-  state.commentDrafts[form.dataset.commentForm] = event.target.value;
-});
-
-postsList.addEventListener('submit', async (event) => {
-  const form = event.target.closest('[data-comment-form]');
-  if (!form) return;
+$('#globalMessageForm').addEventListener('submit', async (event) => {
   event.preventDefault();
-
-  const input = form.querySelector('input');
-  const body = input.value.trim();
-  if (!body) return;
+  const input = $('#globalMessageInput');
+  const text = input.value.trim();
+  if (!text) return;
 
   try {
-    const postId = form.dataset.commentForm;
-    const data = await api(`/api/posts/${postId}/comments`, {
+    const data = await api('/api/global/messages', {
       method: 'POST',
-      body: JSON.stringify({ body })
+      body: JSON.stringify({ text })
     });
     input.value = '';
-    state.commentDrafts[postId] = '';
-    upsertPost(data.post);
-    renderPosts();
+    if (!state.globalMessages.some((message) => message.id === data.message.id)) {
+      state.globalMessages.push(data.message);
+    }
+    renderGlobalMessages({ forceBottom: true });
   } catch (error) {
     showToast(error.message);
   }
 });
+
+if (globalMessagesList) {
+  globalMessagesList.addEventListener('click', async (event) => {
+    const button = event.target.closest('[data-delete-global-message]');
+    if (!button) return;
+    if (!confirm('Delete this global message for everyone?')) return;
+
+    try {
+      const messageId = button.dataset.deleteGlobalMessage;
+      await api(`/api/global/messages/${messageId}`, { method: 'DELETE' });
+      state.globalMessages = state.globalMessages.filter((message) => message.id !== messageId);
+      renderGlobalMessages();
+      showToast('Global message deleted');
+    } catch (error) {
+      showToast(error.message);
+    }
+  });
+}
 
 let userSearchTimer = null;
 $('#userSearch').addEventListener('input', () => {
@@ -601,9 +511,7 @@ $('#messageInput').addEventListener('input', () => {
   if (!state.activeChatUser) return;
   state.chatDrafts[state.activeChatUser.id] = $('#messageInput').value;
 
-  if (state.socket) {
-    state.socket.emit('typing', { to: state.activeChatUser.id });
-  }
+  if (state.socket) state.socket.emit('typing', { to: state.activeChatUser.id });
 });
 
 $('#messageForm').addEventListener('submit', (event) => {
@@ -615,196 +523,22 @@ $('#messageForm').addEventListener('submit', (event) => {
   const to = state.activeChatUser.id;
   state.chatDrafts[to] = input.value;
 
-  state.socket.emit('private-message', {
-    to,
-    text
-  }, (response) => {
+  state.socket.emit('private-message', { to, text }, (response) => {
     if (!response?.ok) {
       showToast(response?.error || 'Could not send message.');
       return;
     }
 
-    if (state.activeChatUser?.id === to) {
-      input.value = '';
-    }
+    if (state.activeChatUser?.id === to) input.value = '';
     state.chatDrafts[to] = '';
   });
 });
-
-if (roomsList) {
-  roomsList.addEventListener('click', async (event) => {
-    const openButton = event.target.closest('[data-room-open]');
-    const claimButton = event.target.closest('[data-room-claim]');
-    const releaseButton = event.target.closest('[data-room-release]');
-
-    if (openButton) {
-      openRoom(Number(openButton.dataset.roomOpen));
-      return;
-    }
-
-    if (claimButton) {
-      const roomId = Number(claimButton.dataset.roomClaim);
-      try {
-        const data = await api(`/api/rooms/${roomId}/claim`, { method: 'POST' });
-        state.rooms = data.rooms;
-        state.activeRoom = data.room;
-        renderRooms();
-        renderRoomPanel();
-        await openRoom(roomId);
-        showToast(`Room ${roomId} claimed`);
-      } catch (error) {
-        showToast(error.message);
-      }
-      return;
-    }
-
-    if (releaseButton) {
-      const roomId = Number(releaseButton.dataset.roomRelease);
-      if (!confirm('Release this room? This resets its custom name, removes its password, and permanently deletes all messages in that room.')) return;
-      try {
-        const data = await api(`/api/rooms/${roomId}/release`, { method: 'POST' });
-        state.rooms = data.rooms;
-        if (state.activeRoom?.id === roomId) {
-          state.activeRoom = data.room;
-          state.roomMessages = [];
-        }
-        renderRooms();
-        renderRoomPanel();
-        showToast(`Room ${roomId} released${data.deletedCount ? ` · ${data.deletedCount} messages deleted` : ''}`);
-      } catch (error) {
-        showToast(error.message);
-      }
-    }
-  });
-}
-
-const closeRoomBtn = $('#closeRoomBtn');
-if (closeRoomBtn) {
-  closeRoomBtn.addEventListener('click', () => {
-    state.activeRoom = null;
-    state.roomMessages = [];
-    roomPanel.classList.add('hidden');
-    renderRooms();
-  });
-}
-
-const roomSettingsForm = $('#roomSettingsForm');
-if (roomSettingsForm) {
-  roomSettingsForm.addEventListener('submit', async (event) => {
-    event.preventDefault();
-    if (!state.activeRoom?.canManage) return;
-
-    const nameInput = $('#roomNameInput');
-    const passwordInput = $('#roomPasswordInput');
-    const body = { name: nameInput.value.trim() };
-    if (passwordInput.value.trim()) body.password = passwordInput.value.trim();
-
-    try {
-      const data = await api(`/api/rooms/${state.activeRoom.id}/settings`, {
-        method: 'PATCH',
-        body: JSON.stringify(body)
-      });
-      state.rooms = data.rooms;
-      state.activeRoom = data.room;
-      passwordInput.value = '';
-      renderRooms();
-      renderRoomPanel();
-      showToast('Room settings saved');
-    } catch (error) {
-      showToast(error.message);
-    }
-  });
-}
-
-const clearRoomPasswordBtn = $('#clearRoomPasswordBtn');
-if (clearRoomPasswordBtn) {
-  clearRoomPasswordBtn.addEventListener('click', async () => {
-    if (!state.activeRoom?.canManage) return;
-    if (!confirm('Remove this room password? Everyone will be able to enter the room.')) return;
-
-    try {
-      const data = await api(`/api/rooms/${state.activeRoom.id}/settings`, {
-        method: 'PATCH',
-        body: JSON.stringify({ clearPassword: true })
-      });
-      state.rooms = data.rooms;
-      state.activeRoom = data.room;
-      state.roomMessages = [];
-      renderRooms();
-      renderRoomPanel();
-      showToast('Room password removed');
-      await openRoom(state.activeRoom.id);
-    } catch (error) {
-      showToast(error.message);
-    }
-  });
-}
-
-const unlockRoomBtn = $('#unlockRoomBtn');
-if (unlockRoomBtn) {
-  unlockRoomBtn.addEventListener('click', async () => {
-    if (!state.activeRoom) return;
-    await unlockRoom(state.activeRoom);
-  });
-}
-
-const roomMessageInput = $('#roomMessageInput');
-if (roomMessageInput) {
-  roomMessageInput.addEventListener('input', () => {
-    $('#roomMessageCounter').textContent = `${roomMessageInput.value.length}/600`;
-  });
-}
-
-const roomMessageBtn = $('#roomMessageBtn');
-if (roomMessageBtn) {
-  roomMessageBtn.addEventListener('click', async () => {
-    if (!state.activeRoom) return;
-    const input = $('#roomMessageInput');
-    const text = input.value.trim();
-    if (!text) return;
-
-    try {
-      const data = await api(`/api/rooms/${state.activeRoom.id}/messages`, {
-        method: 'POST',
-        body: JSON.stringify({ text })
-      });
-      input.value = '';
-      $('#roomMessageCounter').textContent = '0/600';
-
-      if (!state.roomMessages.some((message) => message.id === data.message.id)) {
-        state.roomMessages.push(data.message);
-      }
-      renderRoomPanel({ forceBottom: true });
-      showToast(`Sent to Room ${state.activeRoom.id}`);
-    } catch (error) {
-      showToast(error.message);
-    }
-  });
-}
-
-if (roomMessagesList) {
-  roomMessagesList.addEventListener('click', async (event) => {
-    const button = event.target.closest('[data-delete-room-message]');
-    if (!button || !state.activeRoom) return;
-    if (!confirm('Delete this room message for everyone?')) return;
-
-    try {
-      const messageId = button.dataset.deleteRoomMessage;
-      await api(`/api/rooms/${state.activeRoom.id}/messages/${messageId}`, { method: 'DELETE' });
-      state.roomMessages = state.roomMessages.filter((message) => message.id !== messageId);
-      renderRoomPanel();
-      showToast('Room message deleted');
-    } catch (error) {
-      showToast(error.message);
-    }
-  });
-}
 
 if (messagesList) {
   messagesList.addEventListener('click', async (event) => {
     const button = event.target.closest('[data-delete-message]');
     if (!button) return;
-    if (!confirm('Delete this chat message for everyone?')) return;
+    if (!confirm('Delete this private message for everyone?')) return;
 
     try {
       const messageId = button.dataset.deleteMessage;
@@ -818,327 +552,25 @@ if (messagesList) {
   });
 }
 
-
-function renderRooms() {
-  if (!roomsList) return;
-
-  const claimedCount = state.rooms.filter((room) => room.claimed).length;
-  const lockedCount = state.rooms.filter((room) => room.hasPassword).length;
-  $('#roomProgress').textContent = `${claimedCount}/7 claimed · ${lockedCount} locked`;
-
-  if (!state.rooms.length) {
-    roomsList.innerHTML = '<div class="empty">Rooms are loading...</div>';
-    return;
-  }
-
-  roomsList.innerHTML = state.rooms.map((room) => {
-    const isActive = state.activeRoom?.id === room.id;
-    const ownerLabel = room.owner ? `Owner: ${escapeHtml(room.owner.name)}` : 'Unclaimed';
-    const canRelease = room.canManage;
-    const lockLabel = room.hasPassword
-      ? (room.canAccess ? 'Unlocked' : 'Locked')
-      : 'Open';
-
-    return `
-      <article class="room-card side-room-card ${isActive ? 'active' : ''} ${room.claimed ? 'claimed' : 'unclaimed'} ${room.hasPassword ? 'locked-room-card' : ''}">
-        <button class="room-open-area" type="button" data-room-open="${escapeHtml(room.id)}" aria-label="Open ${escapeHtml(room.name)}">
-          <div class="room-number">${room.hasPassword && !room.canAccess ? '🔒' : `R${escapeHtml(room.id)}`}</div>
-          <div class="room-main">
-            <strong>${escapeHtml(room.name)}</strong>
-            <small>${ownerLabel} · ${escapeHtml(lockLabel)}</small>
-          </div>
-        </button>
-        <div class="room-actions">
-          ${room.claimed
-            ? (canRelease ? `<button class="ghost tiny" type="button" data-room-release="${escapeHtml(room.id)}">Release</button>` : '')
-            : `<button class="primary tiny" type="button" data-room-claim="${escapeHtml(room.id)}">Claim</button>`}
-        </div>
-      </article>
-    `;
-  }).join('');
-}
-
-function canDeleteRoomMessage(message) {
-  return Boolean(
-    state.me &&
-    (state.me.isAdmin || message.authorId === state.me.id || state.activeRoom?.ownerId === state.me.id)
-  );
-}
-
-function renderRoomPanel({ forceBottom = false } = {}) {
-  if (!state.activeRoom || !roomPanel) return;
-  const scrollSnapshot = getScrollSnapshot(roomMessagesList);
-
-  const room = state.activeRoom;
-  $('#activeRoomLabel').textContent = `Room ${room.id}`;
-  $('#activeRoomName').textContent = room.name;
-  $('#activeRoomTagline').textContent = room.owner
-    ? `${room.tagline} Claimed by ${room.owner.name}. ${room.hasPassword ? 'This room has a password.' : 'This room has no password.'}`
-    : `${room.tagline} This room is unclaimed.`;
-  roomPanel.classList.remove('hidden');
-
-  const roomSettingsForm = $('#roomSettingsForm');
-  const roomLockedNotice = $('#roomLockedNotice');
-  const roomComposer = roomPanel.querySelector('.room-composer');
-  const roomPasswordInput = $('#roomPasswordInput');
-  const roomNameInput = $('#roomNameInput');
-
-  if (roomNameInput && roomNameInput.dataset.roomId !== String(room.id)) {
-    roomNameInput.value = room.name;
-    roomNameInput.dataset.roomId = String(room.id);
-  }
-
-  if (roomPasswordInput && roomPasswordInput.dataset.roomId !== String(room.id)) {
-    roomPasswordInput.value = '';
-    roomPasswordInput.dataset.roomId = String(room.id);
-  }
-
-  if (roomSettingsForm) roomSettingsForm.classList.toggle('hidden', !room.canManage);
-  if ($('#clearRoomPasswordBtn')) $('#clearRoomPasswordBtn').disabled = !room.hasPassword;
-  if (roomLockedNotice) roomLockedNotice.classList.toggle('hidden', room.canAccess);
-  if (roomComposer) roomComposer.classList.toggle('hidden', !room.canAccess);
-  if (roomMessagesList) roomMessagesList.classList.toggle('hidden', !room.canAccess);
-
-  if (!room.canAccess) {
-    roomMessagesList.innerHTML = '';
-    return;
-  }
-
-  if (!state.roomMessages.length) {
-    roomMessagesList.innerHTML = '<div class="empty">No messages in this room yet.</div>';
-    restoreMessageScroll(roomMessagesList, scrollSnapshot, { forceBottom });
-    return;
-  }
-
-  roomMessagesList.innerHTML = state.roomMessages.map((message) => `
-    <article class="room-message">
-      <div class="post-row-top">
-        <div class="post-person">
-          <div class="avatar">${escapeHtml(initials(message.author?.name || 'User'))}</div>
-          <div>
-            <strong>${escapeHtml(message.author?.name || 'Unknown')}</strong>
-            <span>@${escapeHtml(message.author?.username || 'unknown')} · ${escapeHtml(formatTime(message.createdAt))}</span>
-          </div>
-        </div>
-        ${canDeleteRoomMessage(message) ? `<button class="admin-delete" type="button" data-delete-room-message="${escapeHtml(message.id)}">Delete</button>` : ''}
-      </div>
-      <p>${escapeHtml(message.text)}</p>
-    </article>
-  `).join('');
-
-  restoreMessageScroll(roomMessagesList, scrollSnapshot, { forceBottom });
-}
-
-async function loadRooms() {
-  if (!roomsList) return;
-  const data = await api('/api/rooms');
-  state.rooms = data.rooms;
-  if (state.activeRoom) {
-    const updated = state.rooms.find((candidate) => candidate.id === state.activeRoom.id);
-    if (updated) {
-      state.activeRoom = updated;
-      if (!updated.canAccess) state.roomMessages = [];
-    }
-  }
-  renderRooms();
-  renderRoomPanel();
-}
-
-async function unlockRoom(room) {
-  if (!room) return false;
-  if (!room.hasPassword || room.canAccess) return true;
-
-  const password = prompt(`Enter password for ${room.name}:`);
-  if (password === null) return false;
+async function markConversationRead(userId) {
+  if (!userId) return;
+  setUnreadForUser(userId, 0);
+  renderUsers();
 
   try {
-    const data = await api(`/api/rooms/${room.id}/unlock`, {
-      method: 'POST',
-      body: JSON.stringify({ password })
-    });
-
-    const index = state.rooms.findIndex((candidate) => candidate.id === room.id);
-    if (index >= 0) state.rooms[index] = data.room;
-    state.activeRoom = data.room;
-    renderRooms();
-    renderRoomPanel();
-    showToast('Room unlocked');
-    return true;
-  } catch (error) {
-    showToast(error.message);
-    return false;
+    await api(`/api/messages/${userId}/read`, { method: 'POST' });
+  } catch {
+    // A later users refresh will repair the badge if this request fails.
   }
 }
 
-async function openRoom(roomId) {
-  const room = state.rooms.find((candidate) => candidate.id === roomId);
-  if (!room) return;
-
-  state.activeRoom = room;
-  state.roomMessages = [];
-  renderRooms();
-  renderRoomPanel();
-
-  if (room.hasPassword && !room.canAccess) {
-    const unlocked = await unlockRoom(room);
-    if (!unlocked) return;
-  }
-
-  try {
-    const data = await api(`/api/rooms/${roomId}/messages`);
-    state.activeRoom = data.room;
-    state.roomMessages = data.messages;
-    renderRooms();
-    renderRoomPanel({ forceBottom: true });
-    $('#roomMessageInput').focus();
-  } catch (error) {
-    if (error.locked) state.roomMessages = [];
-    showToast(error.message);
-    renderRoomPanel();
-  }
-}
-
-function renderAdminTools() {
-  const adminBox = $('#adminBox');
-  const adminActive = $('#adminActive');
-  const adminClaimForm = $('#adminClaimForm');
-  const adminModerationPanel = $('#adminModerationPanel');
-  if (!adminBox || !adminActive || !adminClaimForm) return;
-
-  adminActive.classList.toggle('hidden', !state.me?.isAdmin);
-  adminClaimForm.classList.toggle('hidden', Boolean(state.me?.isAdmin));
-  if (adminModerationPanel) adminModerationPanel.classList.toggle('hidden', !state.me?.isAdmin);
-  renderAdminUsers();
-  renderAdminMessageViewer();
-}
-
-function upsertAdminUser(user) {
-  if (!user) return;
-  const index = state.adminUsers.findIndex((candidate) => candidate.id === user.id);
-  if (index >= 0) state.adminUsers[index] = user;
-  else state.adminUsers.push(user);
-  state.adminUsers.sort((a, b) => Number(b.online) - Number(a.online) || Number(Boolean(b.banned)) - Number(Boolean(a.banned)) || a.name.localeCompare(b.name));
-}
-
-function renderAdminUsers() {
-  if (!adminUsersList || !state.me?.isAdmin) return;
-
-  if (!state.adminUsers.length) {
-    adminUsersList.innerHTML = '<div class="empty small-empty">No accounts loaded yet.</div>';
-    return;
-  }
-
-  adminUsersList.innerHTML = state.adminUsers.map((user) => {
-    const isMe = user.id === state.me.id;
-    const isProtectedAdmin = user.isAdmin && !isMe;
-    const status = user.banned ? 'Banned' : user.online ? 'Online' : 'Offline';
-    return `
-      <article class="admin-user-row ${user.banned ? 'banned' : ''}">
-        <div class="admin-user-main">
-          <div class="avatar small-avatar">${escapeHtml(initials(user.name))}</div>
-          <div>
-            <strong>${escapeHtml(user.name)}${isMe ? ' (you)' : ''}</strong>
-            <span>@${escapeHtml(user.username)} · ${escapeHtml(user.role)} · ${escapeHtml(status)}</span>
-            ${user.banReason ? `<small>Reason: ${escapeHtml(user.banReason)}</small>` : ''}
-          </div>
-        </div>
-        <div class="admin-user-actions">
-          <button class="ghost tiny" type="button" data-admin-kick="${escapeHtml(user.id)}" ${isMe || user.banned ? 'disabled' : ''}>Kick</button>
-          ${user.banned
-            ? `<button class="secondary tiny" type="button" data-admin-unban="${escapeHtml(user.id)}">Unban</button>`
-            : `<button class="ghost danger tiny" type="button" data-admin-ban="${escapeHtml(user.id)}" ${isMe || isProtectedAdmin ? 'disabled' : ''}>Ban</button>`}
-        </div>
-      </article>
-    `;
-  }).join('');
-}
-
-async function loadAdminUsers() {
-  if (!state.me?.isAdmin || !adminUsersList) return;
-  const data = await api('/api/admin/users');
-  state.adminUsers = data.users || [];
-  renderAdminUsers();
-}
-
-
-function adminMessageParticipants(item) {
-  if (item.kind === 'direct-message') {
-    return `${item.fromUser?.name || 'Unknown'} → ${item.toUser?.name || 'Unknown'}`;
-  }
-  if (item.kind === 'room-message') {
-    return `${item.author?.name || 'Unknown'} in ${item.roomName || `Room ${item.roomId}`}`;
-  }
-  if (item.kind === 'feed-comment') {
-    return `${item.author?.name || 'Unknown'} commented on ${item.parentAuthor?.name || 'someone'}'s post`;
-  }
-  return `${item.author?.name || 'Unknown'} posted`;
-}
-
-function adminMessageMeta(item) {
-  const parts = [item.source || item.label, formatTime(item.createdAt)];
-  if (item.kind === 'room-message') parts.push(item.roomLocked ? 'password room' : 'open room');
-  if (item.kind === 'direct-message') parts.push('private DM');
-  return parts.filter(Boolean).join(' · ');
-}
-
-function renderAdminMessageViewer() {
-  if (!adminMessageViewer) return;
-  const isAdmin = Boolean(state.me?.isAdmin);
-  adminMessageViewer.classList.toggle('hidden', !isAdmin);
-  if (!isAdmin) return;
-
-  const count = $('#adminMessageCount');
-  if (count) count.textContent = `${state.adminMessages.length} message${state.adminMessages.length === 1 ? '' : 's'}`;
-  if (!adminMessagesList) return;
-
-  if (!state.adminMessages.length) {
-    adminMessagesList.innerHTML = '<div class="empty">Click “Load messages” to review all stored TSN messages.</div>';
-    return;
-  }
-
-  adminMessagesList.innerHTML = state.adminMessages.map((item) => `
-    <article class="admin-message-item ${escapeHtml(item.kind)}">
-      <div class="admin-message-topline">
-        <span class="admin-message-label">${escapeHtml(item.label)}</span>
-        <span>${escapeHtml(adminMessageMeta(item))}</span>
-      </div>
-      <div class="admin-message-main">
-        <strong>${escapeHtml(adminMessageParticipants(item))}</strong>
-        <button class="admin-delete small" type="button" data-admin-delete-message-item="${escapeHtml(item.id)}">Delete</button>
-      </div>
-      ${item.parentExcerpt ? `<p class="admin-parent-excerpt">Original post: ${escapeHtml(item.parentExcerpt)}</p>` : ''}
-      <p class="admin-message-body">${escapeHtml(item.body || '')}</p>
-    </article>
-  `).join('');
-}
-
-async function loadAdminMessages() {
-  if (!state.me?.isAdmin || !adminMessagesList) return;
-  const type = $('#adminMessageType')?.value || 'all';
-  const q = $('#adminMessageSearch')?.value || '';
-  const data = await api(`/api/admin/messages?type=${encodeURIComponent(type)}&q=${encodeURIComponent(q)}`);
-  state.adminMessages = data.items || [];
-  renderAdminMessageViewer();
-}
-
-async function deleteAdminMessageItem(item) {
-  if (item.kind === 'feed-post') {
-    await api(`/api/posts/${item.postId}`, { method: 'DELETE' });
-    return;
-  }
-  if (item.kind === 'feed-comment') {
-    await api(`/api/posts/${item.postId}/comments/${item.commentId}`, { method: 'DELETE' });
-    return;
-  }
-  if (item.kind === 'direct-message') {
-    await api(`/api/messages/${item.messageId}`, { method: 'DELETE' });
-    return;
-  }
-  if (item.kind === 'room-message') {
-    await api(`/api/rooms/${item.roomId}/messages/${item.messageId}`, { method: 'DELETE' });
-    return;
-  }
-  throw new Error('Unsupported message type.');
+function renderStats() {
+  const online = state.users.filter((user) => user.online).length;
+  $('#globalCount').textContent = String(state.globalMessages.length);
+  $('#userCount').textContent = String(state.users.length);
+  $('#onlineCount').textContent = String(online);
+  $('#onlinePill').textContent = `${online} online`;
+  $('#globalStatus').textContent = `${state.globalMessages.length} message${state.globalMessages.length === 1 ? '' : 's'}`;
 }
 
 function renderMe() {
@@ -1148,84 +580,48 @@ function renderMe() {
   $('#profileName').value = state.me.name;
   $('#profileBio').value = state.me.bio || '';
   $('#myAvatar').textContent = initials(state.me.name);
-  $('#composerAvatar').textContent = initials(state.me.name);
   renderAdminTools();
 }
 
-function renderStats() {
-  $('#postCount').textContent = state.posts.filter((post) => post.authorId === state.me?.id).length;
-  $('#userCount').textContent = state.users.length;
-  const online = state.users.filter((user) => user.online).length;
-  $('#onlinePill').textContent = `${online} online`;
-}
-
-function renderPosts() {
+function renderGlobalMessages({ forceBottom = false } = {}) {
   renderStats();
+  if (!globalMessagesList) return;
+  const scrollSnapshot = getScrollSnapshot(globalMessagesList);
 
-  if (!state.posts.length) {
-    postsList.innerHTML = '<div class="empty">No posts yet. Write the first TSN post.</div>';
+  if (!state.globalMessages.length) {
+    globalMessagesList.innerHTML = '<div class="empty">No global messages yet. Write the first one.</div>';
+    restoreMessageScroll(globalMessagesList, scrollSnapshot, { forceBottom });
     return;
   }
 
-  postsList.innerHTML = state.posts.map((post) => {
-    const liked = post.likes?.includes(state.me.id);
-    const authorName = post.author?.name || 'Unknown';
-    const comments = post.comments || [];
-
+  globalMessagesList.innerHTML = state.globalMessages.map((message) => {
+    const mine = message.authorId === state.me?.id;
+    const authorName = message.author?.name || 'Unknown';
     return `
-      <article class="post card" data-post-id="${escapeHtml(post.id)}">
-        <header class="post-header">
+      <article class="global-message ${mine ? 'mine' : ''}">
+        <div class="post-row-top">
           <div class="post-person">
             <div class="avatar">${escapeHtml(initials(authorName))}</div>
             <div>
               <strong>${escapeHtml(authorName)}</strong>
-              <span>@${escapeHtml(post.author?.username || 'unknown')}</span>
+              <span>@${escapeHtml(message.author?.username || 'unknown')} · ${escapeHtml(formatTime(message.createdAt))}</span>
             </div>
           </div>
-          <div class="post-meta-actions">
-            <span class="post-time">${escapeHtml(formatTime(post.createdAt))}</span>
-            ${canDeleteOwnOrAdmin(post.authorId) ? `<button class="admin-delete" type="button" data-delete-post="${escapeHtml(post.id)}">Delete</button>` : ''}
-          </div>
-        </header>
-
-        <p class="post-body">${escapeHtml(post.body)}</p>
-
-        <div class="post-actions">
-          <button class="post-action ${liked ? 'active' : ''}" data-like="${escapeHtml(post.id)}">
-            ${liked ? 'Liked' : 'Like'} · ${post.likes?.length || 0}
-          </button>
-          <span class="post-action">Comments · ${comments.length}</span>
+          ${canDeleteMessage(message.authorId) ? `<button class="admin-delete" type="button" data-delete-global-message="${escapeHtml(message.id)}">Delete</button>` : ''}
         </div>
-
-        <div class="comments">
-          ${comments.map((comment) => `
-            <div class="comment">
-              <div class="avatar">${escapeHtml(initials(comment.author?.name || 'User'))}</div>
-              <div class="comment-content">
-                <div class="comment-head">
-                  <strong>${escapeHtml(comment.author?.name || 'Unknown')}</strong>
-                  ${canDeleteOwnOrAdmin(comment.authorId) ? `<button class="admin-delete small" type="button" data-post-id="${escapeHtml(post.id)}" data-delete-comment="${escapeHtml(comment.id)}">Delete</button>` : ''}
-                </div>
-                <p>${escapeHtml(comment.body)}</p>
-              </div>
-            </div>
-          `).join('')}
-        </div>
-
-        <form class="comment-form" data-comment-form="${escapeHtml(post.id)}">
-          <input placeholder="Write a comment..." maxlength="240" value="${escapeHtml(state.commentDrafts[post.id] || '')}" />
-          <button class="secondary" type="submit">Send</button>
-        </form>
+        <p>${escapeHtml(message.text)}</p>
       </article>
     `;
   }).join('');
+
+  restoreMessageScroll(globalMessagesList, scrollSnapshot, { forceBottom });
 }
 
 function renderUsers() {
   renderStats();
 
   if (!state.users.length) {
-    usersList.innerHTML = '<div class="empty">No other users yet. Create another account in a different browser to test chat.</div>';
+    usersList.innerHTML = '<div class="empty">No other users yet. Create another account in a different browser to test private chat.</div>';
     return;
   }
 
@@ -1240,7 +636,7 @@ function renderUsers() {
           <span>@${escapeHtml(user.username)}</span>
           <span class="user-bio">${escapeHtml(bio)}</span>
         </div>
-        ${Number(user.unreadCount) > 0 ? `<span class="unread-badge" aria-label="${escapeHtml(user.unreadCount)} unread direct messages">${escapeHtml(unreadBadgeText(user.unreadCount))}</span>` : ''}
+        ${Number(user.unreadCount) > 0 ? `<span class="unread-badge" aria-label="${escapeHtml(user.unreadCount)} unread private messages">${escapeHtml(unreadBadgeText(user.unreadCount))}</span>` : ''}
         <span class="status-dot ${user.online ? 'online' : ''}"></span>
       </button>
     `;
@@ -1267,7 +663,7 @@ function renderChat({ forceBottom = false } = {}) {
   chatPanel.classList.remove('hidden');
 
   if (!state.activeMessages.length) {
-    messagesList.innerHTML = '<div class="empty">No messages yet. Start the conversation.</div>';
+    messagesList.innerHTML = '<div class="empty">No private messages yet. Start the conversation.</div>';
   } else {
     messagesList.innerHTML = state.activeMessages.map((message) => `
       <div class="message ${message.from === state.me.id ? 'mine' : ''}">
@@ -1317,17 +713,135 @@ async function openChat(user) {
   }
 }
 
-function upsertPost(post) {
-  const index = state.posts.findIndex((candidate) => candidate.id === post.id);
-  if (index >= 0) state.posts[index] = post;
-  else state.posts.unshift(post);
-  state.posts.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+function renderAdminTools() {
+  const adminActive = $('#adminActive');
+  const adminClaimForm = $('#adminClaimForm');
+  const adminModerationPanel = $('#adminModerationPanel');
+  if (!adminActive || !adminClaimForm) return;
+
+  adminActive.classList.toggle('hidden', !state.me?.isAdmin);
+  adminClaimForm.classList.toggle('hidden', Boolean(state.me?.isAdmin));
+  if (adminModerationPanel) adminModerationPanel.classList.toggle('hidden', !state.me?.isAdmin);
+  renderAdminUsers();
+  renderAdminMessageViewer();
+}
+
+function upsertAdminUser(user) {
+  if (!user) return;
+  const index = state.adminUsers.findIndex((candidate) => candidate.id === user.id);
+  if (index >= 0) state.adminUsers[index] = user;
+  else state.adminUsers.push(user);
+  state.adminUsers.sort((a, b) => Number(b.online) - Number(a.online) || Number(Boolean(b.banned)) - Number(Boolean(a.banned)) || a.name.localeCompare(b.name));
+}
+
+function renderAdminUsers() {
+  if (!adminUsersList || !state.me?.isAdmin) return;
+
+  if (!state.adminUsers.length) {
+    adminUsersList.innerHTML = '<div class="empty small-empty">No accounts loaded yet.</div>';
+    return;
+  }
+
+  adminUsersList.innerHTML = state.adminUsers.map((user) => {
+    const isMe = user.id === state.me.id;
+    const isProtectedAdmin = user.isAdmin && !isMe;
+    const status = user.banned ? 'Banned' : user.online ? 'Online' : 'Offline';
+    return `
+      <article class="admin-user-row ${user.banned ? 'banned' : ''}">
+        <div class="admin-user-main">
+          <div class="avatar small-avatar">${escapeHtml(initials(user.name))}</div>
+          <div>
+            <strong>${escapeHtml(user.name)}${isMe ? ' (you)' : ''}</strong>
+            <span>@${escapeHtml(user.username)} · ${escapeHtml(user.role)} · ${escapeHtml(status)}</span>
+            ${user.banReason ? `<small>Reason: ${escapeHtml(user.banReason)}</small>` : ''}
+          </div>
+        </div>
+        <div class="admin-user-actions">
+          <button class="ghost tiny" type="button" data-admin-kick="${escapeHtml(user.id)}" ${isMe || user.banned ? 'disabled' : ''}>Kick</button>
+          ${user.banned
+            ? `<button class="secondary tiny" type="button" data-admin-unban="${escapeHtml(user.id)}">Unban</button>`
+            : `<button class="ghost danger tiny" type="button" data-admin-ban="${escapeHtml(user.id)}" ${isMe || isProtectedAdmin ? 'disabled' : ''}>Ban</button>`}
+        </div>
+      </article>
+    `;
+  }).join('');
+}
+
+function adminMessageParticipants(item) {
+  if (item.kind === 'direct-message') return `${item.fromUser?.name || 'Unknown'} → ${item.toUser?.name || 'Unknown'}`;
+  if (item.kind === 'global-message') return `${item.author?.name || 'Unknown'} in Global chat`;
+  return item.author?.name || 'Unknown';
+}
+
+function adminMessageMeta(item) {
+  const parts = [item.source || item.label, formatTime(item.createdAt)];
+  if (item.kind === 'direct-message') parts.push('private');
+  if (item.kind === 'global-message') parts.push('global');
+  return parts.filter(Boolean).join(' · ');
+}
+
+function renderAdminMessageViewer() {
+  if (!adminMessageViewer) return;
+  const isAdmin = Boolean(state.me?.isAdmin);
+  adminMessageViewer.classList.toggle('hidden', !isAdmin);
+  if (!isAdmin) return;
+
+  const count = $('#adminMessageCount');
+  if (count) count.textContent = `${state.adminMessages.length} message${state.adminMessages.length === 1 ? '' : 's'}`;
+  if (!adminMessagesList) return;
+
+  if (!state.adminMessages.length) {
+    adminMessagesList.innerHTML = '<div class="empty">Click “Load messages” to review stored TSN messages.</div>';
+    return;
+  }
+
+  adminMessagesList.innerHTML = state.adminMessages.map((item) => `
+    <article class="admin-message-item ${escapeHtml(item.kind)}">
+      <div class="admin-message-topline">
+        <span class="admin-message-label">${escapeHtml(item.label)}</span>
+        <span>${escapeHtml(adminMessageMeta(item))}</span>
+      </div>
+      <div class="admin-message-main">
+        <strong>${escapeHtml(adminMessageParticipants(item))}</strong>
+        <button class="admin-delete small" type="button" data-admin-delete-message-item="${escapeHtml(item.id)}">Delete</button>
+      </div>
+      <p class="admin-message-body">${escapeHtml(item.body || '')}</p>
+    </article>
+  `).join('');
+}
+
+async function loadAdminUsers() {
+  if (!state.me?.isAdmin || !adminUsersList) return;
+  const data = await api('/api/admin/users');
+  state.adminUsers = data.users || [];
+  renderAdminUsers();
+}
+
+async function loadAdminMessages() {
+  if (!state.me?.isAdmin || !adminMessagesList) return;
+  const type = $('#adminMessageType')?.value || 'all';
+  const q = $('#adminMessageSearch')?.value || '';
+  const data = await api(`/api/admin/messages?type=${encodeURIComponent(type)}&q=${encodeURIComponent(q)}`);
+  state.adminMessages = data.items || [];
+  renderAdminMessageViewer();
+}
+
+async function deleteAdminMessageItem(item) {
+  if (item.kind === 'global-message') {
+    await api(`/api/global/messages/${item.messageId}`, { method: 'DELETE' });
+    return;
+  }
+  if (item.kind === 'direct-message') {
+    await api(`/api/messages/${item.messageId}`, { method: 'DELETE' });
+    return;
+  }
+  throw new Error('Unsupported message type.');
 }
 
 async function loadUsers(q = '') {
   const query = q ? `?q=${encodeURIComponent(q)}` : '';
   const data = await api(`/api/users${query}`);
-  state.users = data.users;
+  state.users = data.users || [];
 
   if (state.activeChatUser) {
     const updated = state.users.find((candidate) => candidate.id === state.activeChatUser.id);
@@ -1338,14 +852,14 @@ async function loadUsers(q = '') {
   renderChat();
 }
 
-async function loadPosts() {
-  const data = await api('/api/posts');
-  state.posts = data.posts;
-  renderPosts();
+async function loadGlobalMessages() {
+  const data = await api('/api/global/messages');
+  state.globalMessages = data.messages || [];
+  renderGlobalMessages({ forceBottom: true });
 }
 
 async function loadEverything() {
-  await Promise.all([loadPosts(), loadUsers($('#userSearch').value), loadRooms()]);
+  await Promise.all([loadGlobalMessages(), loadUsers($('#userSearch').value)]);
   if (state.me?.isAdmin) {
     await loadAdminUsers();
     renderAdminMessageViewer();
@@ -1355,9 +869,7 @@ async function loadEverything() {
 function connectSocket() {
   if (state.socket) state.socket.disconnect();
 
-  state.socket = io({
-    auth: { token: state.token }
-  });
+  state.socket = io({ auth: { token: state.token } });
 
   state.socket.on('connect', () => {
     loadUsers($('#userSearch').value).catch(() => {});
@@ -1383,20 +895,20 @@ function connectSocket() {
     renderUsers();
   });
 
-  state.socket.on('post-created', (post) => {
-    upsertPost(post);
-    renderPosts();
+  state.socket.on('global-message', (message) => {
+    if (!state.globalMessages.some((candidate) => candidate.id === message.id)) {
+      state.globalMessages.push(message);
+      state.globalMessages.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+    }
+    renderGlobalMessages({ forceBottom: message.authorId === state.me?.id });
     if (state.me?.isAdmin && state.adminMessages.length) loadAdminMessages().catch(() => {});
   });
 
-  state.socket.on('post-updated', (post) => {
-    upsertPost(post);
-    renderPosts();
-  });
-
-  state.socket.on('post-deleted', ({ postId }) => {
-    state.posts = state.posts.filter((post) => post.id !== postId);
-    renderPosts();
+  state.socket.on('global-message-deleted', ({ messageId }) => {
+    const before = state.globalMessages.length;
+    state.globalMessages = state.globalMessages.filter((message) => message.id !== messageId);
+    if (state.globalMessages.length !== before) renderGlobalMessages();
+    if (state.me?.isAdmin && state.adminMessages.length) loadAdminMessages().catch(() => {});
   });
 
   state.socket.on('private-message', (message) => {
@@ -1411,9 +923,7 @@ function connectSocket() {
       const exists = state.activeMessages.some((candidate) => candidate.id === message.id);
       if (!exists) state.activeMessages.push(message);
       renderChat({ forceBottom: message.from === state.me?.id });
-      if (message.to === state.me.id) {
-        markConversationRead(message.from).catch(() => {});
-      }
+      if (message.to === state.me.id) markConversationRead(message.from).catch(() => {});
     } else if (message.to === state.me.id) {
       const sender = state.users.find((user) => user.id === message.from);
       if (!incrementUnreadForUser(message.from)) {
@@ -1421,7 +931,7 @@ function connectSocket() {
       } else {
         renderUsers();
       }
-      showToast(`New message from ${sender?.name || 'someone'}`);
+      showToast(`New private message from ${sender?.name || 'someone'}`);
     }
   });
 
@@ -1435,49 +945,7 @@ function connectSocket() {
     state.activeMessages = state.activeMessages.filter((message) => message.id !== messageId);
     if (state.activeMessages.length !== before) renderChat();
     loadUsers($('#userSearch').value).catch(() => {});
-  });
-
-  state.socket.on('room-updated', (room) => {
-    const index = state.rooms.findIndex((candidate) => candidate.id === room.id);
-    if (index >= 0) state.rooms[index] = room;
-    else state.rooms.push(room);
-
-    if (state.activeRoom?.id === room.id) {
-      state.activeRoom = room;
-      if (!room.canAccess) state.roomMessages = [];
-      renderRoomPanel();
-    }
-
-    renderRooms();
-  });
-
-  state.socket.on('room-message', (message) => {
     if (state.me?.isAdmin && state.adminMessages.length) loadAdminMessages().catch(() => {});
-    if (state.activeRoom?.id === message.roomId) {
-      const exists = state.roomMessages.some((candidate) => candidate.id === message.id);
-      if (!exists) state.roomMessages.push(message);
-      state.roomMessages.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
-      renderRoomPanel({ forceBottom: message.authorId === state.me?.id });
-    } else {
-      const room = state.rooms.find((candidate) => candidate.id === message.roomId);
-      showToast(`New message in ${room?.name || `Room ${message.roomId}`}`);
-    }
-  });
-
-  state.socket.on('room-message-deleted', ({ roomId, messageId }) => {
-    if (state.activeRoom?.id !== roomId) return;
-    const before = state.roomMessages.length;
-    state.roomMessages = state.roomMessages.filter((message) => message.id !== messageId);
-    if (state.roomMessages.length !== before) renderRoomPanel();
-  });
-
-  state.socket.on('room-messages-cleared', ({ roomId, deletedCount }) => {
-    if (state.activeRoom?.id === roomId) {
-      state.roomMessages = [];
-      renderRoomPanel();
-    }
-    if (state.me?.isAdmin && state.adminMessages.length) loadAdminMessages().catch(() => {});
-    if (deletedCount) showToast(`Room ${roomId} was released · ${deletedCount} messages deleted`);
   });
 
   let typingTimer = null;
@@ -1508,16 +976,25 @@ async function initApp() {
     state.me = meData.user;
     renderMe();
     showApp();
-    await loadEverything();
     connectSocket();
-  } catch {
+  } catch (error) {
     setToken(null);
     showAuth();
+    throw new Error(error?.message || 'Login failed. Please try again.');
+  }
+
+  try {
+    await loadEverything();
+  } catch (error) {
+    console.error('TSN loaded, but some app data failed to load:', error);
+    showToast(error?.message ? `Logged in. Some data failed to load: ${error.message}` : 'Logged in. Some data failed to load.');
   }
 }
 
 if (state.token) {
-  initApp();
+  initApp().catch((error) => {
+    authError.textContent = error.message;
+  });
 } else {
   showAuth();
 }

@@ -1,35 +1,27 @@
-# TSN V1.0
+# TSN V1.1
 
-A full-stack social media starter app with username accounts, public posts, private chat, 7 claimable rooms, optional room passwords, admin moderation, unread direct-message badges, public bios, server-side content filtering, encrypted-at-rest content, and **MongoDB-ready persistent storage**.
+TSN is now a chat-only social network. The public feed and room system have been removed from the user interface. The app now has only:
 
-## What is new in this build
+- **Global chat** — one shared chat visible to every logged-in user
+- **Private chat** — one-to-one realtime direct messages
 
-- MongoDB Atlas storage support with `MONGODB_URI`
-- Render Free-ready deployment using MongoDB instead of Render filesystem storage
-- `/api/ping` endpoint for external uptime/cron monitors
-- `npm run ping-self` helper for cron services
-- MongoDB-aware backup and restore scripts
-- Old JSON database import: if MongoDB is empty and an old local `db.json` exists, TSN imports it once
+It still supports username accounts, guest/demo login, admin moderation, unread private-message badges, public bios, server-side content filtering, encrypted-at-rest content, MongoDB Atlas storage, Render deployment, and keep-awake ping readiness.
 
 ## Main features
 
-- Username-only login, guest login, and demo login
-- Simple account passwords allowed: 4+ characters, so `1234` works if a user wants that
-- Public feed with posts, comments, likes, and user-owned delete controls
-- Private real-time chat with Socket.IO
-- Red unread-message badges for direct messages
-- Message threads keep scroll position when new messages arrive
-- 7 TSN Rooms named `Room 1` through `Room 7` by default
-- Room owners/admins can rename rooms and optionally set/remove a room password
-- Releasing a room resets it and deletes all messages in that room
-- Public user bios in People/search/chat
-- Admin tools: delete content, review all stored messages, kick/ban/unban accounts, and create backups
+- Username-only login, register, guest login, and demo login
+- Global chat stored in MongoDB/local JSON and updated realtime with Socket.IO
+- Private one-to-one realtime chat with unread badges
+- Profiles with display name and bio
+- Admin access claim using `TSN_ADMIN_SETUP_PASSWORD` or `TSN_ADMIN_SETUP_PASSWORD_HASH`
+- Admin tools for account moderation, backups, and global/private message deletion
 - Server-side blocked-language filter
-- Render-ready deployment files
+- AES-256-GCM encrypted-at-rest user identity fields and message text
+- MongoDB Atlas persistent storage for Render
 
-## Recommended storage
+## Recommended online storage
 
-For online hosting, use MongoDB Atlas:
+For Render hosting, use MongoDB Atlas:
 
 ```env
 MONGODB_URI=mongodb+srv://USERNAME:PASSWORD@YOUR-CLUSTER.mongodb.net/?retryWrites=true&w=majority
@@ -38,7 +30,7 @@ MONGODB_STATE_COLLECTION=app_state
 MONGODB_STATE_ID=main
 ```
 
-With `MONGODB_URI` set, TSN stores accounts, posts, comments, direct messages, rooms, room passwords, unread status, bans, and admin settings in MongoDB. Render redeploys/restarts should not wipe the database.
+With `MONGODB_URI` set, TSN stores accounts, global messages, private messages, unread status, bans, and admin data in MongoDB. Render redeploys/restarts should not wipe the database.
 
 If `MONGODB_URI` is empty, TSN falls back to local JSON storage outside the project folder:
 
@@ -54,12 +46,6 @@ Use the included:
 render.yaml
 ```
 
-It is configured for:
-
-```text
-Render Free web service + MongoDB Atlas
-```
-
 Required Render environment variables:
 
 ```env
@@ -70,7 +56,7 @@ TSN_ADMIN_SETUP_PASSWORD=<your admin setup password>
 TSN_CONTENT_FILTER_ENABLED=true
 ```
 
-Do **not** change `TSN_DATA_ENCRYPTION_KEY` after real users/messages exist. It decrypts stored usernames, bios, posts, comments, DMs, and room messages.
+Do **not** change `TSN_DATA_ENCRYPTION_KEY` after real users/messages exist. It decrypts stored usernames, bios, global messages, and private messages.
 
 ## Keep-awake ping
 
@@ -86,13 +72,7 @@ Use an external monitor/cron service to request this URL every 10 minutes:
 https://your-tsn-site.onrender.com/api/ping
 ```
 
-You can also run:
-
-```bash
-TSN_PING_URL=https://your-tsn-site.onrender.com/api/ping npm run ping-self
-```
-
-Important: the keep-awake ping is only a workaround for Render Free sleeping. MongoDB is the real fix for data loss.
+The ping helps reduce Render Free sleeping. MongoDB is still the real fix for data loss.
 
 ## Backup and restore
 
@@ -124,73 +104,55 @@ Open:
 http://localhost:3000
 ```
 
-To test MongoDB locally, put your Atlas connection string into `.env` as `MONGODB_URI`.
+## Important environment variables
 
-## Encryption and hashing
-
-Encrypted at rest:
-
-```text
-Display names       -> nameEnc
-Usernames           -> usernameEnc
-Bios                -> bioEnc
-Posts/comments      -> bodyEnc
-Private messages    -> textEnc
-Room messages       -> textEnc
-Custom room names   -> nameEnc
-```
-
-Hashed instead of encrypted:
-
-```text
-Account passwords   -> bcrypt hash
-Demo password       -> bcrypt hash supported
-Admin setup secret  -> bcrypt hash supported
-Room passwords      -> bcrypt hash
-Username lookup     -> HMAC-SHA256 lookup hash
+```env
+PORT=3000
+NODE_ENV=development
+MONGODB_URI=
+MONGODB_DB_NAME=tsn
+MONGODB_STATE_COLLECTION=app_state
+MONGODB_STATE_ID=main
+JWT_SECRET=change-this
+TSN_DATA_ENCRYPTION_KEY=change-this-too
+TSN_OLD_DATA_ENCRYPTION_KEYS=
+TSN_ADMIN_SETUP_PASSWORD=change-this-admin-password
+TSN_CONTENT_FILTER_ENABLED=true
+TSN_BLOCKED_WORDS=
 ```
 
 ## Admin setup
 
-For local testing, log in, open **Admin access**, and enter:
+1. Set `TSN_ADMIN_SETUP_PASSWORD` in Render.
+2. Log into your TSN account.
+3. Enter the admin setup password in the sidebar.
+4. Your account becomes admin.
 
-```text
-TSN-Admin!ChangeMe-2026
-```
-
-For Render, set your own:
-
-```env
-TSN_ADMIN_SETUP_PASSWORD=your-admin-password
-```
-
-More secure option:
+For stronger setup, hash the admin setup password locally:
 
 ```bash
-npm run hash-secret -- "YourStrongPassword!2026"
+npm run hash-secret -- "your-admin-password"
 ```
 
-Then set:
+Then set the result as:
 
 ```env
-TSN_ADMIN_SETUP_PASSWORD_HASH=<paste hash here>
+TSN_ADMIN_SETUP_PASSWORD_HASH=<bcrypt-hash>
 ```
 
-## Project structure
+## Stored data model
 
 ```text
-server.js                    Express + Socket.IO backend
-public/index.html            Front-end HTML
-public/app.js                Front-end app logic
-public/styles.css            Design
-scripts/hash-secret.js       Creates bcrypt hashes
-scripts/backup-db.js         Backs up MongoDB or JSON database
-scripts/restore-db.js        Restores MongoDB or JSON database
-scripts/ping-self.js         Pings /api/ping for cron/monitor services
-render.yaml                  Render Free + MongoDB Blueprint
-render.free.yaml             Same as render.yaml, kept for clarity
-render.persistent.yaml       Old paid-disk JSON fallback
-render.cron.yaml             Optional paid Render Cron Job example
-CRON_KEEP_AWAKE.md           Free external ping setup notes
-MONGODB_RENDER_SETUP.md      Step-by-step MongoDB + Render setup
+Users                 -> encrypted display name, username, bio + bcrypt password hash
+Global messages       -> encrypted text + author id
+Private messages      -> encrypted text + sender/recipient ids + read state
+Bans/admin state      -> stored in the same app state document
+```
+
+MongoDB mode stores the app state in:
+
+```text
+Database:   tsn
+Collection: app_state
+Document:   main
 ```

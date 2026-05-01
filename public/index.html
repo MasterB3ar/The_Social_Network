@@ -3,26 +3,27 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>TSN V1.0</title>
+  <title>TSN V1.1</title>
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="/styles.css" />
 </head>
 <body>
   <div class="noise"></div>
-  <div class="version-badge" aria-label="TSN version">TSN V1.0</div>
+  <div class="version-badge" aria-label="TSN version">TSN V1.1</div>
 
   <section id="authScreen" class="auth-screen">
     <div class="auth-hero">
       <div class="brand-mark">TSN</div>
-      <p class="eyebrow">TSN V1.0</p>
-      <h1>Welcome to TSN V1.0.</h1>
+      <p class="eyebrow">private + global chat</p>
+      <h1>Welcome to TSN.</h1>
+      <p class="hero-subtitle">A clean chat-only social network with global messages and private conversations.</p>
     </div>
 
     <div class="auth-panel">
-      <div class="auth-version-label">TSN V1.0</div>
+      <div class="auth-version-label">TSN V1.1</div>
       <div class="tabs">
-        <button class="tab active" data-tab="login">Login</button>
-        <button class="tab" data-tab="register">Create account</button>
+        <button class="tab active" data-tab="login" type="button">Login</button>
+        <button class="tab" data-tab="register" type="button">Create account</button>
       </div>
 
       <form id="loginForm" class="auth-form">
@@ -64,14 +65,14 @@
         </label>
         <label>
           Password
-          <input name="password" type="password" autocomplete="new-password" placeholder="4+ characters, e.g. 1234" required />
+          <input name="password" type="password" autocomplete="new-password" placeholder="4+ characters" required />
         </label>
         <button class="primary" type="submit">Join TSN</button>
       </form>
 
       <p id="authError" class="error"></p>
       <p class="save-note">TSN keeps you logged in on this device for 7 days.</p>
-      <p class="privacy-note">For safety/moderation, TSN admins can review posts, comments, direct messages, and room messages.</p>
+      <p class="privacy-note">For moderation, TSN admins can review global and private messages.</p>
     </div>
   </section>
 
@@ -80,17 +81,17 @@
       <div class="brand">
         <div class="brand-mark small">TSN</div>
         <div>
-          <strong>TSN V1.0</strong>
-          <span>Realtime social media</span>
+          <strong>TSN V1.1</strong>
+          <span>Global chat + private chat</span>
         </div>
       </div>
       <div class="topbar-actions">
-        <button id="refreshBtn" class="ghost">Refresh</button>
-        <button id="logoutBtn" class="ghost danger">Logout</button>
+        <button id="refreshBtn" class="ghost" type="button">Refresh</button>
+        <button id="logoutBtn" class="ghost danger" type="button">Logout</button>
       </div>
     </nav>
 
-    <div class="layout">
+    <div class="chat-only-layout">
       <aside class="sidebar card">
         <div class="profile-block">
           <div id="myAvatar" class="avatar large">?</div>
@@ -99,6 +100,7 @@
             <p id="myUsername">@username</p>
           </div>
         </div>
+
         <form id="profileForm" class="profile-form">
           <label>
             Name
@@ -114,7 +116,7 @@
         <section id="adminBox" class="admin-box">
           <div id="adminActive" class="admin-active hidden">
             <strong>Admin mode active</strong>
-            <span>You can delete content, kick users, ban users, unban accounts, and review all stored messages.</span>
+            <span>You can kick/ban users, create backups, and moderate messages.</span>
           </div>
           <form id="adminClaimForm" class="admin-claim-form">
             <strong>Admin access</strong>
@@ -135,115 +137,62 @@
           </div>
         </section>
 
-        <div class="stat-grid">
-          <div><strong id="postCount">0</strong><span>Posts</span></div>
+        <div class="stat-grid chat-stats">
+          <div><strong id="globalCount">0</strong><span>Global</span></div>
           <div><strong id="userCount">0</strong><span>People</span></div>
+          <div><strong id="onlineCount">0</strong><span>Online</span></div>
         </div>
       </aside>
 
-      <section class="feed">
-        <div class="composer card">
-          <div class="composer-top">
-            <div id="composerAvatar" class="avatar">?</div>
-            <textarea id="postInput" placeholder="What is happening on TSN?" maxlength="600"></textarea>
+      <section class="chat-main">
+        <section class="global-chat card">
+          <div class="section-heading compact-heading">
+            <div>
+              <p class="eyebrow mini">Global</p>
+              <h2>Global chat</h2>
+              <p>Everyone logged into TSN can read and write here.</p>
+            </div>
+            <span id="globalStatus" class="pill">0 messages</span>
           </div>
-          <div class="composer-actions">
-            <span id="postCounter">0/600</span>
-            <button id="postBtn" class="primary">Post</button>
-          </div>
-        </div>
+
+          <div id="globalMessagesList" class="messages global-messages"></div>
+
+          <form id="globalMessageForm" class="message-form global-message-form">
+            <input id="globalMessageInput" maxlength="600" placeholder="Write to global chat..." autocomplete="off" />
+            <button class="primary" type="submit">Send</button>
+          </form>
+        </section>
 
         <section id="adminMessageViewer" class="admin-message-viewer card hidden">
           <div class="admin-message-head">
             <div>
               <p class="eyebrow mini">Admin only</p>
-              <h2>All messages</h2>
-              <p>Review feed posts, comments, direct messages, and room messages, including password-protected rooms.</p>
+              <h2>Message moderation</h2>
+              <p>Review and delete stored global/private messages.</p>
             </div>
             <span id="adminMessageCount" class="pill">0 messages</span>
           </div>
           <div class="admin-message-controls">
             <select id="adminMessageType" aria-label="Message type filter">
               <option value="all">All messages</option>
-              <option value="feed">Feed posts + comments</option>
-              <option value="direct">Private direct messages</option>
-              <option value="rooms">Room messages</option>
-              <option value="locked-rooms">Password-room messages</option>
+              <option value="global">Global messages</option>
+              <option value="direct">Private messages</option>
             </select>
-            <input id="adminMessageSearch" placeholder="Search message text, users, or rooms..." />
+            <input id="adminMessageSearch" placeholder="Search message text or users..." />
             <button id="loadAdminMessagesBtn" class="secondary" type="button">Load messages</button>
           </div>
-          <p class="admin-message-notice">Messages stay encrypted in the database. Admins can view decrypted copies here for moderation.</p>
+          <p class="admin-message-notice">Messages stay encrypted in the database and are decrypted by the server for admin moderation only.</p>
           <div id="adminMessagesList" class="admin-messages-list"></div>
         </section>
-
-        <div id="postsList" class="posts"></div>
       </section>
 
-      <aside class="right-rail">
-        <section class="rooms-card card side-card">
-          <div class="section-heading compact-heading">
-            <div>
-              <p class="eyebrow mini">Rooms</p>
-              <h2>TSN Rooms</h2>
-              <p>Claim, rename, lock, and chat in shared rooms.</p>
-            </div>
-            <span id="roomProgress" class="pill">0/7 claimed</span>
-          </div>
-
-          <div id="roomsList" class="rooms-list"></div>
-
-          <div id="roomPanel" class="room-panel hidden">
-            <div class="room-panel-header">
-              <div>
-                <p id="activeRoomLabel" class="eyebrow mini">Room</p>
-                <h3 id="activeRoomName">Room chat</h3>
-                <p id="activeRoomTagline">Shared room conversation.</p>
-              </div>
-              <button id="closeRoomBtn" class="ghost" type="button">Close</button>
-            </div>
-
-            <form id="roomSettingsForm" class="room-settings hidden">
-              <div>
-                <label>
-                  Room name
-                  <input id="roomNameInput" maxlength="40" placeholder="Room name" />
-                </label>
-                <label>
-                  Optional room password
-                  <input id="roomPasswordInput" type="password" maxlength="80" placeholder="Leave empty to keep current password" autocomplete="off" />
-                </label>
-              </div>
-              <div class="room-settings-actions">
-                <button class="secondary" type="submit">Save room</button>
-                <button id="clearRoomPasswordBtn" class="ghost danger" type="button">Remove password</button>
-              </div>
-              <p class="room-settings-note">Only the room owner and admins can edit this. Passwords are optional.</p>
-            </form>
-
-            <div id="roomLockedNotice" class="room-locked hidden">
-              <strong>This room is password protected.</strong>
-              <p>Enter the room password to read and send messages.</p>
-              <button id="unlockRoomBtn" class="secondary" type="button">Unlock room</button>
-            </div>
-
-            <div class="room-composer">
-              <textarea id="roomMessageInput" maxlength="600" placeholder="Message this room..."></textarea>
-              <div class="composer-actions">
-                <span id="roomMessageCounter">0/600</span>
-                <button id="roomMessageBtn" class="primary" type="button">Send</button>
-              </div>
-            </div>
-
-            <div id="roomMessagesList" class="room-messages"></div>
-          </div>
-        </section>
-
+      <aside class="right-rail people-rail">
         <section class="people card side-card">
           <div class="section-heading compact-heading">
             <div>
-              <h2>People</h2>
-              <p>Click someone to chat.</p>
+              <p class="eyebrow mini">Private</p>
+              <h2>Private chat</h2>
+              <p>Click a person to open a one-to-one chat.</p>
             </div>
             <span id="onlinePill" class="pill">0 online</span>
           </div>
@@ -264,12 +213,12 @@
           <span id="chatBio" class="chat-bio">No bio yet.</span>
         </div>
       </div>
-      <button id="closeChatBtn" class="icon-button" aria-label="Close chat">×</button>
+      <button id="closeChatBtn" class="icon-button" type="button" aria-label="Close chat">×</button>
     </header>
     <div id="messagesList" class="messages"></div>
     <div id="typingLabel" class="typing hidden">typing...</div>
     <form id="messageForm" class="message-form">
-      <input id="messageInput" placeholder="Write a message..." autocomplete="off" />
+      <input id="messageInput" placeholder="Write a private message..." autocomplete="off" />
       <button class="primary" type="submit">Send</button>
     </form>
   </section>

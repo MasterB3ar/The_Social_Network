@@ -1,54 +1,27 @@
-# Deploy TSN V1.0 online with Render + MongoDB Atlas
+# Deploy TSN V1.1 online with Render + MongoDB Atlas
 
-Recommended free-friendly setup:
+TSN V1.1 is chat-only: global chat + private chat.
 
-```text
-Render Free Web Service
-+
-MongoDB Atlas M0 Free Cluster
-+
-External /api/ping monitor every 10 minutes
-```
+## 1. MongoDB Atlas
 
-MongoDB stores the data, so Render redeploys/restarts should not wipe accounts/messages.
+Create a free M0 cluster, create a database user, allow network access, then copy the connection string.
 
-## Step 1: MongoDB Atlas
+## 2. Render web service
 
-1. Create a MongoDB Atlas account.
-2. Create a free M0 cluster.
-3. Create a database user.
-4. In Network Access, allow Render to connect.
-   - Easiest: `0.0.0.0/0`
-   - Use a strong database password.
-5. Copy the connection string.
+Create a Render Web Service from your GitHub repo.
 
-Example:
+Use:
 
 ```text
-mongodb+srv://USERNAME:PASSWORD@cluster0.xxxxx.mongodb.net/?retryWrites=true&w=majority
+Build command: npm install
+Start command: npm start
+Health check:  /api/health
 ```
 
-## Step 2: Upload TSN to GitHub
-
-Upload the project folder contents to a GitHub repository.
-
-## Step 3: Create Render service
-
-Use Blueprint with `render.yaml`, or manually create a Web Service:
-
-```text
-Runtime: Node
-Build Command: npm install
-Start Command: npm start
-Health Check Path: /api/health
-Plan: Free
-```
-
-## Step 4: Add environment variables on Render
+## 3. Render environment variables
 
 ```env
 NODE_ENV=production
-NODE_VERSION=24.14.1
 MONGODB_URI=<your MongoDB Atlas connection string>
 MONGODB_DB_NAME=tsn
 MONGODB_STATE_COLLECTION=app_state
@@ -57,35 +30,18 @@ JWT_SECRET=<long random secret>
 TSN_DATA_ENCRYPTION_KEY=<different long random secret>
 TSN_ADMIN_SETUP_PASSWORD=<your admin setup password>
 TSN_CONTENT_FILTER_ENABLED=true
-TSN_BLOCKED_WORDS=
 ```
 
-Do not change `TSN_DATA_ENCRYPTION_KEY` after launch.
+## 4. Admin
 
-## Step 5: Confirm storage mode
+Open the deployed website, log in, then claim admin from the sidebar using `TSN_ADMIN_SETUP_PASSWORD`.
 
-Open:
+## 5. Keep awake
 
-```text
-https://your-tsn-site.onrender.com/api/health
-```
-
-You should see:
-
-```json
-"mode": "mongodb"
-```
-
-## Step 6: Add keep-awake ping
-
-Set an external monitor/cron service to hit this every 10 minutes:
+Point a cron/monitor service at:
 
 ```text
 https://your-tsn-site.onrender.com/api/ping
 ```
 
-See `CRON_KEEP_AWAKE.md`.
-
-## Important
-
-Render Free can still sleep if no requests are received. The ping helps with that, but MongoDB is what prevents data deletion.
+Every 10 minutes is enough for most Render Free keep-awake setups.

@@ -1,7 +1,7 @@
 {
   "name": "the-social-network-tsn",
-  "version": "1.0.0",
-  "description": "TSN V1.0 - encrypted social network with MongoDB Atlas storage, Render deployment, rooms, moderation, unread badges, and cron ping readiness.",
+  "version": "1.1.0",
+  "description": "TSN V1.1 - chat-only social network with global chat, private chat, MongoDB Atlas storage, Render deployment, moderation, unread badges, and cron ping readiness.",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",

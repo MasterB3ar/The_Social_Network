@@ -1384,7 +1384,7 @@ button:disabled {
   }
 }
 
-/* TSN V1.0 side-room layout: rooms stay clean on the side, not inside the feed. */
+/* TSN V1.1 side-room layout: rooms stay clean on the side, not inside the feed. */
 .layout {
   grid-template-columns: minmax(220px, 300px) minmax(380px, 1fr) minmax(320px, 390px);
 }
@@ -1595,7 +1595,7 @@ button:disabled {
   }
 }
 
-/* TSN V1.0 admin all-message moderation viewer */
+/* TSN V1.1 admin all-message moderation viewer */
 .admin-message-viewer {
   display: grid;
   gap: 14px;
@@ -1737,5 +1737,118 @@ button:disabled {
 
   .admin-message-controls {
     grid-template-columns: 1fr;
+  }
+}
+
+/* TSN V1.1 chat-only layout */
+.hero-subtitle {
+  color: rgba(255, 255, 255, 0.76);
+  max-width: 30rem;
+  line-height: 1.7;
+}
+
+.chat-only-layout {
+  width: min(1500px, calc(100vw - 32px));
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: 320px minmax(420px, 1fr) 360px;
+  gap: 18px;
+  align-items: start;
+  padding: 22px 0 36px;
+}
+
+.chat-main {
+  display: grid;
+  gap: 18px;
+  min-width: 0;
+}
+
+.global-chat {
+  min-height: calc(100vh - 148px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.global-messages {
+  flex: 1;
+  min-height: 420px;
+  max-height: calc(100vh - 310px);
+  overflow-y: auto;
+  padding: 14px;
+  border-radius: 22px;
+  background: rgba(4, 8, 20, 0.28);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.global-message {
+  padding: 14px;
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  margin-bottom: 12px;
+}
+
+.global-message.mine {
+  background: rgba(91, 127, 255, 0.12);
+  border-color: rgba(112, 144, 255, 0.24);
+}
+
+.global-message p {
+  margin: 10px 0 0;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.global-message-form {
+  margin-top: 14px;
+}
+
+.people-rail {
+  position: sticky;
+  top: 88px;
+}
+
+.chat-stats {
+  grid-template-columns: repeat(3, 1fr);
+}
+
+.chat-panel .message-content span,
+.global-message p,
+.admin-message-body {
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 1180px) {
+  .chat-only-layout {
+    grid-template-columns: 300px minmax(0, 1fr);
+  }
+
+  .people-rail {
+    grid-column: 1 / -1;
+    position: static;
+  }
+}
+
+@media (max-width: 780px) {
+  .chat-only-layout {
+    width: min(100% - 20px, 700px);
+    grid-template-columns: 1fr;
+  }
+
+  .global-chat {
+    min-height: 560px;
+  }
+
+  .global-messages {
+    min-height: 360px;
+    max-height: 58vh;
+  }
+
+  .chat-panel {
+    width: calc(100vw - 20px);
+    right: 10px;
+    left: 10px;
   }
 }

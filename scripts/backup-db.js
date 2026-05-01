@@ -20,7 +20,7 @@ async function main() {
   const backupFile = path.join(BACKUP_DIR, `db-${stamp}-manual.json`);
 
   if (MONGODB_URI) {
-    const client = new MongoClient(MONGODB_URI, { appName: 'TSN-V1-Backup' });
+    const client = new MongoClient(MONGODB_URI, { appName: 'TSN-V1.1-Backup' });
     try {
       await client.connect();
       const doc = await client.db(MONGODB_DB_NAME).collection(MONGODB_STATE_COLLECTION).findOne({ _id: MONGODB_STATE_ID });

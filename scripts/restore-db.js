@@ -30,7 +30,7 @@ const MONGODB_STATE_ID = process.env.MONGODB_STATE_ID || 'main';
 
 async function main() {
   if (MONGODB_URI) {
-    const client = new MongoClient(MONGODB_URI, { appName: 'TSN-V1-Restore' });
+    const client = new MongoClient(MONGODB_URI, { appName: 'TSN-V1.1-Restore' });
     try {
       await client.connect();
       const collection = client.db(MONGODB_DB_NAME).collection(MONGODB_STATE_COLLECTION);
