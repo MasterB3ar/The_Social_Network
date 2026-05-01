@@ -1,6 +1,5 @@
-# Render Blueprint for FREE TESTING ONLY.
-# Free web services have an ephemeral filesystem. Accounts, posts, chats, rooms,
-# and passwords can reset after restarts/redeploys on this config.
+# Render Free + MongoDB Atlas M0.
+# This is free-friendly and keeps data in MongoDB instead of the Render filesystem.
 services:
   - type: web
     name: tsn-social-network
@@ -16,8 +15,14 @@ services:
         value: production
       - key: NODE_VERSION
         value: 24.14.1
-      - key: DATA_DIR
-        value: /tmp/tsn-data
+      - key: MONGODB_URI
+        sync: false
+      - key: MONGODB_DB_NAME
+        value: tsn
+      - key: MONGODB_STATE_COLLECTION
+        value: app_state
+      - key: MONGODB_STATE_ID
+        value: main
       - key: JWT_SECRET
         generateValue: true
       - key: TSN_DATA_ENCRYPTION_KEY
@@ -25,6 +30,8 @@ services:
       - key: TSN_OLD_DATA_ENCRYPTION_KEYS
         sync: false
       - key: TSN_DEMO_PASSWORD_HASH
+        sync: false
+      - key: TSN_ADMIN_SETUP_PASSWORD
         sync: false
       - key: TSN_ADMIN_SETUP_PASSWORD_HASH
         sync: false

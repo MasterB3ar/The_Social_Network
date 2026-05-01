@@ -11,6 +11,7 @@ const helmet = require('helmet');
 const morgan = require('morgan');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const { MongoClient } = require('mongodb');
 const { Server } = require('socket.io');
 
 const PORT = process.env.PORT || 3000;
@@ -28,6 +29,11 @@ const DATA_DIR =
     : CONFIGURED_DATA_DIR || DEFAULT_LOCAL_DATA_DIR;
 const DB_FILE = process.env.DB_FILE ? path.resolve(process.env.DB_FILE) : path.join(DATA_DIR, 'db.json');
 const DB_BACKUP_DIR = process.env.TSN_BACKUP_DIR ? path.resolve(process.env.TSN_BACKUP_DIR) : path.join(DATA_DIR, 'backups');
+const MONGODB_URI = process.env.MONGODB_URI || process.env.MONGO_URL || '';
+const USE_MONGODB = Boolean(MONGODB_URI);
+const MONGODB_DB_NAME = process.env.MONGODB_DB_NAME || 'tsn';
+const MONGODB_STATE_COLLECTION = process.env.MONGODB_STATE_COLLECTION || 'app_state';
+const MONGODB_STATE_ID = process.env.MONGODB_STATE_ID || 'main';
 const PUBLIC_DIR = path.join(__dirname, 'public');
 const DEMO_PASSWORD = process.env.TSN_DEMO_PASSWORD || 'TSN-Demo!9vK2p-Q8rM';
 const DEMO_PASSWORD_HASH = process.env.TSN_DEMO_PASSWORD_HASH || '';
@@ -98,6 +104,16 @@ function databaseHasUserData(db) {
   );
 }
 
+function normalizeDatabaseShape(db) {
+  return {
+    users: Array.isArray(db?.users) ? db.users : [],
+    posts: Array.isArray(db?.posts) ? db.posts : [],
+    messages: Array.isArray(db?.messages) ? db.messages : [],
+    rooms: Array.isArray(db?.rooms) ? db.rooms : [],
+    roomMessages: Array.isArray(db?.roomMessages) ? db.roomMessages : []
+  };
+}
+
 function readJsonFile(filePath) {
   return JSON.parse(fs.readFileSync(filePath, 'utf8') || '{}');
 }
@@ -106,18 +122,35 @@ function writeJsonFileSync(filePath, data) {
   fs.writeFileSync(filePath, JSON.stringify(data, null, 2));
 }
 
+function tryReadExistingFileDatabase() {
+  const candidates = [DB_FILE, LEGACY_DB_FILE];
+  for (const filePath of candidates) {
+    try {
+      if (!filePath || !fs.existsSync(filePath)) continue;
+      const candidate = normalizeDatabaseShape(readJsonFile(filePath));
+      if (databaseHasUserData(candidate)) {
+        console.log(`Imported existing file database from ${filePath}.`);
+        return candidate;
+      }
+    } catch (error) {
+      console.warn(`Could not read existing database from ${filePath}: ${error.message}`);
+    }
+  }
+  return emptyDatabase();
+}
+
 function ensureDatabase() {
+  if (USE_MONGODB) return;
+
   const dataDir = path.dirname(DB_FILE);
   if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
 
   if (!fs.existsSync(DB_FILE)) {
     let initialDb = emptyDatabase();
 
-    // Older TSN versions stored data inside the project at ./data/db.json.
-    // Copy that database once into the persistent data directory instead of starting over.
     if (path.resolve(LEGACY_DB_FILE) !== path.resolve(DB_FILE) && fs.existsSync(LEGACY_DB_FILE)) {
       try {
-        const legacyDb = readJsonFile(LEGACY_DB_FILE);
+        const legacyDb = normalizeDatabaseShape(readJsonFile(LEGACY_DB_FILE));
         if (databaseHasUserData(legacyDb)) {
           initialDb = legacyDb;
           console.log(`Imported existing legacy database from ${LEGACY_DB_FILE} into ${DB_FILE}.`);
@@ -131,35 +164,82 @@ function ensureDatabase() {
   }
 }
 
+let mongoClient = null;
+let mongoCollection = null;
+let cachedDb = null;
+let writeQueue = Promise.resolve();
+
+async function initDatabaseStorage() {
+  if (!USE_MONGODB) {
+    ensureDatabase();
+    cachedDb = readDb();
+    return;
+  }
+
+  mongoClient = new MongoClient(MONGODB_URI, {
+    appName: 'TSN-V1',
+    serverSelectionTimeoutMS: Number(process.env.MONGODB_CONNECT_TIMEOUT_MS || 10000)
+  });
+
+  await mongoClient.connect();
+  mongoCollection = mongoClient.db(MONGODB_DB_NAME).collection(MONGODB_STATE_COLLECTION);
+
+  const existing = await mongoCollection.findOne({ _id: MONGODB_STATE_ID });
+  if (existing) {
+    cachedDb = normalizeDatabaseShape(existing);
+    console.log(`Connected to MongoDB database "${MONGODB_DB_NAME}" collection "${MONGODB_STATE_COLLECTION}".`);
+    return;
+  }
+
+  cachedDb = tryReadExistingFileDatabase();
+  await mongoCollection.updateOne(
+    { _id: MONGODB_STATE_ID },
+    { $set: { ...cachedDb, createdAt: new Date(), updatedAt: new Date() } },
+    { upsert: true }
+  );
+  console.log(`Created TSN MongoDB state document "${MONGODB_STATE_ID}".`);
+}
+
 function readDb() {
+  if (USE_MONGODB) {
+    if (!cachedDb) throw new Error('MongoDB storage has not finished starting.');
+    return normalizeDatabaseShape(cachedDb);
+  }
+
   ensureDatabase();
   try {
     const raw = fs.readFileSync(DB_FILE, 'utf8');
-    const db = JSON.parse(raw || '{}');
-    return {
-      users: Array.isArray(db.users) ? db.users : [],
-      posts: Array.isArray(db.posts) ? db.posts : [],
-      messages: Array.isArray(db.messages) ? db.messages : [],
-      rooms: Array.isArray(db.rooms) ? db.rooms : [],
-      roomMessages: Array.isArray(db.roomMessages) ? db.roomMessages : []
-    };
+    return normalizeDatabaseShape(JSON.parse(raw || '{}'));
   } catch (error) {
     console.error('Database read failed:', error);
     return emptyDatabase();
   }
 }
 
-let writeQueue = Promise.resolve();
 function writeDb(db) {
+  const normalizedDb = normalizeDatabaseShape(db);
+  cachedDb = normalizedDb;
+
   writeQueue = writeQueue.then(async () => {
+    if (USE_MONGODB) {
+      if (!mongoCollection) throw new Error('MongoDB is not connected.');
+      await mongoCollection.updateOne(
+        { _id: MONGODB_STATE_ID },
+        { $set: { ...normalizedDb, updatedAt: new Date() } },
+        { upsert: true }
+      );
+      return;
+    }
+
     const tmpFile = `${DB_FILE}.${process.pid}.${Date.now()}.tmp`;
-    await fs.promises.writeFile(tmpFile, JSON.stringify(db, null, 2));
+    await fs.promises.writeFile(tmpFile, JSON.stringify(normalizedDb, null, 2));
     await fs.promises.rename(tmpFile, DB_FILE);
   });
   return writeQueue;
 }
 
 function storagePersistenceWarning() {
+  if (USE_MONGODB) return '';
   const normalized = path.resolve(DATA_DIR);
   if (process.env.NODE_ENV !== 'production') return '';
   if (normalized.startsWith('/tmp')) return 'DATA_DIR is under /tmp, so hosted data can disappear after restarts or deploys.';
@@ -168,20 +248,34 @@ function storagePersistenceWarning() {
 }
 
 function backupDatabase(reason = 'manual') {
-  ensureDatabase();
   if (!fs.existsSync(DB_BACKUP_DIR)) fs.mkdirSync(DB_BACKUP_DIR, { recursive: true });
   const stamp = new Date().toISOString().replace(/[:.]/g, '-');
   const backupFile = path.join(DB_BACKUP_DIR, `db-${stamp}-${reason}.json`);
-  fs.copyFileSync(DB_FILE, backupFile);
+  const snapshot = readDb();
+  fs.writeFileSync(backupFile, JSON.stringify(snapshot, null, 2));
   return backupFile;
 }
 
 function getStorageStatus() {
+  if (USE_MONGODB) {
+    if (!mongoCollection || !cachedDb) throw new Error('MongoDB is not ready.');
+    return {
+      ok: true,
+      mode: 'mongodb',
+      mongoDatabase: MONGODB_DB_NAME,
+      mongoCollection: MONGODB_STATE_COLLECTION,
+      mongoStateId: MONGODB_STATE_ID,
+      backupDir: DB_BACKUP_DIR,
+      persistenceWarning: ''
+    };
+  }
+
   ensureDatabase();
   fs.accessSync(DATA_DIR, fs.constants.R_OK | fs.constants.W_OK);
   fs.accessSync(DB_FILE, fs.constants.R_OK | fs.constants.W_OK);
   return {
     ok: true,
+    mode: 'json-file',
     dataDir: DATA_DIR,
     dbFile: DB_FILE,
     backupDir: DB_BACKUP_DIR,
@@ -811,7 +905,7 @@ function migrateRecordField(record, field) {
   return changed;
 }
 
-function migrateDatabaseAtRest() {
+async function migrateDatabaseAtRest() {
   const db = readDb();
   let changed = false;
 
@@ -911,8 +1005,8 @@ function migrateDatabaseAtRest() {
   });
 
   if (changed) {
-    fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2));
-    console.log('Migrated legacy plaintext database fields to encrypted fields.');
+    await writeDb(db);
+    console.log('Migrated legacy/plain database fields to the current encrypted TSN format.');
   }
 }
 
@@ -935,8 +1029,12 @@ app.get('/api/health', (req, res) => {
       environment: process.env.NODE_ENV || 'development',
       storage: {
         ok: storage.ok,
+        mode: storage.mode,
         dataDir: storage.dataDir,
         dbFile: storage.dbFile,
+        mongoDatabase: storage.mongoDatabase,
+        mongoCollection: storage.mongoCollection,
+        mongoStateId: storage.mongoStateId,
         backupDir: storage.backupDir,
         persistenceWarning: storage.persistenceWarning
       },
@@ -964,6 +1062,15 @@ app.get('/api/health', (req, res) => {
       detail: error.message
     });
   }
+});
+
+app.get('/api/ping', (req, res) => {
+  res.json({
+    ok: true,
+    app: 'TSN V1.0',
+    message: 'pong',
+    now: new Date().toISOString()
+  });
 });
 
 app.post('/api/auth/register', async (req, res) => {
@@ -1653,33 +1760,47 @@ app.get('*', (req, res) => {
   res.sendFile(path.join(PUBLIC_DIR, 'index.html'));
 });
 
-try {
-  ensureDatabase();
-  const beforeMigrationDb = readDb();
-  if (databaseHasUserData(beforeMigrationDb)) {
-    const backupFile = backupDatabase('pre-start');
-    console.log(`Database backup created before startup migration: ${backupFile}`);
+async function startServer() {
+  try {
+    await initDatabaseStorage();
+
+    const beforeMigrationDb = readDb();
+    if (databaseHasUserData(beforeMigrationDb)) {
+      try {
+        const backupFile = backupDatabase('pre-start');
+        console.log(`Database backup created before startup migration: ${backupFile}`);
+      } catch (error) {
+        console.warn(`Startup backup skipped: ${error.message}`);
+      }
+    }
+
+    await migrateDatabaseAtRest();
+
+    server.listen(PORT, '0.0.0.0', () => {
+      console.log(`TSN is running on port ${PORT}.`);
+      if (USE_MONGODB) {
+        console.log(`Database: MongoDB/${MONGODB_DB_NAME}.${MONGODB_STATE_COLLECTION}#${MONGODB_STATE_ID}`);
+      } else {
+        console.log(`Database file: ${DB_FILE}`);
+      }
+      console.log(`Backup directory: ${DB_BACKUP_DIR}`);
+      const warning = storagePersistenceWarning();
+      if (warning) console.warn(`Persistence warning: ${warning}`);
+      console.log('Easy login is available: Continue as Guest or Demo User 1/2.');
+      console.log('Admin rights can be claimed inside the app with TSN_ADMIN_SETUP_PASSWORD or TSN_ADMIN_SETUP_PASSWORD_HASH.');
+
+      if (process.env.NODE_ENV === 'production' && JWT_SECRET === DEFAULT_JWT_SECRET) {
+        console.warn('WARNING: Set a strong JWT_SECRET before using TSN publicly.');
+      }
+
+      if (process.env.NODE_ENV === 'production' && DATA_ENCRYPTION_KEY === DEFAULT_DATA_ENCRYPTION_KEY) {
+        console.warn('WARNING: Set TSN_DATA_ENCRYPTION_KEY before using TSN publicly.');
+      }
+    });
+  } catch (error) {
+    console.error('TSN failed to start:', error);
+    process.exit(1);
   }
-} catch (error) {
-  console.warn(`Startup backup skipped: ${error.message}`);
 }
 
-migrateDatabaseAtRest();
-
-server.listen(PORT, '0.0.0.0', () => {
-  console.log(`TSN is running on port ${PORT}.`);
-  console.log(`Database file: ${DB_FILE}`);
-  console.log(`Backup directory: ${DB_BACKUP_DIR}`);
-  const warning = storagePersistenceWarning();
-  if (warning) console.warn(`Persistence warning: ${warning}`);
-  console.log('Easy login is available: Continue as Guest or Demo User 1/2.');
-  console.log('Admin rights can be claimed inside the app with TSN_ADMIN_SETUP_PASSWORD or TSN_ADMIN_SETUP_PASSWORD_HASH.');
-
-  if (process.env.NODE_ENV === 'production' && JWT_SECRET === DEFAULT_JWT_SECRET) {
-    console.warn('WARNING: Set a strong JWT_SECRET before using TSN publicly.');
-  }
-
-  if (process.env.NODE_ENV === 'production' && DATA_ENCRYPTION_KEY === DEFAULT_DATA_ENCRYPTION_KEY) {
-    console.warn('WARNING: Set TSN_DATA_ENCRYPTION_KEY before using TSN publicly.');
-  }
-});
+startServer();

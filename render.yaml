@@ -1,28 +1,29 @@
-# Render Blueprint for SAVED DATA.
-# This is the recommended Render config for TSN because the app stores its JSON
-# database on a persistent disk mounted at /var/data.
-# Persistent disks require a paid Render web service instance.
+# Render Blueprint for TSN V1.0 + MongoDB Atlas.
+# Recommended free-friendly setup: Render Free web service + MongoDB Atlas M0.
+# Data is stored in MongoDB, not Render's filesystem, so redeploys/restarts do not wipe accounts/messages.
 services:
   - type: web
     name: tsn-social-network
     runtime: node
-    plan: starter
+    plan: free
     region: frankfurt
     buildCommand: npm install
     startCommand: npm start
     healthCheckPath: /api/health
     autoDeployTrigger: commit
-    disk:
-      name: tsn-data
-      mountPath: /var/data
-      sizeGB: 1
     envVars:
       - key: NODE_ENV
         value: production
       - key: NODE_VERSION
         value: 24.14.1
-      - key: DATA_DIR
-        value: /var/data
+      - key: MONGODB_URI
+        sync: false
+      - key: MONGODB_DB_NAME
+        value: tsn
+      - key: MONGODB_STATE_COLLECTION
+        value: app_state
+      - key: MONGODB_STATE_ID
+        value: main
       - key: JWT_SECRET
         generateValue: true
       - key: TSN_DATA_ENCRYPTION_KEY
@@ -30,6 +31,8 @@ services:
       - key: TSN_OLD_DATA_ENCRYPTION_KEYS
         sync: false
       - key: TSN_DEMO_PASSWORD_HASH
+        sync: false
+      - key: TSN_ADMIN_SETUP_PASSWORD
         sync: false
       - key: TSN_ADMIN_SETUP_PASSWORD_HASH
         sync: false

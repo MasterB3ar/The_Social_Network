@@ -1,14 +1,15 @@
 {
   "name": "the-social-network-tsn",
   "version": "1.0.0",
-  "description": "TSN V1.0 - username-only encrypted social network with persistent storage, rooms, moderation, unread badges, fixed scrolling, fixed login/app initialization, and non-squished message/comment spacing.",
+  "description": "TSN V1.0 - encrypted social network with MongoDB Atlas storage, Render deployment, rooms, moderation, unread badges, and cron ping readiness.",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
     "dev": "node --watch server.js",
     "hash-secret": "node scripts/hash-secret.js",
     "backup": "node scripts/backup-db.js",
-    "restore": "node scripts/restore-db.js"
+    "restore": "node scripts/restore-db.js",
+    "ping-self": "node scripts/ping-self.js"
   },
   "keywords": [
     "social-network",
@@ -26,7 +27,8 @@
     "helmet": "^8.0.0",
     "jsonwebtoken": "^9.0.2",
     "morgan": "^1.10.0",
-    "socket.io": "^4.8.1"
+    "socket.io": "^4.8.1",
+    "mongodb": "^6.20.0"
   },
   "engines": {
     "node": ">=18.18.0 <25.0.0"

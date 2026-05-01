@@ -1,70 +1,44 @@
-# TSN Render-ready checklist
+# TSN V1.0 Render + MongoDB checklist
 
-## Must be true before real users join
-
-- [ ] `DATA_DIR=/var/data`
-- [ ] A Render persistent disk is attached at `/var/data`
-- [ ] You are using `render.yaml`, not `render.free.yaml`
-- [ ] `JWT_SECRET` is set
-- [ ] `TSN_DATA_ENCRYPTION_KEY` is set
-- [ ] `TSN_DATA_ENCRYPTION_KEY` is saved somewhere safe and will not be changed
-- [ ] If the encryption key was changed by mistake, `TSN_OLD_DATA_ENCRYPTION_KEYS` contains the old key
-- [ ] `TSN_DEMO_PASSWORD_HASH` is set
-- [ ] `TSN_ADMIN_SETUP_PASSWORD_HASH` is set
-- [ ] `/api/health` shows `dataDir: /var/data`
-- [ ] You have created your admin account and claimed admin rights
-- [ ] You have tested post/comment/chat/rooms after a redeploy
-
-## Local update checklist
-
-- [ ] Stop TSN
-- [ ] Run `npm run backup`
-- [ ] Keep your `.env`
-- [ ] Keep the same `TSN_DATA_ENCRYPTION_KEY`
-- [ ] Update the code
-- [ ] Run `npm install`
-- [ ] Run `npm start`
-- [ ] Confirm old accounts/posts/messages still exist
-
-## Important warnings
-
-Do not store the live database in:
+Before deploying:
 
 ```text
-./data/db.json
+[ ] Upload project to GitHub
+[ ] Create MongoDB Atlas M0 cluster
+[ ] Create MongoDB database user
+[ ] Allow network access for Render
+[ ] Copy MongoDB connection string
+[ ] Create Render Web Service or Blueprint from render.yaml
+[ ] Set MONGODB_URI in Render
+[ ] Set JWT_SECRET in Render
+[ ] Set TSN_DATA_ENCRYPTION_KEY in Render
+[ ] Set TSN_ADMIN_SETUP_PASSWORD or TSN_ADMIN_SETUP_PASSWORD_HASH
+[ ] Deploy
+[ ] Open /api/health and confirm "mode": "mongodb"
+[ ] Add external ping monitor to /api/ping every 10 minutes
 ```
 
-Do not use this for a real public Render site:
+Recommended Render env vars:
 
-```text
-DATA_DIR=/tmp/tsn-data
+```env
+NODE_ENV=production
+NODE_VERSION=24.14.1
+MONGODB_URI=...
+MONGODB_DB_NAME=tsn
+MONGODB_STATE_COLLECTION=app_state
+MONGODB_STATE_ID=main
+JWT_SECRET=...
+TSN_DATA_ENCRYPTION_KEY=...
+TSN_ADMIN_SETUP_PASSWORD=...
+TSN_CONTENT_FILTER_ENABLED=true
+TSN_BLOCKED_WORDS=
 ```
 
-Do not change this after users create data:
+Never reset these after users exist:
 
 ```text
+MONGODB_URI
 TSN_DATA_ENCRYPTION_KEY
 ```
 
-## Backup commands
-
-Create backup:
-
-```bash
-npm run backup
-```
-
-Restore backup:
-
-```bash
-npm run restore -- /full/path/to/db-backup.json
-```
-
-
-## TSN V1.0 admin message review
-
-Admins can review all stored feed posts, comments, direct messages, and room messages, including password-protected rooms. Messages remain encrypted at rest and are decrypted server-side only for authorized admin moderation. The login screen includes a moderation notice for users.
-
-## Login Fix Note
-
-This build fixes a bug where TSN could show “Logged in” but stay on the login screen if a non-auth app data load failed during startup. Authentication now loads first, then feed/users/rooms load separately so the user stays logged in.
+If you change `TSN_DATA_ENCRYPTION_KEY`, old encrypted usernames/messages will not decrypt correctly.

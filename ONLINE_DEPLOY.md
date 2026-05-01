@@ -1,153 +1,91 @@
-# Deploy TSN V1.0 to Render without wiping data
+# Deploy TSN V1.0 online with Render + MongoDB Atlas
 
-This TSN version is Render-ready and uses persistent storage for accounts, posts, passwords, chats, rooms, and encrypted profiles.
-
-## Why data was getting deleted
-
-TSN stores its database in a JSON file. If that JSON file lives inside the deployed app folder, it can be replaced when you upload a new version. On Render, free web services also use an ephemeral filesystem, meaning filesystem changes can be lost after restarts or deploys.
-
-The fix in this version is:
+Recommended free-friendly setup:
 
 ```text
-DATA_DIR=/var/data
+Render Free Web Service
++
+MongoDB Atlas M0 Free Cluster
++
+External /api/ping monitor every 10 minutes
 ```
 
-with a Render persistent disk mounted at:
+MongoDB stores the data, so Render redeploys/restarts should not wipe accounts/messages.
+
+## Step 1: MongoDB Atlas
+
+1. Create a MongoDB Atlas account.
+2. Create a free M0 cluster.
+3. Create a database user.
+4. In Network Access, allow Render to connect.
+   - Easiest: `0.0.0.0/0`
+   - Use a strong database password.
+5. Copy the connection string.
+
+Example:
 
 ```text
-/var/data
+mongodb+srv://USERNAME:PASSWORD@cluster0.xxxxx.mongodb.net/?retryWrites=true&w=majority
 ```
 
-## Before deploying
+## Step 2: Upload TSN to GitHub
 
-Create strong values for:
+Upload the project folder contents to a GitHub repository.
 
-```env
-JWT_SECRET=<long random secret>
-TSN_DATA_ENCRYPTION_KEY=<different long random secret>
-TSN_OLD_DATA_ENCRYPTION_KEYS=
-TSN_DEMO_PASSWORD_HASH=<bcrypt hash>
-TSN_ADMIN_SETUP_PASSWORD_HASH=<bcrypt hash>
-```
+## Step 3: Create Render service
 
-Generate hashes locally:
-
-```bash
-npm install
-npm run hash-secret -- "YourStrongDemoPassword!2026"
-npm run hash-secret -- "YourStrongAdminPassword!2026"
-```
-
-Do **not** change `TSN_DATA_ENCRYPTION_KEY` after real users/messages exist. If you accidentally changed it and still know the old value, add it as `TSN_OLD_DATA_ENCRYPTION_KEYS`.
-
-## Recommended Render deploy
-
-1. Unzip the project.
-2. Upload the **contents** of the `tsn-social-network` folder to GitHub.
-3. Go to Render.
-4. Click **New +**.
-5. Choose **Blueprint**.
-6. Connect the GitHub repo.
-7. Render reads `render.yaml`.
-8. Render creates a paid Starter service with a persistent disk at `/var/data`.
-9. Add the secret environment variables when Render asks.
-10. Deploy.
-
-The included `render.yaml` is the persistent version.
-
-## Manual Render Web Service settings
-
-Use these if you do not use Blueprint:
+Use Blueprint with `render.yaml`, or manually create a Web Service:
 
 ```text
 Runtime: Node
-Plan: Starter or higher
 Build Command: npm install
 Start Command: npm start
 Health Check Path: /api/health
-Disk mount path: /var/data
-Disk size: 1 GB
+Plan: Free
 ```
 
-Environment variables:
+## Step 4: Add environment variables on Render
 
 ```env
 NODE_ENV=production
 NODE_VERSION=24.14.1
-DATA_DIR=/var/data
-JWT_SECRET=<generate>
-TSN_DATA_ENCRYPTION_KEY=<generate>
-TSN_OLD_DATA_ENCRYPTION_KEYS=
-TSN_DEMO_PASSWORD_HASH=<bcrypt hash>
-TSN_ADMIN_SETUP_PASSWORD_HASH=<bcrypt hash>
+MONGODB_URI=<your MongoDB Atlas connection string>
+MONGODB_DB_NAME=tsn
+MONGODB_STATE_COLLECTION=app_state
+MONGODB_STATE_ID=main
+JWT_SECRET=<long random secret>
+TSN_DATA_ENCRYPTION_KEY=<different long random secret>
+TSN_ADMIN_SETUP_PASSWORD=<your admin setup password>
 TSN_CONTENT_FILTER_ENABLED=true
 TSN_BLOCKED_WORDS=
 ```
 
-## Free testing only
+Do not change `TSN_DATA_ENCRYPTION_KEY` after launch.
 
-If you want free testing, rename:
-
-```text
-render.free.yaml
-```
-
-to:
-
-```text
-render.yaml
-```
-
-But do not use that for a real site, because it uses:
-
-```env
-DATA_DIR=/tmp/tsn-data
-```
-
-and data can reset.
-
-## Updating TSN on Render
-
-1. Do **not** delete the Render disk.
-2. Do **not** change `DATA_DIR=/var/data`.
-3. Do **not** change `TSN_DATA_ENCRYPTION_KEY`. If you accidentally changed it and still know the old value, add the old value to `TSN_OLD_DATA_ENCRYPTION_KEYS`.
-4. Push the new code to GitHub.
-5. Render redeploys.
-6. Accounts/posts/chats/rooms stay in `/var/data/db.json`.
-
-## Local backup before large updates
-
-```bash
-npm run backup
-```
-
-Restore if needed:
-
-```bash
-npm run restore -- /full/path/to/db-backup.json
-```
-
-## Health check
+## Step 5: Confirm storage mode
 
 Open:
 
 ```text
-https://your-render-url.onrender.com/api/health
+https://your-tsn-site.onrender.com/api/health
 ```
 
-Check that it shows:
+You should see:
+
+```json
+"mode": "mongodb"
+```
+
+## Step 6: Add keep-awake ping
+
+Set an external monitor/cron service to hit this every 10 minutes:
 
 ```text
-dataDir: /var/data
+https://your-tsn-site.onrender.com/api/ping
 ```
 
-If it shows `/tmp/tsn-data`, your service is still using free temporary storage.
+See `CRON_KEEP_AWAKE.md`.
 
+## Important
 
-## TSN V1.0 admin message review
-
-Admins can review all stored feed posts, comments, direct messages, and room messages, including password-protected rooms. Messages remain encrypted at rest and are decrypted server-side only for authorized admin moderation. The login screen includes a moderation notice for users.
-
-## Login Fix Note
-
-This build fixes a bug where TSN could show “Logged in” but stay on the login screen if a non-auth app data load failed during startup. Authentication now loads first, then feed/users/rooms load separately so the user stays logged in.
+Render Free can still sleep if no requests are received. The ping helps with that, but MongoDB is what prevents data deletion.

@@ -1,0 +1,18 @@
+# Optional Render Cron Job setup.
+# WARNING: Render Cron Jobs have a minimum monthly charge, so this is NOT free.
+# Use CRON_KEEP_AWAKE.md for free external ping options.
+services:
+  - type: cron
+    name: tsn-keep-awake
+    runtime: node
+    plan: starter
+    schedule: "*/10 * * * *"
+    buildCommand: npm install
+    startCommand: npm run ping-self
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NODE_VERSION
+        value: 24.14.1
+      - key: TSN_PING_URL
+        sync: false
