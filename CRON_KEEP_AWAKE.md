@@ -1,23 +1,15 @@
-# TSN V1.1 keep-awake ping
+# Cron / keep-awake til Render
 
-TSN includes this endpoint:
+Render Free kan gå i sleep. Du kan bruge en ekstern cron-service til at pinge TSN.
 
-```text
-/api/ping
-```
-
-Use an external cron/monitor service to request it about every 10 minutes:
+Ping denne URL hvert 10. minut:
 
 ```text
-https://your-tsn-site.onrender.com/api/ping
+https://dit-tsn-site.onrender.com/api/ping
 ```
 
-MongoDB keeps the data safe. The ping only helps reduce Render Free sleeping.
+TSN svarer med JSON, hvis serveren er vågen.
 
-You can also run the helper manually:
+## Vigtigt
 
-```bash
-TSN_PING_URL=https://your-tsn-site.onrender.com/api/ping npm run ping-self
-```
-
-With MongoDB enabled, a Render restart/redeploy should not delete accounts, global messages, private messages, bans, or admin settings.
+Cron holder kun serveren vågen. Det er **MongoDB Atlas**, der sikrer, at brugere og beskeder ikke forsvinder ved deploys/restarts.

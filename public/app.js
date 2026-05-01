@@ -48,10 +48,10 @@ function formatTime(dateString) {
   const hours = Math.floor(minutes / 60);
   const days = Math.floor(hours / 24);
 
-  if (minutes < 1) return 'now';
-  if (minutes < 60) return `${minutes}m ago`;
-  if (hours < 24) return `${hours}h ago`;
-  if (days < 7) return `${days}d ago`;
+  if (minutes < 1) return 'nu';
+  if (minutes < 60) return `${minutes} min. siden`;
+  if (hours < 24) return `${hours} t. siden`;
+  if (days < 7) return `${days} d. siden`;
   return date.toLocaleDateString();
 }
 
@@ -63,6 +63,15 @@ function unreadBadgeText(count) {
   const number = Number(count) || 0;
   if (number <= 0) return '';
   return number > 99 ? '99+' : String(number);
+}
+
+function displayRole(role) {
+  return role === 'admin' ? 'admin' : 'bruger';
+}
+
+function displayAdminStatus(user) {
+  if (user.banned) return 'Banned';
+  return user.online ? 'Online' : 'Offline';
 }
 
 function setUnreadForUser(userId, count) {
@@ -133,7 +142,7 @@ function showApp() {
   appScreen.classList.remove('hidden');
 }
 
-function forceLocalLogout(message = 'You have been logged out.') {
+function forceLocalLogout(message = 'Du er blevet logget ud.') {
   if (state.socket) {
     state.socket.disconnect();
     state.socket = null;
@@ -169,8 +178,8 @@ async function api(path, options = {}) {
   }
 
   if (!response.ok) {
-    if (data.logout) forceLocalLogout(data.error || 'Your session ended.');
-    const error = new Error(data.error || 'Something went wrong.');
+    if (data.logout) forceLocalLogout(data.error || 'Din session er slut.');
+    const error = new Error(data.error || 'Noget gik galt.');
     Object.assign(error, data);
     error.status = response.status;
     throw error;
@@ -179,7 +188,7 @@ async function api(path, options = {}) {
   return data;
 }
 
-async function finishAuth(data, message = 'Logged in') {
+async function finishAuth(data, message = 'Logget ind') {
   setToken(data.token);
   await initApp({ fromLogin: true });
   showToast(message);
@@ -210,7 +219,7 @@ loginForm.addEventListener('submit', async (event) => {
         password: form.get('password')
       })
     });
-    await finishAuth(data, 'Logged in');
+    await finishAuth(data, 'Logget ind');
   } catch (error) {
     authError.textContent = error.message;
   }
@@ -230,7 +239,7 @@ registerForm.addEventListener('submit', async (event) => {
         password: form.get('password')
       })
     });
-    await finishAuth(data, 'Account created and logged in');
+    await finishAuth(data, 'Konto oprettet og logget ind');
   } catch (error) {
     authError.textContent = error.message;
   }
@@ -243,7 +252,7 @@ if (guestLoginBtn) {
     try {
       guestLoginBtn.disabled = true;
       const data = await api('/api/auth/guest', { method: 'POST' });
-      await finishAuth(data, 'Guest account created');
+      await finishAuth(data, 'Gæstekonto oprettet');
     } catch (error) {
       authError.textContent = error.message;
     } finally {
@@ -261,7 +270,7 @@ document.querySelectorAll('[data-demo-login]').forEach((button) => {
         method: 'POST',
         body: JSON.stringify({ username: button.dataset.demoLogin })
       });
-      await finishAuth(data, 'Logged in as ' + button.textContent.trim());
+      await finishAuth(data, 'Logget ind som ' + button.textContent.trim());
     } catch (error) {
       authError.textContent = error.message;
     } finally {
@@ -270,11 +279,11 @@ document.querySelectorAll('[data-demo-login]').forEach((button) => {
   });
 });
 
-$('#logoutBtn').addEventListener('click', () => forceLocalLogout('Logged out'));
+$('#logoutBtn').addEventListener('click', () => forceLocalLogout('Logget ud'));
 
 $('#refreshBtn').addEventListener('click', async () => {
   await loadEverything();
-  showToast('TSN refreshed');
+  showToast('TSN er opdateret');
 });
 
 $('#profileForm').addEventListener('submit', async (event) => {
@@ -291,7 +300,7 @@ $('#profileForm').addEventListener('submit', async (event) => {
     renderMe();
     renderGlobalMessages();
     renderChat();
-    showToast('Profile saved');
+    showToast('Profil gemt');
   } catch (error) {
     showToast(error.message);
   }
@@ -318,7 +327,7 @@ if (adminClaimForm) {
       await loadAdminMessages();
       renderGlobalMessages();
       renderChat();
-      showToast('Admin rights enabled');
+      showToast('Admin-rettigheder aktiveret');
     } catch (error) {
       showToast(error.message);
     }
@@ -335,14 +344,14 @@ if (createBackupBtn) {
   createBackupBtn.addEventListener('click', async () => {
     const backupStatus = $('#backupStatus');
     createBackupBtn.disabled = true;
-    if (backupStatus) backupStatus.textContent = 'Creating backup...';
+    if (backupStatus) backupStatus.textContent = 'Laver backup...';
 
     try {
       const data = await api('/api/admin/backup', { method: 'POST' });
-      if (backupStatus) backupStatus.textContent = `Backup created: ${data.backupFile}`;
-      showToast('Database backup created');
+      if (backupStatus) backupStatus.textContent = `Backup oprettet: ${data.backupFile}`;
+      showToast('Databasebackup oprettet');
     } catch (error) {
-      if (backupStatus) backupStatus.textContent = 'Backup failed';
+      if (backupStatus) backupStatus.textContent = 'Backup fejlede';
       showToast(error.message);
     } finally {
       createBackupBtn.disabled = false;
@@ -378,7 +387,7 @@ if (adminMessagesList) {
 
     const item = state.adminMessages.find((candidate) => candidate.id === deleteButton.dataset.adminDeleteMessageItem);
     if (!item) return;
-    if (!confirm(`Delete this ${item.label || 'message'} for everyone?`)) return;
+    if (!confirm(`Slet denne ${item.label || 'besked'} for alle?`)) return;
 
     try {
       await deleteAdminMessageItem(item);
@@ -392,7 +401,7 @@ if (adminMessagesList) {
         renderChat();
       }
       renderAdminMessageViewer();
-      showToast('Message deleted');
+      showToast('Besked slettet');
     } catch (error) {
       showToast(error.message);
     }
@@ -409,19 +418,19 @@ if (adminUsersList) {
       if (kickButton) {
         const userId = kickButton.dataset.adminKick;
         const user = state.adminUsers.find((candidate) => candidate.id === userId);
-        if (!confirm(`Kick ${user?.name || 'this user'} out of TSN now?`)) return;
+        if (!confirm(`Smid ${user?.name || 'denne bruger'} ud af TSN nu?`)) return;
         const data = await api(`/api/admin/users/${userId}/kick`, { method: 'POST' });
         upsertAdminUser(data.user);
         renderAdminUsers();
         await loadUsers($('#userSearch').value);
-        showToast('User kicked');
+        showToast('Bruger smidt ud');
       }
 
       if (banButton) {
         const userId = banButton.dataset.adminBan;
         const user = state.adminUsers.find((candidate) => candidate.id === userId);
-        const reason = prompt(`Ban ${user?.name || 'this user'}? Optional reason:`) || '';
-        if (!confirm(`Ban ${user?.name || 'this user'} and force logout?`)) return;
+        const reason = prompt(`Ban ${user?.name || 'denne bruger'}? Valgfri grund:`) || '';
+        if (!confirm(`Ban ${user?.name || 'denne bruger'} og gennemtving log ud?`)) return;
         const data = await api(`/api/admin/users/${userId}/ban`, {
           method: 'POST',
           body: JSON.stringify({ reason })
@@ -429,18 +438,18 @@ if (adminUsersList) {
         upsertAdminUser(data.user);
         renderAdminUsers();
         await loadUsers($('#userSearch').value);
-        showToast('User banned');
+        showToast('Bruger banned');
       }
 
       if (unbanButton) {
         const userId = unbanButton.dataset.adminUnban;
         const user = state.adminUsers.find((candidate) => candidate.id === userId);
-        if (!confirm(`Unban ${user?.name || 'this user'}?`)) return;
+        if (!confirm(`Fjern ban fra ${user?.name || 'denne bruger'}?`)) return;
         const data = await api(`/api/admin/users/${userId}/unban`, { method: 'POST' });
         upsertAdminUser(data.user);
         renderAdminUsers();
         await loadUsers($('#userSearch').value);
-        showToast('User unbanned');
+        showToast('Ban fjernet');
       }
     } catch (error) {
       showToast(error.message);
@@ -473,14 +482,14 @@ if (globalMessagesList) {
   globalMessagesList.addEventListener('click', async (event) => {
     const button = event.target.closest('[data-delete-global-message]');
     if (!button) return;
-    if (!confirm('Delete this global message for everyone?')) return;
+    if (!confirm('Slet denne globale besked for alle?')) return;
 
     try {
       const messageId = button.dataset.deleteGlobalMessage;
       await api(`/api/global/messages/${messageId}`, { method: 'DELETE' });
       state.globalMessages = state.globalMessages.filter((message) => message.id !== messageId);
       renderGlobalMessages();
-      showToast('Global message deleted');
+      showToast('Global besked slettet');
     } catch (error) {
       showToast(error.message);
     }
@@ -525,7 +534,7 @@ $('#messageForm').addEventListener('submit', (event) => {
 
   state.socket.emit('private-message', { to, text }, (response) => {
     if (!response?.ok) {
-      showToast(response?.error || 'Could not send message.');
+      showToast(response?.error || 'Kunne ikke sende beskeden.');
       return;
     }
 
@@ -538,14 +547,14 @@ if (messagesList) {
   messagesList.addEventListener('click', async (event) => {
     const button = event.target.closest('[data-delete-message]');
     if (!button) return;
-    if (!confirm('Delete this private message for everyone?')) return;
+    if (!confirm('Slet denne private besked for alle?')) return;
 
     try {
       const messageId = button.dataset.deleteMessage;
       await api(`/api/messages/${messageId}`, { method: 'DELETE' });
       state.activeMessages = state.activeMessages.filter((message) => message.id !== messageId);
       renderChat();
-      showToast('Message deleted');
+      showToast('Besked slettet');
     } catch (error) {
       showToast(error.message);
     }
@@ -570,7 +579,7 @@ function renderStats() {
   $('#userCount').textContent = String(state.users.length);
   $('#onlineCount').textContent = String(online);
   $('#onlinePill').textContent = `${online} online`;
-  $('#globalStatus').textContent = `${state.globalMessages.length} message${state.globalMessages.length === 1 ? '' : 's'}`;
+  $('#globalStatus').textContent = `${state.globalMessages.length} besked${state.globalMessages.length === 1 ? '' : 'er'}`;
 }
 
 function renderMe() {
@@ -589,14 +598,14 @@ function renderGlobalMessages({ forceBottom = false } = {}) {
   const scrollSnapshot = getScrollSnapshot(globalMessagesList);
 
   if (!state.globalMessages.length) {
-    globalMessagesList.innerHTML = '<div class="empty">No global messages yet. Write the first one.</div>';
+    globalMessagesList.innerHTML = '<div class="empty">Der er ingen globale beskeder endnu. Skriv den første.</div>';
     restoreMessageScroll(globalMessagesList, scrollSnapshot, { forceBottom });
     return;
   }
 
   globalMessagesList.innerHTML = state.globalMessages.map((message) => {
     const mine = message.authorId === state.me?.id;
-    const authorName = message.author?.name || 'Unknown';
+    const authorName = message.author?.name || 'Ukendt';
     return `
       <article class="global-message ${mine ? 'mine' : ''}">
         <div class="post-row-top">
@@ -604,10 +613,10 @@ function renderGlobalMessages({ forceBottom = false } = {}) {
             <div class="avatar">${escapeHtml(initials(authorName))}</div>
             <div>
               <strong>${escapeHtml(authorName)}</strong>
-              <span>@${escapeHtml(message.author?.username || 'unknown')} · ${escapeHtml(formatTime(message.createdAt))}</span>
+              <span>@${escapeHtml(message.author?.username || 'ukendt')} · ${escapeHtml(formatTime(message.createdAt))}</span>
             </div>
           </div>
-          ${canDeleteMessage(message.authorId) ? `<button class="admin-delete" type="button" data-delete-global-message="${escapeHtml(message.id)}">Delete</button>` : ''}
+          ${canDeleteMessage(message.authorId) ? `<button class="admin-delete" type="button" data-delete-global-message="${escapeHtml(message.id)}">Slet</button>` : ''}
         </div>
         <p>${escapeHtml(message.text)}</p>
       </article>
@@ -621,13 +630,13 @@ function renderUsers() {
   renderStats();
 
   if (!state.users.length) {
-    usersList.innerHTML = '<div class="empty">No other users yet. Create another account in a different browser to test private chat.</div>';
+    usersList.innerHTML = '<div class="empty">Der er ingen andre brugere endnu. Opret en anden konto i en anden browser for at teste privat chat.</div>';
     return;
   }
 
   usersList.innerHTML = state.users.map((user) => {
     const isActive = state.activeChatUser?.id === user.id;
-    const bio = String(user.bio || '').trim() || 'No bio yet.';
+    const bio = String(user.bio || '').trim() || 'Ingen bio endnu.';
     return `
       <button class="user-row ${isActive ? 'active' : ''} ${Number(user.unreadCount) > 0 ? 'has-unread' : ''}" data-user-id="${escapeHtml(user.id)}">
         <div class="avatar">${escapeHtml(initials(user.name))}</div>
@@ -636,7 +645,7 @@ function renderUsers() {
           <span>@${escapeHtml(user.username)}</span>
           <span class="user-bio">${escapeHtml(bio)}</span>
         </div>
-        ${Number(user.unreadCount) > 0 ? `<span class="unread-badge" aria-label="${escapeHtml(user.unreadCount)} unread private messages">${escapeHtml(unreadBadgeText(user.unreadCount))}</span>` : ''}
+        ${Number(user.unreadCount) > 0 ? `<span class="unread-badge" aria-label="${escapeHtml(user.unreadCount)} ulæste private beskeder">${escapeHtml(unreadBadgeText(user.unreadCount))}</span>` : ''}
         <span class="status-dot ${user.online ? 'online' : ''}"></span>
       </button>
     `;
@@ -657,19 +666,19 @@ function renderChat({ forceBottom = false } = {}) {
 
   $('#chatAvatar').textContent = initials(user.name);
   $('#chatName').textContent = user.name;
-  $('#chatStatus').textContent = user.online ? 'Online now' : 'Offline';
+  $('#chatStatus').textContent = user.online ? 'Online nu' : 'Offline';
   const chatBio = $('#chatBio');
-  if (chatBio) chatBio.textContent = String(user.bio || '').trim() || 'No bio yet.';
+  if (chatBio) chatBio.textContent = String(user.bio || '').trim() || 'Ingen bio endnu.';
   chatPanel.classList.remove('hidden');
 
   if (!state.activeMessages.length) {
-    messagesList.innerHTML = '<div class="empty">No private messages yet. Start the conversation.</div>';
+    messagesList.innerHTML = '<div class="empty">Der er ingen private beskeder endnu. Start samtalen.</div>';
   } else {
     messagesList.innerHTML = state.activeMessages.map((message) => `
       <div class="message ${message.from === state.me.id ? 'mine' : ''}">
         <div class="message-content">
           <span>${escapeHtml(message.text)}</span>
-          ${state.me?.isAdmin ? `<button class="message-delete" type="button" data-delete-message="${escapeHtml(message.id)}" aria-label="Delete message">×</button>` : ''}
+          ${state.me?.isAdmin ? `<button class="message-delete" type="button" data-delete-message="${escapeHtml(message.id)}" aria-label="Slet besked">×</button>` : ''}
         </div>
         <small>${escapeHtml(formatTime(message.createdAt))}</small>
       </div>
@@ -738,28 +747,28 @@ function renderAdminUsers() {
   if (!adminUsersList || !state.me?.isAdmin) return;
 
   if (!state.adminUsers.length) {
-    adminUsersList.innerHTML = '<div class="empty small-empty">No accounts loaded yet.</div>';
+    adminUsersList.innerHTML = '<div class="empty small-empty">Ingen konti er indlæst endnu.</div>';
     return;
   }
 
   adminUsersList.innerHTML = state.adminUsers.map((user) => {
     const isMe = user.id === state.me.id;
     const isProtectedAdmin = user.isAdmin && !isMe;
-    const status = user.banned ? 'Banned' : user.online ? 'Online' : 'Offline';
+    const status = displayAdminStatus(user);
     return `
       <article class="admin-user-row ${user.banned ? 'banned' : ''}">
         <div class="admin-user-main">
           <div class="avatar small-avatar">${escapeHtml(initials(user.name))}</div>
           <div>
-            <strong>${escapeHtml(user.name)}${isMe ? ' (you)' : ''}</strong>
-            <span>@${escapeHtml(user.username)} · ${escapeHtml(user.role)} · ${escapeHtml(status)}</span>
-            ${user.banReason ? `<small>Reason: ${escapeHtml(user.banReason)}</small>` : ''}
+            <strong>${escapeHtml(user.name)}${isMe ? ' (dig)' : ''}</strong>
+            <span>@${escapeHtml(user.username)} · ${escapeHtml(displayRole(user.role))} · ${escapeHtml(status)}</span>
+            ${user.banReason ? `<small>Grund: ${escapeHtml(user.banReason)}</small>` : ''}
           </div>
         </div>
         <div class="admin-user-actions">
-          <button class="ghost tiny" type="button" data-admin-kick="${escapeHtml(user.id)}" ${isMe || user.banned ? 'disabled' : ''}>Kick</button>
+          <button class="ghost tiny" type="button" data-admin-kick="${escapeHtml(user.id)}" ${isMe || user.banned ? 'disabled' : ''}>Smid ud</button>
           ${user.banned
-            ? `<button class="secondary tiny" type="button" data-admin-unban="${escapeHtml(user.id)}">Unban</button>`
+            ? `<button class="secondary tiny" type="button" data-admin-unban="${escapeHtml(user.id)}">Fjern ban</button>`
             : `<button class="ghost danger tiny" type="button" data-admin-ban="${escapeHtml(user.id)}" ${isMe || isProtectedAdmin ? 'disabled' : ''}>Ban</button>`}
         </div>
       </article>
@@ -768,14 +777,14 @@ function renderAdminUsers() {
 }
 
 function adminMessageParticipants(item) {
-  if (item.kind === 'direct-message') return `${item.fromUser?.name || 'Unknown'} → ${item.toUser?.name || 'Unknown'}`;
-  if (item.kind === 'global-message') return `${item.author?.name || 'Unknown'} in Global chat`;
-  return item.author?.name || 'Unknown';
+  if (item.kind === 'direct-message') return `${item.fromUser?.name || 'Ukendt'} → ${item.toUser?.name || 'Ukendt'}`;
+  if (item.kind === 'global-message') return `${item.author?.name || 'Ukendt'} i global chat`;
+  return item.author?.name || 'Ukendt';
 }
 
 function adminMessageMeta(item) {
   const parts = [item.source || item.label, formatTime(item.createdAt)];
-  if (item.kind === 'direct-message') parts.push('private');
+  if (item.kind === 'direct-message') parts.push('privat');
   if (item.kind === 'global-message') parts.push('global');
   return parts.filter(Boolean).join(' · ');
 }
@@ -787,11 +796,11 @@ function renderAdminMessageViewer() {
   if (!isAdmin) return;
 
   const count = $('#adminMessageCount');
-  if (count) count.textContent = `${state.adminMessages.length} message${state.adminMessages.length === 1 ? '' : 's'}`;
+  if (count) count.textContent = `${state.adminMessages.length} besked${state.adminMessages.length === 1 ? '' : 'er'}`;
   if (!adminMessagesList) return;
 
   if (!state.adminMessages.length) {
-    adminMessagesList.innerHTML = '<div class="empty">Click “Load messages” to review stored TSN messages.</div>';
+    adminMessagesList.innerHTML = '<div class="empty">Klik på “Indlæs beskeder” for at gennemgå gemte TSN-beskeder.</div>';
     return;
   }
 
@@ -803,7 +812,7 @@ function renderAdminMessageViewer() {
       </div>
       <div class="admin-message-main">
         <strong>${escapeHtml(adminMessageParticipants(item))}</strong>
-        <button class="admin-delete small" type="button" data-admin-delete-message-item="${escapeHtml(item.id)}">Delete</button>
+        <button class="admin-delete small" type="button" data-admin-delete-message-item="${escapeHtml(item.id)}">Slet</button>
       </div>
       <p class="admin-message-body">${escapeHtml(item.body || '')}</p>
     </article>
@@ -835,7 +844,7 @@ async function deleteAdminMessageItem(item) {
     await api(`/api/messages/${item.messageId}`, { method: 'DELETE' });
     return;
   }
-  throw new Error('Unsupported message type.');
+  throw new Error('Beskedtypen understøttes ikke.');
 }
 
 async function loadUsers(q = '') {
@@ -931,7 +940,7 @@ function connectSocket() {
       } else {
         renderUsers();
       }
-      showToast(`New private message from ${sender?.name || 'someone'}`);
+      showToast(`Ny privat besked fra ${sender?.name || 'en person'}`);
     }
   });
 
@@ -957,16 +966,16 @@ function connectSocket() {
   });
 
   state.socket.on('force-logout', ({ reason }) => {
-    forceLocalLogout(reason || 'You have been logged out by an admin.');
+    forceLocalLogout(reason || 'Du er blevet logget ud af en admin.');
   });
 
   state.socket.on('connect_error', (error) => {
-    const message = error?.message || 'Chat connection failed. Log in again.';
+    const message = error?.message || 'Chatforbindelsen fejlede. Log ind igen.';
     if (message.toLowerCase().includes('banned') || message.toLowerCase().includes('expired')) {
       forceLocalLogout(message);
       return;
     }
-    showToast('Chat connection failed. Log in again.');
+    showToast('Chatforbindelsen fejlede. Log ind igen.');
   });
 }
 
@@ -980,14 +989,14 @@ async function initApp() {
   } catch (error) {
     setToken(null);
     showAuth();
-    throw new Error(error?.message || 'Login failed. Please try again.');
+    throw new Error(error?.message || 'Login fejlede. Prøv igen.');
   }
 
   try {
     await loadEverything();
   } catch (error) {
-    console.error('TSN loaded, but some app data failed to load:', error);
-    showToast(error?.message ? `Logged in. Some data failed to load: ${error.message}` : 'Logged in. Some data failed to load.');
+    console.error('TSN blev indlæst, men noget appdata kunne ikke indlæses:', error);
+    showToast(error?.message ? `Logget ind. Noget data kunne ikke indlæses: ${error.message}` : 'Logget ind. Noget data kunne ikke indlæses.');
   }
 }
 

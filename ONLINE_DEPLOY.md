@@ -1,47 +1,39 @@
-# Deploy TSN V1.1 online with Render + MongoDB Atlas
+# Udgiv TSN online
 
-TSN V1.1 is chat-only: global chat + private chat.
+## Render
 
-## 1. MongoDB Atlas
+1. Upload projektet til GitHub.
+2. Opret en ny **Web Service** på Render.
+3. Vælg dit GitHub repository.
+4. Sæt:
 
-Create a free M0 cluster, create a database user, allow network access, then copy the connection string.
-
-## 2. Render web service
-
-Create a Render Web Service from your GitHub repo.
-
-Use:
-
-```text
-Build command: npm install
-Start command: npm start
-Health check:  /api/health
+```bash
+Build Command: npm install
+Start Command: npm start
 ```
 
-## 3. Render environment variables
+5. Tilføj Environment Variables fra `.env.render.example`.
+6. Deploy.
+
+## MongoDB anbefales
+
+Brug MongoDB Atlas, så data ikke forsvinder ved deploys/restarts.
+
+Minimum:
 
 ```env
-NODE_ENV=production
-MONGODB_URI=<your MongoDB Atlas connection string>
-MONGODB_DB_NAME=tsn
-MONGODB_STATE_COLLECTION=app_state
-MONGODB_STATE_ID=main
-JWT_SECRET=<long random secret>
-TSN_DATA_ENCRYPTION_KEY=<different long random secret>
-TSN_ADMIN_SETUP_PASSWORD=<your admin setup password>
-TSN_CONTENT_FILTER_ENABLED=true
+MONGODB_URI=...
+JWT_SECRET=...
+TSN_DATA_ENCRYPTION_KEY=...
+TSN_ADMIN_SETUP_PASSWORD=...
 ```
 
-## 4. Admin
+## Tjek at siden virker
 
-Open the deployed website, log in, then claim admin from the sidebar using `TSN_ADMIN_SETUP_PASSWORD`.
-
-## 5. Keep awake
-
-Point a cron/monitor service at:
+Åbn:
 
 ```text
-https://your-tsn-site.onrender.com/api/ping
+https://dit-tsn-site.onrender.com/api/health
 ```
 
-Every 10 minutes is enough for most Render Free keep-awake setups.
+Derefter kan du åbne selve siden og oprette en bruger.

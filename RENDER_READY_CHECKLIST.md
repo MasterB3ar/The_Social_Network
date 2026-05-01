@@ -1,13 +1,15 @@
-# TSN V1.1 Render + MongoDB checklist
+# Render-klar tjekliste
 
-Before going public:
+Før du deployer TSN:
 
-- Create a MongoDB Atlas database and copy your connection string.
-- In Render, set `MONGODB_URI`.
-- Set strong values for `JWT_SECRET` and `TSN_DATA_ENCRYPTION_KEY`.
-- Set `TSN_ADMIN_SETUP_PASSWORD` or preferably `TSN_ADMIN_SETUP_PASSWORD_HASH`.
-- Keep `TSN_DATA_ENCRYPTION_KEY` unchanged after users/messages exist.
-- Use `/api/health` to confirm `storage.mode` is `mongodb`.
-- Use `/api/ping` with an external monitor if you want to reduce Render Free sleeping.
-
-TSN V1.1 has only global chat and private chat in the UI.
+- [ ] Projektet er uploaded til GitHub.
+- [ ] Render Web Service bruger `npm install`.
+- [ ] Render Start Command er `npm start`.
+- [ ] `MONGODB_URI` er sat.
+- [ ] `JWT_SECRET` er sat.
+- [ ] `TSN_DATA_ENCRYPTION_KEY` er sat.
+- [ ] `TSN_ADMIN_SETUP_PASSWORD` eller `TSN_ADMIN_SETUP_PASSWORD_HASH` er sat.
+- [ ] `/api/health` viser `storage.mode: "mongodb"`.
+- [ ] Du kan oprette konto og logge ind.
+- [ ] Global chat virker.
+- [ ] Privat chat virker.

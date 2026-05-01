@@ -49,16 +49,16 @@ const ROOMS = Array.from({ length: 7 }, (_, index) => {
 });
 const DEMO_USERS = [
   {
-    name: 'Demo User 1',
+    name: 'Demo-bruger 1',
     username: 'demo_one',
-    bio: 'Generic demo account for testing TSN chat.',
-    post: 'This is Demo User 1. Open People to test realtime chat.'
+    bio: 'Generisk demo-konto til test af TSN-chat.',
+    post: 'Dette er Demo-bruger 1. Åbn Personer for at teste realtime-chat.'
   },
   {
-    name: 'Demo User 2',
+    name: 'Demo-bruger 2',
     username: 'demo_two',
-    bio: 'Second generic demo account for testing conversations.',
-    post: 'This is Demo User 2. TSN demo chat is ready.'
+    bio: 'Anden generisk demo-konto til test af samtaler.',
+    post: 'Dette er Demo-bruger 2. TSN-demochatten er klar.'
   }
 ];
 
@@ -349,7 +349,7 @@ function getContentFilterMatch(value) {
 
 function contentFilterError(value, fieldName = 'Text') {
   if (!getContentFilterMatch(value)) return null;
-  return `${fieldName} contains blocked language.`;
+  return `${fieldName} indeholder blokeret sprog.`;
 }
 
 function rejectBlockedContent(res, value, fieldName = 'Text') {
@@ -373,8 +373,8 @@ function normalizeUsername(username) {
 }
 
 function validateAccountPassword(password) {
-  if (password.length < 4) return 'Password must be at least 4 characters.';
-  if (password.length > 128) return 'Password must be 128 characters or fewer.';
+  if (password.length < 4) return 'Adgangskoden skal være mindst 4 tegn.';
+  if (password.length > 128) return 'Adgangskoden må højst være 128 tegn.';
   return null;
 }
 
@@ -597,14 +597,14 @@ function requireAuth(req, res, next) {
   const header = req.headers.authorization || '';
   const token = header.startsWith('Bearer ') ? header.slice(7) : null;
   const payload = token ? verifyToken(token) : null;
-  if (!payload) return res.status(401).json({ error: 'You must be logged in.' });
+  if (!payload) return res.status(401).json({ error: 'Du skal være logget ind.' });
 
   const db = readDb();
   const user = db.users.find((candidate) => candidate.id === payload.sub);
-  if (!user) return res.status(401).json({ error: 'Account not found.', logout: true });
-  if (isBanned(user)) return res.status(403).json({ error: 'This account has been banned.', logout: true });
+  if (!user) return res.status(401).json({ error: 'Kontoen blev ikke fundet.', logout: true });
+  if (isBanned(user)) return res.status(403).json({ error: 'Denne konto er banned.', logout: true });
   if (Number(payload.sv) !== getSessionVersion(user)) {
-    return res.status(401).json({ error: 'Your session has expired. Please log in again.', logout: true });
+    return res.status(401).json({ error: 'Din session er udløbet. Log ind igen.', logout: true });
   }
 
   req.user = user;
@@ -614,7 +614,7 @@ function requireAuth(req, res, next) {
 
 function requireAdmin(req, res, next) {
   if (!req.user || req.user.role !== 'admin') {
-    return res.status(403).json({ error: 'Admin rights are required.' });
+    return res.status(403).json({ error: 'Admin-rettigheder er påkrævet.' });
   }
   next();
 }
@@ -800,7 +800,7 @@ function buildAdminMessageArchive(db) {
     pushItem({
       id: `global:${message.id}`,
       kind: 'global-message',
-      label: 'Global message',
+      label: 'global besked',
       source: 'Global chat',
       messageId: message.id,
       author: adminMessageActor(findUser(message.authorId)),
@@ -813,8 +813,8 @@ function buildAdminMessageArchive(db) {
     pushItem({
       id: `direct:${message.id}`,
       kind: 'direct-message',
-      label: 'Private message',
-      source: 'Private chat',
+      label: 'privat besked',
+      source: 'Privat chat',
       messageId: message.id,
       conversationId: message.conversationId,
       fromUser: adminMessageActor(findUser(message.from)),
@@ -1001,7 +1001,7 @@ app.post('/api/admin/backup', requireAuth, requireAdmin, (req, res) => {
     const backupFile = backupDatabase('admin');
     res.json({ ok: true, backupFile });
   } catch (error) {
-    res.status(500).json({ error: `Backup failed: ${error.message}` });
+    res.status(500).json({ error: `Backup fejlede: ${error.message}` });
   }
 });
 
@@ -1042,7 +1042,7 @@ app.get('/api/health', (req, res) => {
       ok: false,
       app: 'TSN V1.1',
       shortName: 'TSN V1.1',
-      error: 'Storage is not ready.',
+      error: 'Lageret er ikke klar.',
       detail: error.message
     });
   }
@@ -1063,17 +1063,17 @@ app.post('/api/auth/register', async (req, res) => {
   const password = String(req.body.password || '');
 
   if (!name || !username || !password) {
-    return res.status(400).json({ error: 'Name, username, and password are required.' });
+    return res.status(400).json({ error: 'Navn, brugernavn og adgangskode er påkrævet.' });
   }
-  if (username.length < 3) return res.status(400).json({ error: 'Username must be at least 3 characters.' });
+  if (username.length < 3) return res.status(400).json({ error: 'Brugernavn skal være mindst 3 tegn.' });
   const passwordError = validateAccountPassword(password);
   if (passwordError) return res.status(400).json({ error: passwordError });
-  if (rejectBlockedContent(res, name, 'Display name')) return;
-  if (rejectBlockedContent(res, username, 'Username')) return;
+  if (rejectBlockedContent(res, name, 'Visningsnavn')) return;
+  if (rejectBlockedContent(res, username, 'Brugernavn')) return;
 
   const db = readDb();
   const taken = db.users.some((user) => userMatchesUsername(user, username));
-  if (taken) return res.status(409).json({ error: 'Username is already used.' });
+  if (taken) return res.status(409).json({ error: 'Brugernavnet er allerede i brug.' });
 
   const passwordHash = await bcrypt.hash(password, 12);
   const user = {
@@ -1081,7 +1081,7 @@ app.post('/api/auth/register', async (req, res) => {
     ...encryptedUserIdentity({
       name,
       username,
-      bio: 'New on TSN.'
+      bio: 'Ny på TSN.'
     }),
     passwordHash,
     sessionVersion: 0,
@@ -1102,14 +1102,14 @@ app.post('/api/auth/login', async (req, res) => {
   if (!user) {
     const hasEncryptedUsers = db.users.some((candidate) => candidate.usernameEnc || candidate.usernameHash);
     const hint = hasEncryptedUsers
-      ? 'Wrong username or password. If this started right after updating TSN, make sure the same TSN_DATA_ENCRYPTION_KEY is still set, or add the old key to TSN_OLD_DATA_ENCRYPTION_KEYS.'
-      : 'Wrong username or password.';
+      ? 'Forkert brugernavn eller adgangskode. Hvis dette startede lige efter en TSN-opdatering, skal du sikre dig, at den samme TSN_DATA_ENCRYPTION_KEY stadig er sat, eller tilføje den gamle nøgle til TSN_OLD_DATA_ENCRYPTION_KEYS.'
+      : 'Forkert brugernavn eller adgangskode.';
     return res.status(401).json({ error: hint });
   }
-  if (isBanned(user)) return res.status(403).json({ error: 'This account has been banned.' });
+  if (isBanned(user)) return res.status(403).json({ error: 'Denne konto er banned.' });
 
   const ok = await bcrypt.compare(password, user.passwordHash);
-  if (!ok) return res.status(401).json({ error: 'Wrong username or password.' });
+  if (!ok) return res.status(401).json({ error: 'Forkert brugernavn eller adgangskode.' });
 
   if (repairUserLookupHashIfNeeded(user, login)) await writeDb(db);
 
@@ -1126,9 +1126,9 @@ app.post('/api/auth/guest', async (req, res) => {
   const user = {
     id: id('usr'),
     ...encryptedUserIdentity({
-      name: `Guest ${username.slice(-4)}`,
+      name: `Gæst ${username.slice(-4)}`,
       username,
-      bio: 'Temporary guest account on TSN.'
+      bio: 'Midlertidig gæstekonto på TSN.'
     }),
     passwordHash: await bcrypt.hash(crypto.randomUUID(), 12),
     sessionVersion: 0,
@@ -1143,13 +1143,13 @@ app.post('/api/auth/guest', async (req, res) => {
 app.post('/api/auth/demo', async (req, res) => {
   const username = normalizeUsername(req.body.username);
   const blueprint = DEMO_USERS.find((demo) => demo.username === username);
-  if (!blueprint) return res.status(404).json({ error: 'Demo account not found.' });
+  if (!blueprint) return res.status(404).json({ error: 'Demo-konto blev ikke fundet.' });
 
   const db = readDb();
   let user = db.users.find((candidate) => userMatchesUsername(candidate, blueprint.username));
   const fingerprint = secretFingerprint(DEMO_PASSWORD_HASH || DEMO_PASSWORD);
 
-  if (user && isBanned(user)) return res.status(403).json({ error: 'This demo account has been banned.' });
+  if (user && isBanned(user)) return res.status(403).json({ error: 'Denne demo-konto er banned.' });
 
   if (!user) {
     user = {
@@ -1185,7 +1185,7 @@ app.patch('/api/me', requireAuth, async (req, res) => {
   const name = cleanText(req.body.name, 60);
   const bio = cleanText(req.body.bio, 160);
 
-  if (name && rejectBlockedContent(res, name, 'Display name')) return;
+  if (name && rejectBlockedContent(res, name, 'Visningsnavn')) return;
   if (bio && rejectBlockedContent(res, bio, 'Bio')) return;
 
   if (name) setEncryptedUserField(user, 'name', name);
@@ -1197,11 +1197,11 @@ app.patch('/api/me', requireAuth, async (req, res) => {
 app.post('/api/admin/claim', requireAuth, async (req, res) => {
   const password = String(req.body.password || '');
   const ok = password ? await verifyAdminSetupPassword(password) : false;
-  if (!ok) return res.status(401).json({ error: 'Wrong admin setup password.' });
+  if (!ok) return res.status(401).json({ error: 'Forkert admin-setup-adgangskode.' });
 
   const db = req.db;
   const user = db.users.find((candidate) => candidate.id === req.user.id);
-  if (!user) return res.status(401).json({ error: 'Account not found.' });
+  if (!user) return res.status(401).json({ error: 'Kontoen blev ikke fundet.' });
 
   user.role = 'admin';
   user.adminEnabledAt = new Date().toISOString();
@@ -1239,34 +1239,34 @@ app.get('/api/admin/messages', requireAuth, requireAdmin, (req, res) => {
     items: items.map(publicAdminMessageItem),
     count: items.length,
     generatedAt: new Date().toISOString(),
-    notice: 'Admin-only moderation view. Messages are encrypted at rest, then decrypted on the server for admins.'
+    notice: 'Moderationsvisning kun for admin. Beskeder er krypteret i databasen og dekrypteres på serveren for admins.'
   });
 });
 
 app.post('/api/admin/users/:userId/kick', requireAuth, requireAdmin, async (req, res) => {
   const db = req.db;
   const target = db.users.find((candidate) => candidate.id === req.params.userId);
-  if (!target) return res.status(404).json({ error: 'User not found.' });
-  if (target.id === req.user.id) return res.status(400).json({ error: 'You cannot kick yourself.' });
+  if (!target) return res.status(404).json({ error: 'Brugeren blev ikke fundet.' });
+  if (target.id === req.user.id) return res.status(400).json({ error: 'Du kan ikke smide dig selv ud.' });
 
   target.sessionVersion = getSessionVersion(target) + 1;
   target.kickedAt = new Date().toISOString();
   target.kickedBy = req.user.id;
   await writeDb(db);
 
-  forceLogoutUser(target.id, 'You were kicked by an admin.');
+  forceLogoutUser(target.id, 'Du blev smidt ud af en admin.');
   res.json({ ok: true, user: publicModerationUser(target) });
 });
 
 app.post('/api/admin/users/:userId/ban', requireAuth, requireAdmin, async (req, res) => {
   const db = req.db;
   const target = db.users.find((candidate) => candidate.id === req.params.userId);
-  if (!target) return res.status(404).json({ error: 'User not found.' });
-  if (target.id === req.user.id) return res.status(400).json({ error: 'You cannot ban yourself.' });
-  if (target.role === 'admin') return res.status(403).json({ error: 'You cannot ban another admin account.' });
+  if (!target) return res.status(404).json({ error: 'Brugeren blev ikke fundet.' });
+  if (target.id === req.user.id) return res.status(400).json({ error: 'Du kan ikke banne dig selv.' });
+  if (target.role === 'admin') return res.status(403).json({ error: 'Du kan ikke banne en anden admin-konto.' });
 
   const reason = cleanText(req.body.reason, 200);
-  if (reason && rejectBlockedContent(res, reason, 'Ban reason')) return;
+  if (reason && rejectBlockedContent(res, reason, 'Ban-grund')) return;
 
   target.bannedAt = new Date().toISOString();
   target.bannedBy = req.user.id;
@@ -1274,14 +1274,14 @@ app.post('/api/admin/users/:userId/ban', requireAuth, requireAdmin, async (req, 
   target.sessionVersion = getSessionVersion(target) + 1;
   await writeDb(db);
 
-  forceLogoutUser(target.id, target.banReason ? `Your account was banned: ${target.banReason}` : 'Your account was banned by an admin.');
+  forceLogoutUser(target.id, target.banReason ? `Din konto blev banned: ${target.banReason}` : 'Din konto blev banned af en admin.');
   res.json({ ok: true, user: publicModerationUser(target) });
 });
 
 app.post('/api/admin/users/:userId/unban', requireAuth, requireAdmin, async (req, res) => {
   const db = req.db;
   const target = db.users.find((candidate) => candidate.id === req.params.userId);
-  if (!target) return res.status(404).json({ error: 'User not found.' });
+  if (!target) return res.status(404).json({ error: 'Brugeren blev ikke fundet.' });
 
   delete target.bannedAt;
   delete target.bannedBy;
@@ -1318,8 +1318,8 @@ app.get('/api/global/messages', requireAuth, (req, res) => {
 
 app.post('/api/global/messages', requireAuth, async (req, res) => {
   const text = cleanText(req.body.text || req.body.body, 600);
-  if (!text) return res.status(400).json({ error: 'Global message cannot be empty.' });
-  if (rejectBlockedContent(res, text, 'Global message')) return;
+  if (!text) return res.status(400).json({ error: 'Global besked må ikke være tom.' });
+  if (rejectBlockedContent(res, text, 'Global besked')) return;
 
   const db = req.db;
   const message = {
@@ -1346,11 +1346,11 @@ app.delete('/api/global/messages/:messageId', requireAuth, async (req, res) => {
   const db = req.db;
   db.globalMessages = Array.isArray(db.globalMessages) ? db.globalMessages : [];
   const index = db.globalMessages.findIndex((candidate) => candidate.id === req.params.messageId);
-  if (index < 0) return res.status(404).json({ error: 'Global message not found.' });
+  if (index < 0) return res.status(404).json({ error: 'Global besked blev ikke fundet.' });
 
   const message = db.globalMessages[index];
   if (req.user.role !== 'admin' && message.authorId !== req.user.id) {
-    return res.status(403).json({ error: 'You can only delete your own global messages unless you are an admin.' });
+    return res.status(403).json({ error: 'Du kan kun slette dine egne globale beskeder, medmindre du er admin.' });
   }
 
   const [deleted] = db.globalMessages.splice(index, 1);
@@ -1361,12 +1361,12 @@ app.delete('/api/global/messages/:messageId', requireAuth, async (req, res) => {
 });
 
 app.all(['/api/posts', '/api/posts/*', '/api/rooms', '/api/rooms/*'], requireAuth, (req, res) => {
-  res.status(410).json({ error: 'TSN V1.1 only supports global chat and private chat.' });
+  res.status(410).json({ error: 'TSN V1.1 understøtter kun global chat og privat chat.' });
 });
 
 app.get('/api/messages/:userId', requireAuth, async (req, res) => {
   const other = req.db.users.find((user) => user.id === req.params.userId);
-  if (!other) return res.status(404).json({ error: 'User not found.' });
+  if (!other) return res.status(404).json({ error: 'Brugeren blev ikke fundet.' });
 
   const key = conversationId(req.user.id, other.id);
   const messages = req.db.messages
@@ -1380,7 +1380,7 @@ app.get('/api/messages/:userId', requireAuth, async (req, res) => {
 
 app.post('/api/messages/:userId/read', requireAuth, async (req, res) => {
   const other = req.db.users.find((user) => user.id === req.params.userId);
-  if (!other) return res.status(404).json({ error: 'User not found.' });
+  if (!other) return res.status(404).json({ error: 'Brugeren blev ikke fundet.' });
 
   await markConversationRead(req.db, req.user.id, other.id);
   res.json({ ok: true, userId: other.id, unreadCount: 0 });
@@ -1389,7 +1389,7 @@ app.post('/api/messages/:userId/read', requireAuth, async (req, res) => {
 app.delete('/api/messages/:messageId', requireAuth, requireAdmin, async (req, res) => {
   const db = req.db;
   const index = db.messages.findIndex((candidate) => candidate.id === req.params.messageId);
-  if (index < 0) return res.status(404).json({ error: 'Message not found.' });
+  if (index < 0) return res.status(404).json({ error: 'Beskeden blev ikke fundet.' });
 
   const [deleted] = db.messages.splice(index, 1);
   await writeDb(db);
@@ -1410,14 +1410,14 @@ function forceLogoutUser(userId, reason) {
 io.use((socket, next) => {
   const token = socket.handshake.auth && socket.handshake.auth.token;
   const payload = token ? verifyToken(token) : null;
-  if (!payload) return next(new Error('Not authenticated'));
+  if (!payload) return next(new Error('Ikke logget ind'));
 
   const db = readDb();
   const user = db.users.find((candidate) => candidate.id === payload.sub);
-  if (!user) return next(new Error('User not found'));
-  if (isBanned(user)) return next(new Error('Account banned'));
+  if (!user) return next(new Error('Brugeren blev ikke fundet'));
+  if (isBanned(user)) return next(new Error('Kontoen er banned'));
   if (Number(payload.sv) !== getSessionVersion(user)) {
-    return next(new Error('Session expired'));
+    return next(new Error('Sessionen er udløbet'));
   }
 
   socket.user = user;
@@ -1434,14 +1434,14 @@ io.on('connection', (socket) => {
     try {
       const to = String(payload.to || '');
       const text = cleanText(payload.text, 1000);
-      if (!to || !text) throw new Error('Message needs a recipient and text.');
-      assertContentAllowed(text, 'Message');
+      if (!to || !text) throw new Error('Beskeden skal have en modtager og tekst.');
+      assertContentAllowed(text, 'Besked');
 
       const db = readDb();
       const sender = db.users.find((candidate) => candidate.id === user.id);
-      if (!sender || isBanned(sender)) throw new Error('Your account is not allowed to send messages.');
+      if (!sender || isBanned(sender)) throw new Error('Din konto har ikke tilladelse til at sende beskeder.');
       const recipient = db.users.find((candidate) => candidate.id === to);
-      if (!recipient || isBanned(recipient)) throw new Error('Recipient not found.');
+      if (!recipient || isBanned(recipient)) throw new Error('Modtageren blev ikke fundet.');
 
       const message = {
         id: id('msg'),

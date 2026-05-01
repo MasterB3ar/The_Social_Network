@@ -1,17 +1,5 @@
-# Data folder
+# Data-mappe
 
-This folder is intentionally not used for live production data by default.
+I produktion bør TSN bruge MongoDB Atlas via `MONGODB_URI`.
 
-Recommended online storage is MongoDB Atlas via:
-
-```env
-MONGODB_URI=...
-```
-
-If MongoDB is not configured, TSN uses a JSON database outside the project folder by default:
-
-```text
-~/.tsn-social-network/db.json
-```
-
-Do not commit a live `db.json` file to GitHub.
+Hvis `MONGODB_URI` ikke er sat, bruger TSN lokal JSON-lagring uden for projektmappen.

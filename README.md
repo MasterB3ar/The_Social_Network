@@ -1,158 +1,84 @@
-# TSN V1.1
+# TSN V1.1 — dansk chat-only version
 
-TSN is now a chat-only social network. The public feed and room system have been removed from the user interface. The app now has only:
+TSN er nu gjort enkel og dansk: appen har kun **global chat** og **privat chat**.
 
-- **Global chat** — one shared chat visible to every logged-in user
-- **Private chat** — one-to-one realtime direct messages
+## Hvad er med?
 
-It still supports username accounts, guest/demo login, admin moderation, unread private-message badges, public bios, server-side content filtering, encrypted-at-rest content, MongoDB Atlas storage, Render deployment, and keep-awake ping readiness.
+- Dansk brugerflade
+- Login, opret konto, gæstelogin og demo-login
+- Global chat for alle brugere
+- Privat 1-til-1 chat
+- Ulæste private beskeder
+- Admin-panel med bruger-moderation
+- Admin-visning til at gennemgå og slette globale/private beskeder
+- MongoDB Atlas support
+- Render deployment support
+- Cron/keep-awake support via `/api/ping`
+- Krypteret lagring af brugerdata og beskeder
 
-## Main features
-
-- Username-only login, register, guest login, and demo login
-- Global chat stored in MongoDB/local JSON and updated realtime with Socket.IO
-- Private one-to-one realtime chat with unread badges
-- Profiles with display name and bio
-- Admin access claim using `TSN_ADMIN_SETUP_PASSWORD` or `TSN_ADMIN_SETUP_PASSWORD_HASH`
-- Admin tools for account moderation, backups, and global/private message deletion
-- Server-side blocked-language filter
-- AES-256-GCM encrypted-at-rest user identity fields and message text
-- MongoDB Atlas persistent storage for Render
-
-## Recommended online storage
-
-For Render hosting, use MongoDB Atlas:
-
-```env
-MONGODB_URI=mongodb+srv://USERNAME:PASSWORD@YOUR-CLUSTER.mongodb.net/?retryWrites=true&w=majority
-MONGODB_DB_NAME=tsn
-MONGODB_STATE_COLLECTION=app_state
-MONGODB_STATE_ID=main
-```
-
-With `MONGODB_URI` set, TSN stores accounts, global messages, private messages, unread status, bans, and admin data in MongoDB. Render redeploys/restarts should not wipe the database.
-
-If `MONGODB_URI` is empty, TSN falls back to local JSON storage outside the project folder:
-
-```text
-~/.tsn-social-network/db.json
-```
-
-## Render setup
-
-Use the included:
-
-```text
-render.yaml
-```
-
-Required Render environment variables:
-
-```env
-MONGODB_URI=<your MongoDB Atlas connection string>
-JWT_SECRET=<generate a long random secret>
-TSN_DATA_ENCRYPTION_KEY=<generate a different long random secret>
-TSN_ADMIN_SETUP_PASSWORD=<your admin setup password>
-TSN_CONTENT_FILTER_ENABLED=true
-```
-
-Do **not** change `TSN_DATA_ENCRYPTION_KEY` after real users/messages exist. It decrypts stored usernames, bios, global messages, and private messages.
-
-## Keep-awake ping
-
-TSN includes:
-
-```text
-/api/ping
-```
-
-Use an external monitor/cron service to request this URL every 10 minutes:
-
-```text
-https://your-tsn-site.onrender.com/api/ping
-```
-
-The ping helps reduce Render Free sleeping. MongoDB is still the real fix for data loss.
-
-## Backup and restore
-
-Create a backup:
-
-```bash
-npm run backup
-```
-
-Restore a backup:
-
-```bash
-npm run restore -- /full/path/to/db-backup.json
-```
-
-These scripts support both MongoDB mode and local JSON mode.
-
-## Run locally
+## Kør lokalt
 
 ```bash
 npm install
 cp .env.example .env
-npm start
+npm run dev
 ```
 
-Open:
+Åbn derefter:
 
 ```text
 http://localhost:3000
 ```
 
-## Important environment variables
+## Brug MongoDB
+
+Sæt denne environment variable enten i `.env` lokalt eller i Render:
 
 ```env
-PORT=3000
-NODE_ENV=development
-MONGODB_URI=
-MONGODB_DB_NAME=tsn
-MONGODB_STATE_COLLECTION=app_state
-MONGODB_STATE_ID=main
-JWT_SECRET=change-this
-TSN_DATA_ENCRYPTION_KEY=change-this-too
-TSN_OLD_DATA_ENCRYPTION_KEYS=
-TSN_ADMIN_SETUP_PASSWORD=change-this-admin-password
-TSN_CONTENT_FILTER_ENABLED=true
-TSN_BLOCKED_WORDS=
+MONGODB_URI=mongodb+srv://USERNAME:PASSWORD@YOUR-CLUSTER.mongodb.net/?retryWrites=true&w=majority
 ```
 
-## Admin setup
+Når `MONGODB_URI` er sat, gemmer TSN brugere og beskeder i MongoDB i stedet for en lokal JSON-fil.
 
-1. Set `TSN_ADMIN_SETUP_PASSWORD` in Render.
-2. Log into your TSN account.
-3. Enter the admin setup password in the sidebar.
-4. Your account becomes admin.
+## Deploy på Render
 
-For stronger setup, hash the admin setup password locally:
+Render bruger normalt:
 
 ```bash
-npm run hash-secret -- "your-admin-password"
+Build Command: npm install
+Start Command: npm start
 ```
 
-Then set the result as:
+Vigtige Environment Variables på Render:
 
 ```env
-TSN_ADMIN_SETUP_PASSWORD_HASH=<bcrypt-hash>
+NODE_ENV=production
+MONGODB_URI=din_mongodb_atlas_connection_string
+JWT_SECRET=lang_tilfældig_secret
+TSN_DATA_ENCRYPTION_KEY=anden_lang_tilfældig_secret
+TSN_ADMIN_SETUP_PASSWORD=din_admin_setup_adgangskode
+TSN_CONTENT_FILTER_ENABLED=true
 ```
 
-## Stored data model
+Vigtigt: Skift ikke `TSN_DATA_ENCRYPTION_KEY`, når rigtige brugere/beskeder allerede findes, ellers kan gamle krypterede data ikke læses.
+
+## Bliv admin
+
+1. Log ind på TSN.
+2. Gå til admin-boksen i venstre side.
+3. Indtast værdien fra `TSN_ADMIN_SETUP_PASSWORD`.
+4. Din konto får admin-rettigheder.
+
+## Cron / keep-awake
+
+`/api/ping` kan bruges af en ekstern cron-service:
 
 ```text
-Users                 -> encrypted display name, username, bio + bcrypt password hash
-Global messages       -> encrypted text + author id
-Private messages      -> encrypted text + sender/recipient ids + read state
-Bans/admin state      -> stored in the same app state document
+https://dit-tsn-site.onrender.com/api/ping
 ```
 
-MongoDB mode stores the app state in:
+Se også `CRON_KEEP_AWAKE.md`.
 
-```text
-Database:   tsn
-Collection: app_state
-Document:   main
-```
+## Gamle features
+
+Feed/posts/rooms er deaktiveret i denne version. API-ruterne returnerer `410`, fordi TSN V1.1 kun understøtter global chat og privat chat.

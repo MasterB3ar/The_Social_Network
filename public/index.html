@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="da">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -14,65 +14,65 @@
   <section id="authScreen" class="auth-screen">
     <div class="auth-hero">
       <div class="brand-mark">TSN</div>
-      <p class="eyebrow">private + global chat</p>
-      <h1>Welcome to TSN.</h1>
-      <p class="hero-subtitle">A clean chat-only social network with global messages and private conversations.</p>
+      <p class="eyebrow">privat + global chat</p>
+      <h1>Velkommen til TSN.</h1>
+      <p class="hero-subtitle">Et enkelt chat-netværk med global chat og private samtaler.</p>
     </div>
 
     <div class="auth-panel">
       <div class="auth-version-label">TSN V1.1</div>
       <div class="tabs">
-        <button class="tab active" data-tab="login" type="button">Login</button>
-        <button class="tab" data-tab="register" type="button">Create account</button>
+        <button class="tab active" data-tab="login" type="button">Log ind</button>
+        <button class="tab" data-tab="register" type="button">Opret konto</button>
       </div>
 
       <form id="loginForm" class="auth-form">
-        <h2>Welcome back</h2>
+        <h2>Velkommen tilbage</h2>
         <label>
-          Username
+          Brugernavn
           <input name="login" autocomplete="username" placeholder="user01" required />
         </label>
         <label>
-          Password
-          <input name="password" type="password" autocomplete="current-password" placeholder="Your password" required />
+          Adgangskode
+          <input name="password" type="password" autocomplete="current-password" placeholder="Din adgangskode" required />
         </label>
-        <button class="primary" type="submit">Login to TSN</button>
+        <button class="primary" type="submit">Log ind på TSN</button>
 
         <div class="easy-login">
           <div class="easy-login-heading">
             <span></span>
-            <strong>or enter fast</strong>
+            <strong>eller kom hurtigt ind</strong>
             <span></span>
           </div>
-          <button id="guestLoginBtn" class="secondary wide" type="button">Continue as Guest</button>
+          <button id="guestLoginBtn" class="secondary wide" type="button">Fortsæt som gæst</button>
           <div class="demo-grid">
-            <button class="ghost demo-button" data-demo-login="demo_one" type="button">Demo User 1</button>
-            <button class="ghost demo-button" data-demo-login="demo_two" type="button">Demo User 2</button>
+            <button class="ghost demo-button" data-demo-login="demo_one" type="button">Demo-bruger 1</button>
+            <button class="ghost demo-button" data-demo-login="demo_two" type="button">Demo-bruger 2</button>
           </div>
-          <p class="auth-hint">Demo accounts are created automatically. Manual demo password: <strong>TSN-Demo!9vK2p-Q8rM</strong></p>
+          <p class="auth-hint">Demo-konti oprettes automatisk. Manuel demo-adgangskode: <strong>TSN-Demo!9vK2p-Q8rM</strong></p>
         </div>
       </form>
 
       <form id="registerForm" class="auth-form hidden">
-        <h2>Create your account</h2>
+        <h2>Opret din konto</h2>
         <label>
-          Display name
-          <input name="name" autocomplete="name" placeholder="Example User" required />
+          Visningsnavn
+          <input name="name" autocomplete="name" placeholder="Eksempel Bruger" required />
         </label>
         <label>
-          Username
+          Brugernavn
           <input name="username" autocomplete="username" placeholder="user01" required />
         </label>
         <label>
-          Password
-          <input name="password" type="password" autocomplete="new-password" placeholder="4+ characters" required />
+          Adgangskode
+          <input name="password" type="password" autocomplete="new-password" placeholder="mindst 4 tegn" required />
         </label>
-        <button class="primary" type="submit">Join TSN</button>
+        <button class="primary" type="submit">Opret TSN-konto</button>
       </form>
 
       <p id="authError" class="error"></p>
-      <p class="save-note">TSN keeps you logged in on this device for 7 days.</p>
-      <p class="privacy-note">For moderation, TSN admins can review global and private messages.</p>
+      <p class="save-note">TSN holder dig logget ind på denne enhed i 7 dage.</p>
+      <p class="privacy-note">Til moderation kan TSN-admins gennemgå globale og private beskeder.</p>
     </div>
   </section>
 
@@ -82,12 +82,12 @@
         <div class="brand-mark small">TSN</div>
         <div>
           <strong>TSN V1.1</strong>
-          <span>Global chat + private chat</span>
+          <span>Global chat + privat chat</span>
         </div>
       </div>
       <div class="topbar-actions">
-        <button id="refreshBtn" class="ghost" type="button">Refresh</button>
-        <button id="logoutBtn" class="ghost danger" type="button">Logout</button>
+        <button id="refreshBtn" class="ghost" type="button">Opdater</button>
+        <button id="logoutBtn" class="ghost danger" type="button">Log ud</button>
       </div>
     </nav>
 
@@ -96,42 +96,42 @@
         <div class="profile-block">
           <div id="myAvatar" class="avatar large">?</div>
           <div>
-            <h2 id="myName">Loading...</h2>
+            <h2 id="myName">Indlæser...</h2>
             <p id="myUsername">@username</p>
           </div>
         </div>
 
         <form id="profileForm" class="profile-form">
           <label>
-            Name
+            Navn
             <input id="profileName" name="name" maxlength="60" />
           </label>
           <label>
             Bio
             <textarea id="profileBio" name="bio" maxlength="160" rows="3"></textarea>
           </label>
-          <button class="secondary" type="submit">Save profile</button>
+          <button class="secondary" type="submit">Gem profil</button>
         </form>
 
         <section id="adminBox" class="admin-box">
           <div id="adminActive" class="admin-active hidden">
-            <strong>Admin mode active</strong>
-            <span>You can kick/ban users, create backups, and moderate messages.</span>
+            <strong>Admin-tilstand aktiv</strong>
+            <span>Du kan smide brugere ud, banne brugere, lave backups og moderere beskeder.</span>
           </div>
           <form id="adminClaimForm" class="admin-claim-form">
-            <strong>Admin access</strong>
-            <span>Enter your admin setup password to unlock moderation tools.</span>
-            <input id="adminPasswordInput" type="password" placeholder="Admin setup password" autocomplete="off" />
-            <button class="secondary" type="submit">Claim admin</button>
+            <strong>Admin-adgang</strong>
+            <span>Indtast din admin-setup-adgangskode for at låse moderationsværktøjerne op.</span>
+            <input id="adminPasswordInput" type="password" placeholder="Admin-setup-adgangskode" autocomplete="off" />
+            <button class="secondary" type="submit">Bliv admin</button>
           </form>
           <div id="adminModerationPanel" class="admin-moderation hidden">
             <div class="admin-moderation-head">
-              <strong>Account moderation</strong>
-              <button id="refreshAdminUsersBtn" class="ghost tiny" type="button">Reload</button>
+              <strong>Kontomoderation</strong>
+              <button id="refreshAdminUsersBtn" class="ghost tiny" type="button">Genindlæs</button>
             </div>
             <div class="admin-backup-row">
-              <button id="createBackupBtn" class="secondary tiny" type="button">Create data backup</button>
-              <span id="backupStatus" class="backup-status">Backups protect data before updates.</span>
+              <button id="createBackupBtn" class="secondary tiny" type="button">Lav databackup</button>
+              <span id="backupStatus" class="backup-status">Backups beskytter data før opdateringer.</span>
             </div>
             <div id="adminUsersList" class="admin-users-list"></div>
           </div>
@@ -139,7 +139,7 @@
 
         <div class="stat-grid chat-stats">
           <div><strong id="globalCount">0</strong><span>Global</span></div>
-          <div><strong id="userCount">0</strong><span>People</span></div>
+          <div><strong id="userCount">0</strong><span>Personer</span></div>
           <div><strong id="onlineCount">0</strong><span>Online</span></div>
         </div>
       </aside>
@@ -150,15 +150,15 @@
             <div>
               <p class="eyebrow mini">Global</p>
               <h2>Global chat</h2>
-              <p>Everyone logged into TSN can read and write here.</p>
+              <p>Alle, der er logget ind på TSN, kan læse og skrive her.</p>
             </div>
-            <span id="globalStatus" class="pill">0 messages</span>
+            <span id="globalStatus" class="pill">0 beskeder</span>
           </div>
 
           <div id="globalMessagesList" class="messages global-messages"></div>
 
           <form id="globalMessageForm" class="message-form global-message-form">
-            <input id="globalMessageInput" maxlength="600" placeholder="Write to global chat..." autocomplete="off" />
+            <input id="globalMessageInput" maxlength="600" placeholder="Skriv i global chat..." autocomplete="off" />
             <button class="primary" type="submit">Send</button>
           </form>
         </section>
@@ -166,22 +166,22 @@
         <section id="adminMessageViewer" class="admin-message-viewer card hidden">
           <div class="admin-message-head">
             <div>
-              <p class="eyebrow mini">Admin only</p>
-              <h2>Message moderation</h2>
-              <p>Review and delete stored global/private messages.</p>
+              <p class="eyebrow mini">Kun admin</p>
+              <h2>Beskedmoderation</h2>
+              <p>Gennemgå og slet gemte globale/private beskeder.</p>
             </div>
-            <span id="adminMessageCount" class="pill">0 messages</span>
+            <span id="adminMessageCount" class="pill">0 beskeder</span>
           </div>
           <div class="admin-message-controls">
-            <select id="adminMessageType" aria-label="Message type filter">
-              <option value="all">All messages</option>
-              <option value="global">Global messages</option>
-              <option value="direct">Private messages</option>
+            <select id="adminMessageType" aria-label="Filter for beskedtype">
+              <option value="all">Alle beskeder</option>
+              <option value="global">Globale beskeder</option>
+              <option value="direct">Private beskeder</option>
             </select>
-            <input id="adminMessageSearch" placeholder="Search message text or users..." />
-            <button id="loadAdminMessagesBtn" class="secondary" type="button">Load messages</button>
+            <input id="adminMessageSearch" placeholder="Søg i beskedtekst eller brugere..." />
+            <button id="loadAdminMessagesBtn" class="secondary" type="button">Indlæs beskeder</button>
           </div>
-          <p class="admin-message-notice">Messages stay encrypted in the database and are decrypted by the server for admin moderation only.</p>
+          <p class="admin-message-notice">Beskeder ligger krypteret i databasen og dekrypteres kun af serveren til admin-moderation.</p>
           <div id="adminMessagesList" class="admin-messages-list"></div>
         </section>
       </section>
@@ -190,13 +190,13 @@
         <section class="people card side-card">
           <div class="section-heading compact-heading">
             <div>
-              <p class="eyebrow mini">Private</p>
-              <h2>Private chat</h2>
-              <p>Click a person to open a one-to-one chat.</p>
+              <p class="eyebrow mini">Privat</p>
+              <h2>Privat chat</h2>
+              <p>Klik på en person for at åbne en privat chat.</p>
             </div>
             <span id="onlinePill" class="pill">0 online</span>
           </div>
-          <input id="userSearch" class="search" placeholder="Search users..." />
+          <input id="userSearch" class="search" placeholder="Søg efter brugere..." />
           <div id="usersList" class="users-list"></div>
         </section>
       </aside>
@@ -210,15 +210,15 @@
         <div>
           <strong id="chatName">Chat</strong>
           <span id="chatStatus">Offline</span>
-          <span id="chatBio" class="chat-bio">No bio yet.</span>
+          <span id="chatBio" class="chat-bio">Ingen bio endnu.</span>
         </div>
       </div>
-      <button id="closeChatBtn" class="icon-button" type="button" aria-label="Close chat">×</button>
+      <button id="closeChatBtn" class="icon-button" type="button" aria-label="Luk chat">×</button>
     </header>
     <div id="messagesList" class="messages"></div>
-    <div id="typingLabel" class="typing hidden">typing...</div>
+    <div id="typingLabel" class="typing hidden">skriver...</div>
     <form id="messageForm" class="message-form">
-      <input id="messageInput" placeholder="Write a private message..." autocomplete="off" />
+      <input id="messageInput" placeholder="Skriv en privat besked..." autocomplete="off" />
       <button class="primary" type="submit">Send</button>
     </form>
   </section>
