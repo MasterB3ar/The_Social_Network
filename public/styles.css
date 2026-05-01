@@ -1996,3 +1996,18 @@ button:disabled {
     margin-left: 0;
   }
 }
+
+/* Stable global-post detail/comment layout */
+.global-messages.is-detail-mode {
+  scroll-behavior: auto;
+}
+
+.global-comments-list {
+  display: grid;
+  gap: 9px;
+}
+
+.detail-comment-form {
+  padding-bottom: 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}

@@ -130,15 +130,48 @@ function restoreMessageScroll(element, snapshot, { forceBottom = false } = {}) {
   requestAnimationFrame(apply);
 }
 
+function blurActiveElement() {
+  const active = document.activeElement;
+  if (active && typeof active.blur === 'function') active.blur();
+}
+
 function scrollElementToTop(element) {
   if (!element) return;
 
   const apply = () => {
+    const previousBehavior = element.style.scrollBehavior;
+    element.style.scrollBehavior = 'auto';
     element.scrollTop = 0;
+    if (typeof element.scrollTo === 'function') {
+      element.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+    }
+    element.style.scrollBehavior = previousBehavior;
   };
 
   apply();
   requestAnimationFrame(apply);
+  setTimeout(apply, 0);
+  setTimeout(apply, 80);
+}
+
+function forceGlobalDetailTop() {
+  blurActiveElement();
+
+  const container = globalMessagesList;
+  const panel = container?.closest('.global-chat');
+
+  const apply = () => {
+    if (container) scrollElementToTop(container);
+    if (panel && typeof panel.scrollIntoView === 'function') {
+      panel.scrollIntoView({ block: 'start', inline: 'nearest', behavior: 'auto' });
+    }
+  };
+
+  apply();
+  requestAnimationFrame(apply);
+  setTimeout(apply, 0);
+  setTimeout(apply, 120);
+  setTimeout(apply, 260);
 }
 
 function showToast(message) {
@@ -476,6 +509,9 @@ if (globalMessagesList) {
     const openButton = event.target.closest('[data-open-global-message]');
 
     if (backButton) {
+      event.preventDefault();
+      event.stopPropagation();
+      blurActiveElement();
       state.activeGlobalMessageId = null;
       renderGlobalMessages({ forceTop: true });
       return;
@@ -517,6 +553,9 @@ if (globalMessagesList) {
       }
 
       if (openButton) {
+        event.preventDefault();
+        event.stopPropagation();
+        blurActiveElement();
         const messageId = openButton.dataset.openGlobalMessage;
         if (messageId) {
           state.activeGlobalMessageId = messageId;
@@ -535,6 +574,7 @@ if (globalMessagesList) {
     event.preventDefault();
     const messageId = openButton.dataset.openGlobalMessage;
     if (messageId) {
+      blurActiveElement();
       state.activeGlobalMessageId = messageId;
       renderGlobalMessages({ forceTop: true });
     }
@@ -556,7 +596,7 @@ if (globalMessagesList) {
       });
       input.value = '';
       upsertGlobalMessage(data.message);
-      renderGlobalMessages();
+      renderGlobalMessages({ forceTop: true });
     } catch (error) {
       showToast(error.message);
     }
@@ -723,11 +763,13 @@ function renderGlobalComments(message) {
         <strong>Kommentarer</strong>
         <span>${comments.length === 1 ? '1 kommentar' : `${comments.length} kommentarer`}</span>
       </div>
-      ${commentsHtml}
-      <form class="global-comment-form" data-global-comment-form="${escapeHtml(message.id)}">
+      <form class="global-comment-form detail-comment-form" data-global-comment-form="${escapeHtml(message.id)}">
         <input name="comment" maxlength="400" placeholder="Skriv en kommentar..." autocomplete="off" />
         <button class="secondary tiny" type="submit">Kommentér</button>
       </form>
+      <div class="global-comments-list">
+        ${commentsHtml}
+      </div>
     </div>
   `;
 }
@@ -750,6 +792,7 @@ function renderGlobalMessages({ forceBottom = false, forceTop = false } = {}) {
 
   if (!state.globalMessages.length) {
     state.activeGlobalMessageId = null;
+    globalMessagesList.classList.remove('is-detail-mode');
     globalMessagesList.innerHTML = '<div class="empty">Der er ingen globale opslag endnu. Skriv det første.</div>';
     globalMessageForm?.classList.remove('hidden');
     restoreMessageScroll(globalMessagesList, scrollSnapshot, { forceBottom });
@@ -759,10 +802,11 @@ function renderGlobalMessages({ forceBottom = false, forceTop = false } = {}) {
   if (state.activeGlobalMessageId) {
     const activeMessage = getGlobalMessageById(state.activeGlobalMessageId);
     if (activeMessage) {
+      globalMessagesList.classList.add('is-detail-mode');
       globalMessageForm?.classList.add('hidden');
       globalMessagesList.innerHTML = renderGlobalDetail(activeMessage);
       if (forceTop) {
-        scrollElementToTop(globalMessagesList);
+        forceGlobalDetailTop();
       } else {
         restoreMessageScroll(globalMessagesList, scrollSnapshot, { forceBottom: false });
       }
@@ -771,6 +815,7 @@ function renderGlobalMessages({ forceBottom = false, forceTop = false } = {}) {
     state.activeGlobalMessageId = null;
   }
 
+  globalMessagesList.classList.remove('is-detail-mode');
   globalMessageForm?.classList.remove('hidden');
   globalMessagesList.innerHTML = state.globalMessages.map((message) => renderGlobalPostCard(message)).join('');
   restoreMessageScroll(globalMessagesList, scrollSnapshot, { forceBottom });
