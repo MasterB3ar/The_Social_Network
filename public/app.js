@@ -97,7 +97,7 @@ function upsertGlobalMessage(message) {
   } else {
     state.globalMessages.push(message);
   }
-  state.globalMessages.sort((a, b) => new Date(a.createdAt || 0) - new Date(b.createdAt || 0));
+  state.globalMessages.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
   return true;
 }
 
@@ -739,7 +739,8 @@ function renderGlobalPostCard(message, { detail = false } = {}) {
 }
 
 function renderGlobalComments(message) {
-  const comments = Array.isArray(message.comments) ? message.comments : [];
+  const comments = (Array.isArray(message.comments) ? [...message.comments] : [])
+    .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
   const commentsHtml = comments.length ? comments.map((comment) => {
     const commentAuthorName = comment.author?.name || 'Ukendt';
     return `
@@ -818,7 +819,11 @@ function renderGlobalMessages({ forceBottom = false, forceTop = false } = {}) {
   globalMessagesList.classList.remove('is-detail-mode');
   globalMessageForm?.classList.remove('hidden');
   globalMessagesList.innerHTML = state.globalMessages.map((message) => renderGlobalPostCard(message)).join('');
-  restoreMessageScroll(globalMessagesList, scrollSnapshot, { forceBottom });
+  if (forceTop) {
+    scrollElementToTop(globalMessagesList);
+  } else {
+    restoreMessageScroll(globalMessagesList, scrollSnapshot, { forceBottom });
+  }
 }
 function renderUsers() {
   renderStats();
@@ -1065,7 +1070,7 @@ async function loadUsers(q = '') {
 async function loadGlobalMessages() {
   const data = await api('/api/global/messages');
   state.globalMessages = data.messages || [];
-  renderGlobalMessages({ forceBottom: true });
+  renderGlobalMessages({ forceTop: true });
 }
 
 async function loadEverything() {
@@ -1107,14 +1112,14 @@ function connectSocket() {
 
   state.socket.on('global-message', (message) => {
     upsertGlobalMessage(message);
-    renderGlobalMessages({ forceBottom: message.authorId === state.me?.id });
+    renderGlobalMessages({ forceTop: message.authorId === state.me?.id });
     if (state.me?.isAdmin && state.adminMessages.length) loadAdminMessages().catch(() => {});
   });
 
   state.socket.on('global-message-updated', (message) => {
     const beforeCount = state.globalMessages.length;
     upsertGlobalMessage(message);
-    renderGlobalMessages({ forceBottom: beforeCount !== state.globalMessages.length && message.authorId === state.me?.id });
+    renderGlobalMessages({ forceTop: beforeCount !== state.globalMessages.length && message.authorId === state.me?.id });
     if (state.me?.isAdmin && state.adminMessages.length) loadAdminMessages().catch(() => {});
   });
 

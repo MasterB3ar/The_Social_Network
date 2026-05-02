@@ -806,7 +806,7 @@ function attachGlobalMessagePeople(message, users, viewerId = '') {
   normalizeGlobalMessageInteractions(message);
   const author = users.find((user) => user.id === message.authorId);
   const comments = [...message.comments]
-    .sort((a, b) => new Date(a.createdAt || 0) - new Date(b.createdAt || 0))
+    .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))
     .map((comment) => publicGlobalComment(comment, users));
 
   return {
@@ -1352,8 +1352,8 @@ app.get('/api/users', requireAuth, (req, res) => {
 app.get('/api/global/messages', requireAuth, (req, res) => {
   const limit = Math.min(Math.max(Number(req.query.limit) || 200, 1), 500);
   const messages = [...(req.db.globalMessages || [])]
-    .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt))
-    .slice(-limit)
+    .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+    .slice(0, limit)
     .map((message) => attachGlobalMessagePeople(message, req.db.users, req.user.id));
 
   res.json({ messages });
