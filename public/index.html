@@ -113,14 +113,37 @@
             <input id="adminPasswordInput" type="password" placeholder="Admin-setup-adgangskode" autocomplete="off" />
             <button class="secondary" type="submit">Bliv admin</button>
           </form>
-          <div id="adminModerationPanel" class="admin-moderation hidden">
+          <div id="adminModerationPanel" class="admin-moderation admin-dashboard hidden">
             <div class="admin-moderation-head">
-              <strong>Kontomoderation</strong>
-              <button id="refreshAdminUsersBtn" class="ghost tiny" type="button">Genindlæs</button>
+              <div>
+                <strong>Admin-dashboard</strong>
+                <span>Overblik, rapporter, brugere, bans og backup.</span>
+              </div>
+              <button id="refreshAdminAllBtn" class="secondary tiny" type="button">Opdater alt</button>
             </div>
+
+            <div id="adminStatsGrid" class="admin-stats-grid">
+              <div><strong>–</strong><span>Brugere</span></div>
+              <div><strong>–</strong><span>Åbne rapporter</span></div>
+              <div><strong>–</strong><span>Opslag</span></div>
+              <div><strong>–</strong><span>Private beskeder</span></div>
+            </div>
+
             <div class="admin-backup-row">
               <button id="createBackupBtn" class="secondary tiny" type="button">Lav databackup</button>
               <span id="backupStatus" class="backup-status">Backups beskytter data før opdateringer.</span>
+            </div>
+
+            <div class="admin-user-toolbar">
+              <input id="adminUserSearch" placeholder="Søg brugere..." autocomplete="off" />
+              <select id="adminUserStatus" aria-label="Brugerfilter">
+                <option value="all">Alle brugere</option>
+                <option value="online">Online</option>
+                <option value="banned">Banned</option>
+                <option value="reported">Med åbne rapporter</option>
+                <option value="admins">Admins</option>
+              </select>
+              <button id="refreshAdminUsersBtn" class="ghost tiny" type="button">Genindlæs</button>
             </div>
             <div id="adminUsersList" class="admin-users-list"></div>
           </div>
@@ -183,12 +206,20 @@
             </div>
             <span id="adminReportCount" class="pill">0 rapporter</span>
           </div>
-          <div class="admin-message-controls report-controls">
+          <div class="admin-message-controls report-controls enhanced-report-controls">
             <select id="adminReportStatus" aria-label="Filter for rapportstatus">
               <option value="open">Åbne rapporter</option>
               <option value="all">Alle rapporter</option>
               <option value="resolved">Løste rapporter</option>
             </select>
+            <select id="adminReportType" aria-label="Filter for rapporttype">
+              <option value="all">Alle typer</option>
+              <option value="global-message">Opslag</option>
+              <option value="global-comment">Kommentarer</option>
+              <option value="direct-message">Private beskeder</option>
+              <option value="user">Brugere</option>
+            </select>
+            <input id="adminReportSearch" placeholder="Søg i rapporter, brugere eller indhold..." />
             <button id="loadAdminReportsBtn" class="secondary" type="button">Indlæs rapporter</button>
           </div>
           <div id="adminReportsList" class="admin-reports-list"></div>

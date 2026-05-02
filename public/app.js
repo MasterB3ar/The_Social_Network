@@ -10,7 +10,8 @@ const state = {
   chatDrafts: {},
   adminUsers: [],
   adminMessages: [],
-  adminReports: []
+  adminReports: [],
+  adminStats: null
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -29,6 +30,7 @@ const adminMessageViewer = $('#adminMessageViewer');
 const adminMessagesList = $('#adminMessagesList');
 const adminReportViewer = $('#adminReportViewer');
 const adminReportsList = $('#adminReportsList');
+const adminStatsGrid = $('#adminStatsGrid');
 
 function escapeHtml(value) {
   return String(value || '')
@@ -59,6 +61,16 @@ function formatTime(dateString) {
   return date.toLocaleDateString();
 }
 
+function formatExactDate(dateString) {
+  const date = new Date(dateString);
+  if (Number.isNaN(date.getTime())) return 'Ukendt';
+  return date.toLocaleString('da-DK', { dateStyle: 'short', timeStyle: 'short' });
+}
+
+function formatNumber(value) {
+  return new Intl.NumberFormat('da-DK').format(Number(value) || 0);
+}
+
 function canDeleteMessage(authorId) {
   return Boolean(state.me && (state.me.isAdmin || authorId === state.me.id));
 }
@@ -76,6 +88,12 @@ function displayRole(role) {
 function displayAdminStatus(user) {
   if (user.banned) return 'Banned';
   return user.online ? 'Online' : 'Offline';
+}
+
+function adminStatusClass(user) {
+  if (user.banned) return 'danger';
+  if (user.online) return 'success';
+  return 'muted';
 }
 
 function reportTypeLabel(type) {
@@ -240,6 +258,7 @@ function forceLocalLogout(message = 'Du er blevet logget ud.') {
   state.adminUsers = [];
   state.adminMessages = [];
   state.adminReports = [];
+  state.adminStats = null;
   renderAdminMessageViewer();
   renderAdminReportViewer();
   showAuth();
@@ -414,7 +433,7 @@ if (adminClaimForm) {
       state.me = data.user;
       passwordInput.value = '';
       renderMe();
-      await loadAdminUsers();
+      await loadAdminDashboard();
       await loadAdminMessages();
       await loadAdminReports();
       renderGlobalMessages();
@@ -429,6 +448,27 @@ if (adminClaimForm) {
 const refreshAdminUsersBtn = $('#refreshAdminUsersBtn');
 if (refreshAdminUsersBtn) {
   refreshAdminUsersBtn.addEventListener('click', () => loadAdminUsers().catch((error) => showToast(error.message)));
+}
+
+const refreshAdminAllBtn = $('#refreshAdminAllBtn');
+if (refreshAdminAllBtn) {
+  refreshAdminAllBtn.addEventListener('click', () => loadAdminDashboard().catch((error) => showToast(error.message)));
+}
+
+let adminUserSearchTimer = null;
+const adminUserSearch = $('#adminUserSearch');
+if (adminUserSearch) {
+  adminUserSearch.addEventListener('input', () => {
+    clearTimeout(adminUserSearchTimer);
+    adminUserSearchTimer = setTimeout(() => {
+      if (state.me?.isAdmin) loadAdminUsers().catch((error) => showToast(error.message));
+    }, 250);
+  });
+}
+
+const adminUserStatus = $('#adminUserStatus');
+if (adminUserStatus) {
+  adminUserStatus.addEventListener('change', () => loadAdminUsers().catch((error) => showToast(error.message)));
 }
 
 const createBackupBtn = $('#createBackupBtn');
@@ -464,6 +504,22 @@ if (loadAdminReportsBtn) {
 const adminReportStatus = $('#adminReportStatus');
 if (adminReportStatus) {
   adminReportStatus.addEventListener('change', () => loadAdminReports().catch((error) => showToast(error.message)));
+}
+
+const adminReportType = $('#adminReportType');
+if (adminReportType) {
+  adminReportType.addEventListener('change', () => loadAdminReports().catch((error) => showToast(error.message)));
+}
+
+let adminReportSearchTimer = null;
+const adminReportSearch = $('#adminReportSearch');
+if (adminReportSearch) {
+  adminReportSearch.addEventListener('input', () => {
+    clearTimeout(adminReportSearchTimer);
+    adminReportSearchTimer = setTimeout(() => {
+      if (state.me?.isAdmin) loadAdminReports().catch((error) => showToast(error.message));
+    }, 250);
+  });
 }
 
 const adminMessageType = $('#adminMessageType');
@@ -549,6 +605,7 @@ if (adminUsersList) {
     const kickButton = event.target.closest('[data-admin-kick]');
     const banButton = event.target.closest('[data-admin-ban]');
     const unbanButton = event.target.closest('[data-admin-unban]');
+    const deleteButton = event.target.closest('[data-admin-delete-user]');
 
     try {
       if (kickButton) {
@@ -558,6 +615,7 @@ if (adminUsersList) {
         const data = await api(`/api/admin/users/${userId}/kick`, { method: 'POST' });
         upsertAdminUser(data.user);
         renderAdminUsers();
+        await loadAdminStats();
         await loadUsers($('#userSearch').value);
         showToast('Bruger smidt ud');
       }
@@ -573,6 +631,7 @@ if (adminUsersList) {
         });
         upsertAdminUser(data.user);
         renderAdminUsers();
+        await loadAdminStats();
         await loadUsers($('#userSearch').value);
         showToast('Bruger banned');
       }
@@ -584,8 +643,21 @@ if (adminUsersList) {
         const data = await api(`/api/admin/users/${userId}/unban`, { method: 'POST' });
         upsertAdminUser(data.user);
         renderAdminUsers();
+        await loadAdminStats();
         await loadUsers($('#userSearch').value);
         showToast('Ban fjernet');
+      }
+
+      if (deleteButton) {
+        const userId = deleteButton.dataset.adminDeleteUser;
+        const user = state.adminUsers.find((candidate) => candidate.id === userId);
+        const typed = prompt(`Skriv SLET for at slette ${user?.name || 'denne bruger'} og alt brugerens indhold:`);
+        if (typed !== 'SLET') return;
+        await api(`/api/admin/users/${userId}`, { method: 'DELETE' });
+        state.adminUsers = state.adminUsers.filter((candidate) => candidate.id !== userId);
+        await loadEverything();
+        await loadAdminDashboard();
+        showToast('Bruger slettet');
       }
     } catch (error) {
       showToast(error.message);
@@ -1085,6 +1157,7 @@ function renderAdminTools() {
   adminActive.classList.toggle('hidden', !state.me?.isAdmin);
   adminClaimForm.classList.toggle('hidden', Boolean(state.me?.isAdmin));
   if (adminModerationPanel) adminModerationPanel.classList.toggle('hidden', !state.me?.isAdmin);
+  renderAdminStats();
   renderAdminUsers();
   renderAdminMessageViewer();
   renderAdminReportViewer();
@@ -1095,14 +1168,33 @@ function upsertAdminUser(user) {
   const index = state.adminUsers.findIndex((candidate) => candidate.id === user.id);
   if (index >= 0) state.adminUsers[index] = user;
   else state.adminUsers.push(user);
-  state.adminUsers.sort((a, b) => Number(b.online) - Number(a.online) || Number(Boolean(b.banned)) - Number(Boolean(a.banned)) || a.name.localeCompare(b.name));
+  state.adminUsers.sort((a, b) => Number(b.online) - Number(a.online) || Number(Boolean(b.banned)) - Number(Boolean(a.banned)) || Number(b.stats?.openReportsAgainstCount || 0) - Number(a.stats?.openReportsAgainstCount || 0) || a.name.localeCompare(b.name));
+}
+
+function renderAdminStats() {
+  if (!adminStatsGrid || !state.me?.isAdmin) return;
+  const stats = state.adminStats || {};
+  const cards = [
+    { label: 'Brugere', value: stats.usersTotal, sub: `${formatNumber(stats.onlineUsers)} online · ${formatNumber(stats.bannedUsers)} banned` },
+    { label: 'Åbne rapporter', value: stats.openReports, sub: `${formatNumber(stats.reportsTotal)} rapporter i alt` },
+    { label: 'Opslag', value: stats.globalPosts, sub: `${formatNumber(stats.globalComments)} kommentarer · ${formatNumber(stats.globalLikes)} likes` },
+    { label: 'Private beskeder', value: stats.directMessages, sub: stats.latestDirectMessageAt ? `Seneste ${formatTime(stats.latestDirectMessageAt)}` : 'Ingen private beskeder endnu' }
+  ];
+
+  adminStatsGrid.innerHTML = cards.map((card) => `
+    <div class="admin-stat-card">
+      <strong>${card.value === undefined || card.value === null ? '–' : escapeHtml(formatNumber(card.value))}</strong>
+      <span>${escapeHtml(card.label)}</span>
+      <small>${escapeHtml(card.sub || '')}</small>
+    </div>
+  `).join('');
 }
 
 function renderAdminUsers() {
   if (!adminUsersList || !state.me?.isAdmin) return;
 
   if (!state.adminUsers.length) {
-    adminUsersList.innerHTML = '<div class="empty small-empty">Ingen konti er indlæst endnu.</div>';
+    adminUsersList.innerHTML = '<div class="empty small-empty">Ingen brugere matcher filteret.</div>';
     return;
   }
 
@@ -1110,21 +1202,33 @@ function renderAdminUsers() {
     const isMe = user.id === state.me.id;
     const isProtectedAdmin = user.isAdmin && !isMe;
     const status = displayAdminStatus(user);
+    const stats = user.stats || {};
+    const created = user.createdAt ? formatExactDate(user.createdAt) : 'Ukendt oprettelse';
+    const lastActivity = stats.lastActivityAt ? formatTime(stats.lastActivityAt) : 'Ingen aktivitet';
+    const openReports = Number(stats.openReportsAgainstCount || 0);
     return `
-      <article class="admin-user-row ${user.banned ? 'banned' : ''}">
+      <article class="admin-user-row ${user.banned ? 'banned' : ''} ${openReports ? 'reported' : ''}">
         <div class="admin-user-main">
           <div class="avatar small-avatar">${escapeHtml(initials(user.name))}</div>
           <div>
             <strong>${escapeHtml(user.name)}${isMe ? ' (dig)' : ''}</strong>
-            <span>@${escapeHtml(user.username)} · ${escapeHtml(displayRole(user.role))} · ${escapeHtml(status)}</span>
-            ${user.banReason ? `<small>Grund: ${escapeHtml(user.banReason)}</small>` : ''}
+            <span>@${escapeHtml(user.username)} · ${escapeHtml(displayRole(user.role))} · <em class="admin-status ${escapeHtml(adminStatusClass(user))}">${escapeHtml(status)}</em></span>
+            <small>Oprettet: ${escapeHtml(created)} · Seneste aktivitet: ${escapeHtml(lastActivity)}</small>
+            ${user.banReason ? `<small class="admin-warning-line">Ban-grund: ${escapeHtml(user.banReason)}</small>` : ''}
           </div>
         </div>
+        <div class="admin-user-metrics" aria-label="Brugerstatistik">
+          <span>${formatNumber(stats.globalPostsCount)} opslag</span>
+          <span>${formatNumber(stats.commentsCount)} kommentarer</span>
+          <span>${formatNumber(stats.privateMessagesCount)} DM</span>
+          <span class="${openReports ? 'hot' : ''}">${formatNumber(openReports)} åbne rapporter</span>
+        </div>
         <div class="admin-user-actions">
-          <button class="ghost tiny" type="button" data-admin-kick="${escapeHtml(user.id)}" ${isMe || user.banned ? 'disabled' : ''}>Smid ud</button>
+          <button class="ghost tiny" type="button" data-admin-kick="${escapeHtml(user.id)}" ${isMe || user.banned ? 'disabled' : ''}>Log ud</button>
           ${user.banned
             ? `<button class="secondary tiny" type="button" data-admin-unban="${escapeHtml(user.id)}">Fjern ban</button>`
             : `<button class="ghost danger tiny" type="button" data-admin-ban="${escapeHtml(user.id)}" ${isMe || isProtectedAdmin ? 'disabled' : ''}>Ban</button>`}
+          <button class="ghost danger tiny" type="button" data-admin-delete-user="${escapeHtml(user.id)}" ${isMe || isProtectedAdmin ? 'disabled' : ''}>Slet</button>
         </div>
       </article>
     `;
@@ -1141,7 +1245,7 @@ function adminMessageParticipants(item) {
 function adminMessageMeta(item) {
   const parts = [item.source || item.label, formatTime(item.createdAt)];
   if (item.kind === 'direct-message') parts.push('privat');
-  if (item.kind === 'global-message') parts.push('global');
+  if (item.kind === 'global-message') parts.push(`${formatNumber(item.likesCount)} likes`, `${formatNumber(item.commentsCount)} kommentarer`);
   if (item.kind === 'global-comment') parts.push('global kommentar');
   return parts.filter(Boolean).join(' · ');
 }
@@ -1184,11 +1288,12 @@ function renderAdminReportViewer() {
   if (!isAdmin) return;
 
   const count = $('#adminReportCount');
-  if (count) count.textContent = `${state.adminReports.length} rapport${state.adminReports.length === 1 ? '' : 'er'}`;
+  const openCount = state.adminReports.filter((report) => report.status !== 'resolved').length;
+  if (count) count.textContent = `${state.adminReports.length} rapport${state.adminReports.length === 1 ? '' : 'er'} · ${openCount} åbne`;
   if (!adminReportsList) return;
 
   if (!state.adminReports.length) {
-    adminReportsList.innerHTML = '<div class="empty">Ingen rapporter er indlæst endnu.</div>';
+    adminReportsList.innerHTML = '<div class="empty">Ingen rapporter matcher filteret.</div>';
     return;
   }
 
@@ -1201,36 +1306,58 @@ function renderAdminReportViewer() {
       <article class="admin-report-item ${isResolved ? 'resolved' : ''}">
         <div class="admin-message-topline">
           <span class="admin-message-label">${escapeHtml(target.label || reportTypeLabel(report.type))}</span>
-          <span>${escapeHtml(formatTime(report.createdAt))} · ${escapeHtml(report.statusLabel || report.status || 'åben')}</span>
+          <span>${escapeHtml(formatExactDate(report.createdAt))} · ${escapeHtml(report.statusLabel || report.status || 'åben')}</span>
         </div>
-        <div class="admin-message-main">
+        <div class="admin-message-main admin-report-titleline">
           <strong>Rapporteret af ${escapeHtml(reporter)} · mål: ${escapeHtml(targetAuthor)}</strong>
           <div class="admin-report-actions">
             ${isResolved ? `<button class="secondary tiny" type="button" data-admin-reopen-report="${escapeHtml(report.id)}">Genåbn</button>` : `<button class="secondary tiny" type="button" data-admin-resolve-report="${escapeHtml(report.id)}">Markér løst</button>`}
             <button class="ghost danger tiny" type="button" data-admin-delete-report-target="${escapeHtml(report.id)}" ${target.exists ? '' : 'disabled'}>${report.type === 'user' ? 'Ban bruger' : 'Slet mål'}</button>
           </div>
         </div>
-        <p class="admin-message-body"><strong>Grund:</strong> ${escapeHtml(report.reason || '')}</p>
-        <p class="admin-parent-excerpt"><strong>Rapporteret indhold:</strong> ${escapeHtml(target.body || '')}</p>
+        <div class="admin-report-grid">
+          <p class="admin-message-body"><strong>Grund:</strong><br>${escapeHtml(report.reason || '')}</p>
+          <p class="admin-parent-excerpt"><strong>Rapporteret indhold:</strong><br>${escapeHtml(target.body || '')}</p>
+        </div>
         ${target.parentBody ? `<p class="admin-parent-excerpt">Svar på: ${escapeHtml(target.parentBody)}</p>` : ''}
       </article>
     `;
   }).join('');
 }
 
+async function loadAdminStats() {
+  if (!state.me?.isAdmin || !adminStatsGrid) return;
+  const data = await api('/api/admin/stats');
+  state.adminStats = data.stats || null;
+  renderAdminStats();
+}
+
 async function loadAdminReports() {
   if (!state.me?.isAdmin || !adminReportsList) return;
   const status = $('#adminReportStatus')?.value || 'open';
-  const data = await api(`/api/admin/reports?status=${encodeURIComponent(status)}`);
+  const type = $('#adminReportType')?.value || 'all';
+  const q = $('#adminReportSearch')?.value || '';
+  const data = await api(`/api/admin/reports?status=${encodeURIComponent(status)}&type=${encodeURIComponent(type)}&q=${encodeURIComponent(q)}`);
   state.adminReports = data.reports || [];
+  if (data.stats) state.adminStats = data.stats;
+  renderAdminStats();
   renderAdminReportViewer();
 }
 
 async function loadAdminUsers() {
   if (!state.me?.isAdmin || !adminUsersList) return;
-  const data = await api('/api/admin/users');
+  const q = $('#adminUserSearch')?.value || '';
+  const status = $('#adminUserStatus')?.value || 'all';
+  const data = await api(`/api/admin/users?q=${encodeURIComponent(q)}&status=${encodeURIComponent(status)}`);
   state.adminUsers = data.users || [];
+  if (data.stats) state.adminStats = data.stats;
+  renderAdminStats();
   renderAdminUsers();
+}
+
+async function loadAdminDashboard() {
+  if (!state.me?.isAdmin) return;
+  await Promise.all([loadAdminUsers(), loadAdminReports(), loadAdminStats()]);
 }
 
 async function loadAdminMessages() {
@@ -1281,8 +1408,7 @@ async function loadGlobalMessages() {
 async function loadEverything() {
   await Promise.all([loadGlobalMessages(), loadUsers($('#userSearch').value)]);
   if (state.me?.isAdmin) {
-    await loadAdminUsers();
-    await loadAdminReports();
+    await loadAdminDashboard();
     renderAdminMessageViewer();
     renderAdminReportViewer();
   }

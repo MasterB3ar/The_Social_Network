@@ -590,7 +590,54 @@ function publicUser(user) {
   };
 }
 
-function publicModerationUser(user) {
+function getUserModerationStats(db, userId) {
+  const globalMessages = Array.isArray(db?.globalMessages) ? db.globalMessages : [];
+  const privateMessages = Array.isArray(db?.messages) ? db.messages : [];
+  const reports = Array.isArray(db?.reports) ? db.reports : [];
+  let commentsCount = 0;
+  let likesGivenCount = 0;
+  let lastActivityAt = null;
+
+  const touch = (dateString) => {
+    if (!dateString) return;
+    const candidate = new Date(dateString);
+    if (Number.isNaN(candidate.getTime())) return;
+    if (!lastActivityAt || candidate > new Date(lastActivityAt)) lastActivityAt = dateString;
+  };
+
+  const globalPostsCount = globalMessages.filter((message) => {
+    const isAuthor = message.authorId === userId;
+    if (isAuthor) touch(message.createdAt);
+    normalizeGlobalMessageInteractions(message);
+    message.comments.forEach((comment) => {
+      if (comment.authorId === userId) {
+        commentsCount += 1;
+        touch(comment.createdAt);
+      }
+    });
+    if (message.likes.includes(userId)) likesGivenCount += 1;
+    return isAuthor;
+  }).length;
+
+  const privateMessagesCount = privateMessages.filter((message) => {
+    const isParticipant = message.from === userId || message.to === userId;
+    if (isParticipant) touch(message.createdAt);
+    return isParticipant;
+  }).length;
+
+  return {
+    globalPostsCount,
+    commentsCount,
+    privateMessagesCount,
+    likesGivenCount,
+    reportsMadeCount: reports.filter((report) => report.reporterId === userId).length,
+    reportsAgainstCount: reports.filter((report) => report.targetUserId === userId || report.reportedUserId === userId).length,
+    openReportsAgainstCount: reports.filter((report) => (report.targetUserId === userId || report.reportedUserId === userId) && (report.status || 'open') === 'open').length,
+    lastActivityAt
+  };
+}
+
+function publicModerationUser(user, db = null) {
   const safe = publicUser(user);
   if (!safe) return null;
   return {
@@ -599,7 +646,47 @@ function publicModerationUser(user) {
     banReason: user.banReason || '',
     bannedBy: user.bannedBy || null,
     kickedAt: user.kickedAt || null,
-    sessionVersion: getSessionVersion(user)
+    sessionVersion: getSessionVersion(user),
+    stats: db ? getUserModerationStats(db, user.id) : null
+  };
+}
+
+function buildAdminStats(db) {
+  const users = Array.isArray(db.users) ? db.users : [];
+  const globalMessages = Array.isArray(db.globalMessages) ? db.globalMessages : [];
+  const directMessages = Array.isArray(db.messages) ? db.messages : [];
+  const reports = Array.isArray(db.reports) ? db.reports : [];
+  const commentsCount = globalMessages.reduce((total, message) => {
+    normalizeGlobalMessageInteractions(message);
+    return total + message.comments.length;
+  }, 0);
+  const likesCount = globalMessages.reduce((total, message) => {
+    normalizeGlobalMessageInteractions(message);
+    return total + message.likes.length;
+  }, 0);
+  const openReports = reports.filter((report) => (report.status || 'open') === 'open');
+  const resolvedReports = reports.filter((report) => (report.status || 'open') === 'resolved');
+  const newestUser = [...users].sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))[0] || null;
+  const latestGlobalPost = [...globalMessages].sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))[0] || null;
+  const latestDirectMessage = [...directMessages].sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))[0] || null;
+
+  return {
+    usersTotal: users.length,
+    adminsTotal: users.filter((user) => user.role === 'admin').length,
+    onlineUsers: users.filter((user) => onlineUsers.has(user.id)).length,
+    bannedUsers: users.filter(isBanned).length,
+    globalPosts: globalMessages.length,
+    globalComments: commentsCount,
+    globalLikes: likesCount,
+    directMessages: directMessages.length,
+    reportsTotal: reports.length,
+    openReports: openReports.length,
+    resolvedReports: resolvedReports.length,
+    newestUser: newestUser ? adminMessageActor(newestUser) : null,
+    newestUserAt: newestUser?.createdAt || null,
+    latestGlobalPostAt: latestGlobalPost?.createdAt || null,
+    latestDirectMessageAt: latestDirectMessage?.createdAt || null,
+    generatedAt: new Date().toISOString()
   };
 }
 
@@ -1294,8 +1381,8 @@ app.get('/api/health', (req, res) => {
     const storage = getStorageStatus();
     res.json({
       ok: true,
-      app: 'TSN V1.2',
-      shortName: 'TSN V1.2',
+      app: 'TSN V1.2.1',
+      shortName: 'TSN V1.2.1',
       environment: process.env.NODE_ENV || 'development',
       storage: {
         ok: storage.ok,
@@ -1324,8 +1411,8 @@ app.get('/api/health', (req, res) => {
   } catch (error) {
     res.status(503).json({
       ok: false,
-      app: 'TSN V1.2',
-      shortName: 'TSN V1.2',
+      app: 'TSN V1.2.1',
+      shortName: 'TSN V1.2.1',
       error: 'Lageret er ikke klar.',
       detail: error.message
     });
@@ -1455,12 +1542,27 @@ app.post('/api/admin/claim', requireAuth, async (req, res) => {
   res.json({ user: publicUser(user) });
 });
 
-app.get('/api/admin/users', requireAuth, requireAdmin, (req, res) => {
-  const users = req.db.users
-    .map(publicModerationUser)
-    .sort((a, b) => Number(b.online) - Number(a.online) || Number(Boolean(b.banned)) - Number(Boolean(a.banned)) || a.name.localeCompare(b.name));
+app.get('/api/admin/stats', requireAuth, requireAdmin, (req, res) => {
+  res.json({ stats: buildAdminStats(req.db) });
+});
 
-  res.json({ users });
+app.get('/api/admin/users', requireAuth, requireAdmin, (req, res) => {
+  const q = cleanText(req.query.q || '', 80).toLowerCase();
+  const status = cleanText(req.query.status || 'all', 24);
+  let users = req.db.users.map((user) => publicModerationUser(user, req.db)).filter(Boolean);
+
+  if (q) {
+    users = users.filter((user) => [user.name, user.username, user.bio, user.banReason].filter(Boolean).join(' ').toLowerCase().includes(q));
+  }
+
+  if (status === 'online') users = users.filter((user) => user.online);
+  if (status === 'banned') users = users.filter((user) => user.banned);
+  if (status === 'admins') users = users.filter((user) => user.isAdmin);
+  if (status === 'reported') users = users.filter((user) => Number(user.stats?.openReportsAgainstCount || 0) > 0);
+
+  users.sort((a, b) => Number(b.online) - Number(a.online) || Number(Boolean(b.banned)) - Number(Boolean(a.banned)) || Number(b.stats?.openReportsAgainstCount || 0) - Number(a.stats?.openReportsAgainstCount || 0) || a.name.localeCompare(b.name));
+
+  res.json({ users, count: users.length, stats: buildAdminStats(req.db) });
 });
 
 
@@ -1490,10 +1592,29 @@ app.get('/api/admin/messages', requireAuth, requireAdmin, (req, res) => {
 
 app.get('/api/admin/reports', requireAuth, requireAdmin, (req, res) => {
   const status = cleanText(req.query.status || 'open', 24);
+  const type = cleanText(req.query.type || 'all', 32);
+  const q = cleanText(req.query.q || '', 120).toLowerCase();
   let reports = Array.isArray(req.db.reports) ? [...req.db.reports] : [];
   if (status !== 'all') reports = reports.filter((report) => (report.status || 'open') === status);
-  reports.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
-  res.json({ reports: reports.map((report) => publicReport(req.db, report)), count: reports.length });
+  if (type !== 'all') reports = reports.filter((report) => report.type === type);
+
+  let publicReports = reports.map((report) => publicReport(req.db, report));
+  if (q) {
+    publicReports = publicReports.filter((report) => [
+      report.reason,
+      report.reporter?.name,
+      report.reporter?.username,
+      report.target?.body,
+      report.target?.author?.name,
+      report.target?.author?.username,
+      report.target?.toUser?.name,
+      report.target?.toUser?.username,
+      report.target?.label
+    ].filter(Boolean).join(' ').toLowerCase().includes(q));
+  }
+
+  publicReports.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+  res.json({ reports: publicReports, count: publicReports.length, stats: buildAdminStats(req.db) });
 });
 
 app.patch('/api/admin/reports/:reportId', requireAuth, requireAdmin, async (req, res) => {
@@ -1556,6 +1677,21 @@ app.delete('/api/admin/reports/:reportId/target', requireAuth, requireAdmin, asy
   if (report.type === 'user') forceLogoutUser(deleted.id, deleted.banReason || 'Din konto blev banned af en admin.');
 
   res.json({ ok: true, report: publicReport(db, report) });
+});
+
+app.delete('/api/admin/users/:userId', requireAuth, requireAdmin, async (req, res) => {
+  const db = req.db;
+  const target = db.users.find((candidate) => candidate.id === req.params.userId);
+  if (!target) return res.status(404).json({ error: 'Brugeren blev ikke fundet.' });
+  if (target.id === req.user.id) return res.status(400).json({ error: 'Du kan ikke slette din egen admin-konto her.' });
+  if (target.role === 'admin') return res.status(403).json({ error: 'Du kan ikke slette en anden admin-konto.' });
+
+  const result = deleteUserDataFromDatabase(db, target.id);
+  await writeDb(db);
+
+  forceLogoutUser(target.id, 'Din konto blev slettet af en admin.');
+  io.emit('global-message-deleted', { messageId: '__reload__' });
+  res.json({ ok: true, deleted: result, stats: buildAdminStats(db) });
 });
 
 app.post('/api/admin/users/:userId/kick', requireAuth, requireAdmin, async (req, res) => {
@@ -1800,7 +1936,7 @@ app.post('/api/reports', requireAuth, async (req, res) => {
 });
 
 app.all(['/api/posts', '/api/posts/*', '/api/rooms', '/api/rooms/*'], requireAuth, (req, res) => {
-  res.status(410).json({ error: 'TSN V1.2 understøtter globale opslag, privat chat og moderation.' });
+  res.status(410).json({ error: 'TSN V1.2.1 understøtter globale opslag, privat chat og forbedret moderation.' });
 });
 
 app.get('/api/messages/:userId', requireAuth, async (req, res) => {
