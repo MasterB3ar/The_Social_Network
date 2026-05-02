@@ -71,7 +71,7 @@ app.use(express.static(PUBLIC_DIR, {
 }));
 
 function emptyDatabase() {
-  return { users: [], posts: [], messages: [], globalMessages: [], rooms: [], roomMessages: [] };
+  return { users: [], posts: [], messages: [], globalMessages: [], rooms: [], roomMessages: [], reports: [] };
 }
 
 function databaseHasUserData(db) {
@@ -83,6 +83,7 @@ function databaseHasUserData(db) {
         (Array.isArray(db.messages) && db.messages.length) ||
         (Array.isArray(db.globalMessages) && db.globalMessages.length) ||
         (Array.isArray(db.roomMessages) && db.roomMessages.length) ||
+        (Array.isArray(db.reports) && db.reports.length) ||
         (Array.isArray(db.rooms) && db.rooms.some((room) => room.ownerId || room.nameEnc || room.passwordHash))
       )
   );
@@ -95,7 +96,8 @@ function normalizeDatabaseShape(db) {
     messages: Array.isArray(db?.messages) ? db.messages : [],
     globalMessages: Array.isArray(db?.globalMessages) ? db.globalMessages : [],
     rooms: Array.isArray(db?.rooms) ? db.rooms : [],
-    roomMessages: Array.isArray(db?.roomMessages) ? db.roomMessages : []
+    roomMessages: Array.isArray(db?.roomMessages) ? db.roomMessages : [],
+    reports: Array.isArray(db?.reports) ? db.reports : []
   };
 }
 
@@ -162,7 +164,7 @@ async function initDatabaseStorage() {
   }
 
   mongoClient = new MongoClient(MONGODB_URI, {
-    appName: 'TSN-V1',
+    appName: 'TSN-V1.2',
     serverSelectionTimeoutMS: Number(process.env.MONGODB_CONNECT_TIMEOUT_MS || 10000)
   });
 
@@ -501,11 +503,12 @@ function isRemovedEasyLoginUser(user) {
 function removeEasyLoginUsersFromDatabase(db) {
   const removedIds = new Set((db.users || []).filter(isRemovedEasyLoginUser).map((user) => user.id));
   if (!removedIds.size) {
-    return { changed: false, usersRemoved: 0, globalMessagesRemoved: 0, privateMessagesRemoved: 0, commentsRemoved: 0, likesRemoved: 0 };
+    return { changed: false, usersRemoved: 0, globalMessagesRemoved: 0, privateMessagesRemoved: 0, commentsRemoved: 0, likesRemoved: 0, reportsRemoved: 0 };
   }
 
   const beforeGlobal = db.globalMessages.length;
   const beforePrivate = db.messages.length;
+  const beforeReports = Array.isArray(db.reports) ? db.reports.length : 0;
   let commentsRemoved = 0;
   let likesRemoved = 0;
 
@@ -524,6 +527,11 @@ function removeEasyLoginUsersFromDatabase(db) {
       return message;
     });
   db.messages = db.messages.filter((message) => !removedIds.has(message.from) && !removedIds.has(message.to));
+  db.reports = (Array.isArray(db.reports) ? db.reports : []).filter((report) =>
+    !removedIds.has(report.reporterId) &&
+    !removedIds.has(report.targetUserId) &&
+    !removedIds.has(report.reportedUserId)
+  );
 
   return {
     changed: true,
@@ -531,7 +539,8 @@ function removeEasyLoginUsersFromDatabase(db) {
     globalMessagesRemoved: beforeGlobal - db.globalMessages.length,
     privateMessagesRemoved: beforePrivate - db.messages.length,
     commentsRemoved,
-    likesRemoved
+    likesRemoved,
+    reportsRemoved: beforeReports - db.reports.length
   };
 }
 
@@ -842,6 +851,162 @@ function publicMessage(message) {
   };
 }
 
+function getReportReason(report) {
+  return getEncryptedObjectField(report, 'reason');
+}
+
+function reportStatusLabel(status) {
+  return status === 'resolved' ? 'løst' : 'åben';
+}
+
+function findReportTarget(db, report) {
+  const users = Array.isArray(db.users) ? db.users : [];
+  const globalMessages = Array.isArray(db.globalMessages) ? db.globalMessages : [];
+  const directMessages = Array.isArray(db.messages) ? db.messages : [];
+  const findUser = (userId) => users.find((user) => user.id === userId);
+
+  if (report.type === 'global-message') {
+    const message = globalMessages.find((candidate) => candidate.id === report.messageId);
+    const author = message ? findUser(message.authorId) : null;
+    return {
+      exists: Boolean(message),
+      type: report.type,
+      label: 'Globalt opslag',
+      body: message ? getEncryptedObjectField(message, 'text') : 'Opslaget findes ikke længere.',
+      createdAt: message?.createdAt || null,
+      author: adminMessageActor(author),
+      messageId: report.messageId
+    };
+  }
+
+  if (report.type === 'global-comment') {
+    const message = globalMessages.find((candidate) => candidate.id === report.messageId);
+    const comments = message ? (Array.isArray(message.comments) ? message.comments : []) : [];
+    const comment = comments.find((candidate) => candidate.id === report.commentId);
+    const author = comment ? findUser(comment.authorId) : null;
+    return {
+      exists: Boolean(message && comment),
+      type: report.type,
+      label: 'Global kommentar',
+      body: comment ? getEncryptedObjectField(comment, 'text') : 'Kommentaren findes ikke længere.',
+      parentBody: message ? getEncryptedObjectField(message, 'text') : '',
+      createdAt: comment?.createdAt || null,
+      author: adminMessageActor(author),
+      messageId: report.messageId,
+      commentId: report.commentId
+    };
+  }
+
+  if (report.type === 'direct-message') {
+    const message = directMessages.find((candidate) => candidate.id === report.messageId);
+    const fromUser = message ? findUser(message.from) : null;
+    const toUser = message ? findUser(message.to) : null;
+    return {
+      exists: Boolean(message),
+      type: report.type,
+      label: 'Privat besked',
+      body: message ? getEncryptedObjectField(message, 'text') : 'Beskeden findes ikke længere.',
+      createdAt: message?.createdAt || null,
+      author: adminMessageActor(fromUser),
+      toUser: adminMessageActor(toUser),
+      messageId: report.messageId,
+      conversationId: message?.conversationId || ''
+    };
+  }
+
+  if (report.type === 'user') {
+    const targetUser = findUser(report.targetUserId);
+    return {
+      exists: Boolean(targetUser),
+      type: report.type,
+      label: 'Bruger',
+      body: targetUser ? `${getUserField(targetUser, 'name')} (@${getUserField(targetUser, 'username')})` : 'Brugeren findes ikke længere.',
+      createdAt: targetUser?.createdAt || null,
+      author: adminMessageActor(targetUser),
+      userId: report.targetUserId
+    };
+  }
+
+  return { exists: false, type: report.type || 'ukendt', label: 'Ukendt rapport', body: 'Målet findes ikke.', createdAt: null };
+}
+
+function publicReport(db, report) {
+  const reporter = db.users.find((user) => user.id === report.reporterId);
+  return {
+    id: report.id,
+    type: report.type,
+    status: report.status || 'open',
+    statusLabel: reportStatusLabel(report.status || 'open'),
+    reason: getReportReason(report),
+    reporter: adminMessageActor(reporter),
+    target: findReportTarget(db, report),
+    createdAt: report.createdAt,
+    resolvedAt: report.resolvedAt || null,
+    resolvedBy: report.resolvedBy || null
+  };
+}
+
+function removeGlobalMessageById(db, messageId) {
+  db.globalMessages = Array.isArray(db.globalMessages) ? db.globalMessages : [];
+  const index = db.globalMessages.findIndex((candidate) => candidate.id === messageId);
+  if (index < 0) return null;
+  const [deleted] = db.globalMessages.splice(index, 1);
+  return deleted;
+}
+
+function removeGlobalCommentById(db, messageId, commentId) {
+  db.globalMessages = Array.isArray(db.globalMessages) ? db.globalMessages : [];
+  const message = db.globalMessages.find((candidate) => candidate.id === messageId);
+  if (!message) return null;
+  normalizeGlobalMessageInteractions(message);
+  const index = message.comments.findIndex((candidate) => candidate.id === commentId);
+  if (index < 0) return null;
+  const [deleted] = message.comments.splice(index, 1);
+  return { message, comment: deleted };
+}
+
+function removeDirectMessageById(db, messageId) {
+  db.messages = Array.isArray(db.messages) ? db.messages : [];
+  const index = db.messages.findIndex((candidate) => candidate.id === messageId);
+  if (index < 0) return null;
+  const [deleted] = db.messages.splice(index, 1);
+  return deleted;
+}
+
+function deleteUserDataFromDatabase(db, userId) {
+  const beforeUsers = db.users.length;
+  const beforeGlobalMessages = db.globalMessages.length;
+  const beforePrivateMessages = db.messages.length;
+  let commentsRemoved = 0;
+  let likesRemoved = 0;
+
+  db.users = db.users.filter((user) => user.id !== userId);
+  db.globalMessages = (Array.isArray(db.globalMessages) ? db.globalMessages : [])
+    .filter((message) => message.authorId !== userId)
+    .map((message) => {
+      normalizeGlobalMessageInteractions(message);
+      const beforeComments = message.comments.length;
+      const beforeLikes = message.likes.length;
+      message.comments = message.comments.filter((comment) => comment.authorId !== userId);
+      message.likes = message.likes.filter((likeUserId) => likeUserId !== userId);
+      commentsRemoved += beforeComments - message.comments.length;
+      likesRemoved += beforeLikes - message.likes.length;
+      return message;
+    });
+  db.messages = (Array.isArray(db.messages) ? db.messages : []).filter((message) => message.from !== userId && message.to !== userId);
+  db.reports = (Array.isArray(db.reports) ? db.reports : []).filter((report) =>
+    report.reporterId !== userId && report.targetUserId !== userId && report.reportedUserId !== userId
+  );
+
+  return {
+    usersRemoved: beforeUsers - db.users.length,
+    globalMessagesRemoved: beforeGlobalMessages - db.globalMessages.length,
+    privateMessagesRemoved: beforePrivateMessages - db.messages.length,
+    commentsRemoved,
+    likesRemoved
+  };
+}
+
 
 function adminMessageActor(user) {
   const safe = publicUser(user);
@@ -1058,6 +1223,23 @@ async function migrateDatabaseAtRest() {
     changed = true;
   }
 
+  if (!Array.isArray(db.reports)) {
+    db.reports = [];
+    changed = true;
+  }
+
+  db.reports.forEach((report) => {
+    if (migrateRecordField(report, 'reason')) changed = true;
+    if (!report.status) {
+      report.status = 'open';
+      changed = true;
+    }
+    if (!report.createdAt) {
+      report.createdAt = new Date().toISOString();
+      changed = true;
+    }
+  });
+
   db.roomMessages.forEach((message) => {
     if (migrateRecordField(message, 'text')) changed = true;
   });
@@ -1112,8 +1294,8 @@ app.get('/api/health', (req, res) => {
     const storage = getStorageStatus();
     res.json({
       ok: true,
-      app: 'TSN V1.1',
-      shortName: 'TSN V1.1',
+      app: 'TSN V1.2',
+      shortName: 'TSN V1.2',
       environment: process.env.NODE_ENV || 'development',
       storage: {
         ok: storage.ok,
@@ -1133,7 +1315,7 @@ app.get('/api/health', (req, res) => {
         privateMessages: 'aes-256-gcm encrypted at rest',
         usernameLookup: 'hmac-sha256',
         sessions: 'versioned JWT sessions support admin kick/logout',
-        moderation: 'admins can delete global/private messages, kick accounts, ban accounts, unban accounts, and review stored messages for moderation',
+        moderation: 'admins can delete global/private messages, handle reports, kick accounts, ban accounts, unban accounts, and review stored messages for moderation',
         contentFilter: CONTENT_FILTER_ENABLED ? 'server-side blocked-language filter enabled' : 'disabled',
         customBlockedWords: CUSTOM_BLOCKED_WORDS.length,
         adminRights: 'claimable with server-side admin setup password'
@@ -1142,8 +1324,8 @@ app.get('/api/health', (req, res) => {
   } catch (error) {
     res.status(503).json({
       ok: false,
-      app: 'TSN V1.1',
-      shortName: 'TSN V1.1',
+      app: 'TSN V1.2',
+      shortName: 'TSN V1.2',
       error: 'Lageret er ikke klar.',
       detail: error.message
     });
@@ -1153,7 +1335,7 @@ app.get('/api/health', (req, res) => {
 app.get('/api/ping', (req, res) => {
   res.json({
     ok: true,
-    app: 'TSN V1.1',
+    app: 'TSN V1.2',
     message: 'pong',
     now: new Date().toISOString()
   });
@@ -1237,6 +1419,26 @@ app.patch('/api/me', requireAuth, async (req, res) => {
   res.json({ user: publicUser(user) });
 });
 
+app.delete('/api/me', requireAuth, async (req, res) => {
+  const password = String(req.body.password || '');
+  if (!password) return res.status(400).json({ error: 'Skriv din adgangskode for at slette kontoen.' });
+
+  const db = req.db;
+  const user = db.users.find((candidate) => candidate.id === req.user.id);
+  if (!user) return res.status(404).json({ error: 'Kontoen blev ikke fundet.', logout: true });
+
+  const passwordOk = await bcrypt.compare(password, user.passwordHash);
+  if (!passwordOk) return res.status(401).json({ error: 'Forkert adgangskode.' });
+
+  const deletedUserId = user.id;
+  const result = deleteUserDataFromDatabase(db, deletedUserId);
+  await writeDb(db);
+
+  forceLogoutUser(deletedUserId, 'Din konto er slettet.');
+  io.emit('global-message-deleted', { messageId: '__reload__' });
+  res.json({ ok: true, deleted: result, logout: true, message: 'Kontoen er slettet.' });
+});
+
 app.post('/api/admin/claim', requireAuth, async (req, res) => {
   const password = String(req.body.password || '');
   const ok = password ? await verifyAdminSetupPassword(password) : false;
@@ -1284,6 +1486,76 @@ app.get('/api/admin/messages', requireAuth, requireAdmin, (req, res) => {
     generatedAt: new Date().toISOString(),
     notice: 'Moderationsvisning kun for admin. Beskeder er krypteret i databasen og dekrypteres på serveren for admins.'
   });
+});
+
+app.get('/api/admin/reports', requireAuth, requireAdmin, (req, res) => {
+  const status = cleanText(req.query.status || 'open', 24);
+  let reports = Array.isArray(req.db.reports) ? [...req.db.reports] : [];
+  if (status !== 'all') reports = reports.filter((report) => (report.status || 'open') === status);
+  reports.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+  res.json({ reports: reports.map((report) => publicReport(req.db, report)), count: reports.length });
+});
+
+app.patch('/api/admin/reports/:reportId', requireAuth, requireAdmin, async (req, res) => {
+  const db = req.db;
+  const report = (Array.isArray(db.reports) ? db.reports : []).find((candidate) => candidate.id === req.params.reportId);
+  if (!report) return res.status(404).json({ error: 'Rapporten blev ikke fundet.' });
+
+  const action = cleanText(req.body.action || 'resolve', 24);
+  if (action === 'reopen') {
+    report.status = 'open';
+    delete report.resolvedAt;
+    delete report.resolvedBy;
+  } else {
+    report.status = 'resolved';
+    report.resolvedAt = new Date().toISOString();
+    report.resolvedBy = req.user.id;
+  }
+
+  await writeDb(db);
+  res.json({ ok: true, report: publicReport(db, report) });
+});
+
+app.delete('/api/admin/reports/:reportId/target', requireAuth, requireAdmin, async (req, res) => {
+  const db = req.db;
+  const report = (Array.isArray(db.reports) ? db.reports : []).find((candidate) => candidate.id === req.params.reportId);
+  if (!report) return res.status(404).json({ error: 'Rapporten blev ikke fundet.' });
+
+  let deleted = null;
+  if (report.type === 'global-message') {
+    deleted = removeGlobalMessageById(db, report.messageId);
+    if (!deleted) return res.status(404).json({ error: 'Opslaget findes ikke længere.' });
+  } else if (report.type === 'global-comment') {
+    deleted = removeGlobalCommentById(db, report.messageId, report.commentId);
+    if (!deleted) return res.status(404).json({ error: 'Kommentaren findes ikke længere.' });
+  } else if (report.type === 'direct-message') {
+    deleted = removeDirectMessageById(db, report.messageId);
+    if (!deleted) return res.status(404).json({ error: 'Beskeden findes ikke længere.' });
+  } else if (report.type === 'user') {
+    const target = db.users.find((candidate) => candidate.id === report.targetUserId);
+    if (!target) return res.status(404).json({ error: 'Brugeren findes ikke længere.' });
+    if (target.id === req.user.id) return res.status(400).json({ error: 'Du kan ikke banne dig selv via en rapport.' });
+    if (target.role === 'admin') return res.status(403).json({ error: 'Du kan ikke banne en admin-konto via en rapport.' });
+    target.bannedAt = new Date().toISOString();
+    target.bannedBy = req.user.id;
+    target.banReason = `Banned via rapport: ${getReportReason(report)}`.slice(0, 220);
+    target.sessionVersion = getSessionVersion(target) + 1;
+    deleted = target;
+  } else {
+    return res.status(400).json({ error: 'Rapporttypen understøttes ikke.' });
+  }
+
+  report.status = 'resolved';
+  report.resolvedAt = new Date().toISOString();
+  report.resolvedBy = req.user.id;
+  await writeDb(db);
+
+  if (report.type === 'global-message') io.emit('global-message-deleted', { messageId: report.messageId });
+  if (report.type === 'global-comment' && deleted.message) emitGlobalMessageUpdated(db, deleted.message);
+  if (report.type === 'direct-message') io.to(deleted.from).to(deleted.to).emit('message-deleted', { messageId: deleted.id, conversationId: deleted.conversationId });
+  if (report.type === 'user') forceLogoutUser(deleted.id, deleted.banReason || 'Din konto blev banned af en admin.');
+
+  res.json({ ok: true, report: publicReport(db, report) });
 });
 
 app.post('/api/admin/users/:userId/kick', requireAuth, requireAdmin, async (req, res) => {
@@ -1473,8 +1745,62 @@ app.delete('/api/global/messages/:messageId', requireAuth, async (req, res) => {
   res.json({ ok: true, messageId: deleted.id });
 });
 
+app.post('/api/reports', requireAuth, async (req, res) => {
+  const type = cleanText(req.body.type, 32);
+  const reason = cleanText(req.body.reason, 400);
+  if (!reason) return res.status(400).json({ error: 'Skriv en kort grund til rapporten.' });
+  if (rejectBlockedContent(res, reason, 'Rapportgrund')) return;
+
+  const db = req.db;
+  db.reports = Array.isArray(db.reports) ? db.reports : [];
+  const report = {
+    id: id('report'),
+    type,
+    reporterId: req.user.id,
+    status: 'open',
+    ...encryptedTextObject('reason', reason),
+    createdAt: new Date().toISOString()
+  };
+
+  if (type === 'global-message') {
+    const message = (Array.isArray(db.globalMessages) ? db.globalMessages : []).find((candidate) => candidate.id === req.body.messageId);
+    if (!message) return res.status(404).json({ error: 'Opslaget blev ikke fundet.' });
+    report.messageId = message.id;
+    report.targetUserId = message.authorId;
+  } else if (type === 'global-comment') {
+    const message = (Array.isArray(db.globalMessages) ? db.globalMessages : []).find((candidate) => candidate.id === req.body.messageId);
+    if (!message) return res.status(404).json({ error: 'Opslaget blev ikke fundet.' });
+    normalizeGlobalMessageInteractions(message);
+    const comment = message.comments.find((candidate) => candidate.id === req.body.commentId);
+    if (!comment) return res.status(404).json({ error: 'Kommentaren blev ikke fundet.' });
+    report.messageId = message.id;
+    report.commentId = comment.id;
+    report.targetUserId = comment.authorId;
+  } else if (type === 'direct-message') {
+    const message = (Array.isArray(db.messages) ? db.messages : []).find((candidate) => candidate.id === req.body.messageId);
+    if (!message) return res.status(404).json({ error: 'Beskeden blev ikke fundet.' });
+    if (message.from !== req.user.id && message.to !== req.user.id && req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Du kan kun rapportere beskeder fra dine egne samtaler.' });
+    }
+    report.messageId = message.id;
+    report.targetUserId = message.from === req.user.id ? message.to : message.from;
+  } else if (type === 'user') {
+    const target = db.users.find((candidate) => candidate.id === req.body.userId);
+    if (!target) return res.status(404).json({ error: 'Brugeren blev ikke fundet.' });
+    if (target.id === req.user.id) return res.status(400).json({ error: 'Du kan ikke rapportere dig selv.' });
+    report.targetUserId = target.id;
+  } else {
+    return res.status(400).json({ error: 'Rapporttypen understøttes ikke.' });
+  }
+
+  db.reports.push(report);
+  if (db.reports.length > 1000) db.reports = db.reports.slice(-1000);
+  await writeDb(db);
+  res.status(201).json({ ok: true, reportId: report.id, message: 'Rapport sendt til admin.' });
+});
+
 app.all(['/api/posts', '/api/posts/*', '/api/rooms', '/api/rooms/*'], requireAuth, (req, res) => {
-  res.status(410).json({ error: 'TSN V1.1 understøtter kun global chat og privat chat.' });
+  res.status(410).json({ error: 'TSN V1.2 understøtter globale opslag, privat chat og moderation.' });
 });
 
 app.get('/api/messages/:userId', requireAuth, async (req, res) => {
@@ -1620,7 +1946,7 @@ async function startServer() {
       console.log(`Backup directory: ${DB_BACKUP_DIR}`);
       const warning = storagePersistenceWarning();
       if (warning) console.warn(`Persistence warning: ${warning}`);
-      console.log('TSN V1.1 mode: global chat + private chat only.');
+      console.log('TSN V1.2 mode: safe beta with global posts, private chat, reports and account deletion.');
       console.log('Admin rights can be claimed inside the app with TSN_ADMIN_SETUP_PASSWORD or TSN_ADMIN_SETUP_PASSWORD_HASH.');
 
       if (process.env.NODE_ENV === 'production' && JWT_SECRET === DEFAULT_JWT_SECRET) {

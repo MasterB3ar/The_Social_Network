@@ -9,7 +9,8 @@ const state = {
   activeMessages: [],
   chatDrafts: {},
   adminUsers: [],
-  adminMessages: []
+  adminMessages: [],
+  adminReports: []
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -26,6 +27,8 @@ const toast = $('#toast');
 const adminUsersList = $('#adminUsersList');
 const adminMessageViewer = $('#adminMessageViewer');
 const adminMessagesList = $('#adminMessagesList');
+const adminReportViewer = $('#adminReportViewer');
+const adminReportsList = $('#adminReportsList');
 
 function escapeHtml(value) {
   return String(value || '')
@@ -73,6 +76,30 @@ function displayRole(role) {
 function displayAdminStatus(user) {
   if (user.banned) return 'Banned';
   return user.online ? 'Online' : 'Offline';
+}
+
+function reportTypeLabel(type) {
+  if (type === 'global-message') return 'globalt opslag';
+  if (type === 'global-comment') return 'global kommentar';
+  if (type === 'direct-message') return 'privat besked';
+  if (type === 'user') return 'bruger';
+  return 'indhold';
+}
+
+async function createReport(type, payload = {}) {
+  const reason = prompt(`Hvorfor vil du rapportere denne ${reportTypeLabel(type)}?`);
+  if (reason === null) return;
+  const cleanReason = reason.trim();
+  if (!cleanReason) {
+    showToast('Rapporten skal have en kort grund.');
+    return;
+  }
+
+  await api('/api/reports', {
+    method: 'POST',
+    body: JSON.stringify({ type, reason: cleanReason, ...payload })
+  });
+  showToast('Rapport sendt til admin');
 }
 
 function setUnreadForUser(userId, count) {
@@ -212,7 +239,9 @@ function forceLocalLogout(message = 'Du er blevet logget ud.') {
   state.activeMessages = [];
   state.adminUsers = [];
   state.adminMessages = [];
+  state.adminReports = [];
   renderAdminMessageViewer();
+  renderAdminReportViewer();
   showAuth();
   showToast(message);
 }
@@ -310,6 +339,44 @@ $('#refreshBtn').addEventListener('click', async () => {
   showToast('TSN er opdateret');
 });
 
+const rulesBtn = $('#rulesBtn');
+const rulesPanel = $('#rulesPanel');
+const closeRulesBtn = $('#closeRulesBtn');
+if (rulesBtn && rulesPanel) {
+  rulesBtn.addEventListener('click', () => rulesPanel.classList.remove('hidden'));
+}
+if (closeRulesBtn && rulesPanel) {
+  closeRulesBtn.addEventListener('click', () => rulesPanel.classList.add('hidden'));
+}
+if (rulesPanel) {
+  rulesPanel.addEventListener('click', (event) => {
+    if (event.target === rulesPanel) rulesPanel.classList.add('hidden');
+  });
+}
+
+const deleteAccountBtn = $('#deleteAccountBtn');
+if (deleteAccountBtn) {
+  deleteAccountBtn.addEventListener('click', async () => {
+    const password = prompt('Skriv din adgangskode for at slette kontoen permanent:');
+    if (password === null) return;
+    if (!password.trim()) {
+      showToast('Adgangskode er påkrævet.');
+      return;
+    }
+    if (!confirm('Er du helt sikker? Kontoen, opslag, kommentarer og private beskeder bliver slettet.')) return;
+
+    try {
+      await api('/api/me', {
+        method: 'DELETE',
+        body: JSON.stringify({ password })
+      });
+      forceLocalLogout('Kontoen er slettet.');
+    } catch (error) {
+      showToast(error.message);
+    }
+  });
+}
+
 $('#profileForm').addEventListener('submit', async (event) => {
   event.preventDefault();
   try {
@@ -349,6 +416,7 @@ if (adminClaimForm) {
       renderMe();
       await loadAdminUsers();
       await loadAdminMessages();
+      await loadAdminReports();
       renderGlobalMessages();
       renderChat();
       showToast('Admin-rettigheder aktiveret');
@@ -386,6 +454,16 @@ if (createBackupBtn) {
 const loadAdminMessagesBtn = $('#loadAdminMessagesBtn');
 if (loadAdminMessagesBtn) {
   loadAdminMessagesBtn.addEventListener('click', () => loadAdminMessages().catch((error) => showToast(error.message)));
+}
+
+const loadAdminReportsBtn = $('#loadAdminReportsBtn');
+if (loadAdminReportsBtn) {
+  loadAdminReportsBtn.addEventListener('click', () => loadAdminReports().catch((error) => showToast(error.message)));
+}
+
+const adminReportStatus = $('#adminReportStatus');
+if (adminReportStatus) {
+  adminReportStatus.addEventListener('change', () => loadAdminReports().catch((error) => showToast(error.message)));
 }
 
 const adminMessageType = $('#adminMessageType');
@@ -426,6 +504,40 @@ if (adminMessagesList) {
       }
       renderAdminMessageViewer();
       showToast('Besked slettet');
+    } catch (error) {
+      showToast(error.message);
+    }
+  });
+}
+
+if (adminReportsList) {
+  adminReportsList.addEventListener('click', async (event) => {
+    const resolveButton = event.target.closest('[data-admin-resolve-report]');
+    const reopenButton = event.target.closest('[data-admin-reopen-report]');
+    const deleteTargetButton = event.target.closest('[data-admin-delete-report-target]');
+    const reportId = resolveButton?.dataset.adminResolveReport || reopenButton?.dataset.adminReopenReport || deleteTargetButton?.dataset.adminDeleteReportTarget;
+    if (!reportId) return;
+
+    const report = state.adminReports.find((candidate) => candidate.id === reportId);
+    if (!report) return;
+
+    try {
+      if (deleteTargetButton) {
+        if (!confirm(`Håndhæv denne rapport mod ${report.target?.label || 'målet'}?`)) return;
+        await api(`/api/admin/reports/${reportId}/target`, { method: 'DELETE' });
+        await loadEverything();
+        await loadAdminReports();
+        showToast('Rapport håndhævet');
+        return;
+      }
+
+      const action = reopenButton ? 'reopen' : 'resolve';
+      await api(`/api/admin/reports/${reportId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ action })
+      });
+      await loadAdminReports();
+      showToast(action === 'reopen' ? 'Rapport genåbnet' : 'Rapport markeret som løst');
     } catch (error) {
       showToast(error.message);
     }
@@ -494,7 +606,7 @@ $('#globalMessageForm').addEventListener('submit', async (event) => {
     });
     input.value = '';
     upsertGlobalMessage(data.message);
-    renderGlobalMessages({ forceBottom: true });
+    renderGlobalMessages({ forceTop: true });
   } catch (error) {
     showToast(error.message);
   }
@@ -506,6 +618,8 @@ if (globalMessagesList) {
     const likeButton = event.target.closest('[data-like-global-message]');
     const deleteMessageButton = event.target.closest('[data-delete-global-message]');
     const deleteCommentButton = event.target.closest('[data-delete-global-comment]');
+    const reportMessageButton = event.target.closest('[data-report-global-message]');
+    const reportCommentButton = event.target.closest('[data-report-global-comment]');
     const openButton = event.target.closest('[data-open-global-message]');
 
     if (backButton) {
@@ -523,6 +637,23 @@ if (globalMessagesList) {
         const data = await api(`/api/global/messages/${messageId}/like`, { method: 'POST' });
         upsertGlobalMessage(data.message);
         renderGlobalMessages();
+        return;
+      }
+
+      if (reportMessageButton) {
+        event.preventDefault();
+        event.stopPropagation();
+        await createReport('global-message', { messageId: reportMessageButton.dataset.reportGlobalMessage });
+        return;
+      }
+
+      if (reportCommentButton) {
+        event.preventDefault();
+        event.stopPropagation();
+        await createReport('global-comment', {
+          messageId: reportCommentButton.dataset.messageId,
+          commentId: reportCommentButton.dataset.reportGlobalComment
+        });
         return;
       }
 
@@ -652,16 +783,35 @@ $('#messageForm').addEventListener('submit', (event) => {
 
 if (messagesList) {
   messagesList.addEventListener('click', async (event) => {
-    const button = event.target.closest('[data-delete-message]');
-    if (!button) return;
-    if (!confirm('Slet denne private besked for alle?')) return;
+    const reportButton = event.target.closest('[data-report-direct-message]');
+    const deleteButton = event.target.closest('[data-delete-message]');
 
     try {
-      const messageId = button.dataset.deleteMessage;
-      await api(`/api/messages/${messageId}`, { method: 'DELETE' });
-      state.activeMessages = state.activeMessages.filter((message) => message.id !== messageId);
-      renderChat();
-      showToast('Besked slettet');
+      if (reportButton) {
+        await createReport('direct-message', { messageId: reportButton.dataset.reportDirectMessage });
+        return;
+      }
+
+      if (deleteButton) {
+        if (!confirm('Slet denne private besked for alle?')) return;
+        const messageId = deleteButton.dataset.deleteMessage;
+        await api(`/api/messages/${messageId}`, { method: 'DELETE' });
+        state.activeMessages = state.activeMessages.filter((message) => message.id !== messageId);
+        renderChat();
+        showToast('Besked slettet');
+      }
+    } catch (error) {
+      showToast(error.message);
+    }
+  });
+}
+
+const reportChatUserBtn = $('#reportChatUserBtn');
+if (reportChatUserBtn) {
+  reportChatUserBtn.addEventListener('click', async () => {
+    if (!state.activeChatUser) return;
+    try {
+      await createReport('user', { userId: state.activeChatUser.id });
     } catch (error) {
       showToast(error.message);
     }
@@ -725,7 +875,10 @@ function renderGlobalPostCard(message, { detail = false } = {}) {
             <span>@${escapeHtml(message.author?.username || 'ukendt')} · ${escapeHtml(formatTime(message.createdAt))}</span>
           </div>
         </div>
-        ${canDeleteMessage(message.authorId) ? `<button class="admin-delete" type="button" data-delete-global-message="${escapeHtml(message.id)}">Slet</button>` : ''}
+        <div class="post-admin-actions">
+          <button class="ghost tiny report-button" type="button" data-report-global-message="${escapeHtml(message.id)}">Rapportér</button>
+          ${canDeleteMessage(message.authorId) ? `<button class="admin-delete" type="button" data-delete-global-message="${escapeHtml(message.id)}">Slet</button>` : ''}
+        </div>
       </div>
       <p class="global-post-text">${escapeHtml(message.text)}</p>
       <div class="global-post-actions">
@@ -750,6 +903,7 @@ function renderGlobalComments(message) {
           <div class="global-comment-meta">
             <strong>${escapeHtml(commentAuthorName)}</strong>
             <span>@${escapeHtml(comment.author?.username || 'ukendt')} · ${escapeHtml(formatTime(comment.createdAt))}</span>
+            <button class="comment-report" type="button" data-message-id="${escapeHtml(message.id)}" data-report-global-comment="${escapeHtml(comment.id)}">Rapportér</button>
             ${canDeleteMessage(comment.authorId) ? `<button class="comment-delete" type="button" data-message-id="${escapeHtml(message.id)}" data-delete-global-comment="${escapeHtml(comment.id)}">Slet</button>` : ''}
           </div>
           <p>${escapeHtml(comment.text)}</p>
@@ -877,6 +1031,7 @@ function renderChat({ forceBottom = false } = {}) {
       <div class="message ${message.from === state.me.id ? 'mine' : ''}">
         <div class="message-content">
           <span>${escapeHtml(message.text)}</span>
+          ${message.from !== state.me.id ? `<button class="message-report" type="button" data-report-direct-message="${escapeHtml(message.id)}">Rapportér</button>` : ''}
           ${state.me?.isAdmin ? `<button class="message-delete" type="button" data-delete-message="${escapeHtml(message.id)}" aria-label="Slet besked">×</button>` : ''}
         </div>
         <small>${escapeHtml(formatTime(message.createdAt))}</small>
@@ -932,6 +1087,7 @@ function renderAdminTools() {
   if (adminModerationPanel) adminModerationPanel.classList.toggle('hidden', !state.me?.isAdmin);
   renderAdminUsers();
   renderAdminMessageViewer();
+  renderAdminReportViewer();
 }
 
 function upsertAdminUser(user) {
@@ -1021,6 +1177,55 @@ function renderAdminMessageViewer() {
   `).join('');
 }
 
+function renderAdminReportViewer() {
+  if (!adminReportViewer) return;
+  const isAdmin = Boolean(state.me?.isAdmin);
+  adminReportViewer.classList.toggle('hidden', !isAdmin);
+  if (!isAdmin) return;
+
+  const count = $('#adminReportCount');
+  if (count) count.textContent = `${state.adminReports.length} rapport${state.adminReports.length === 1 ? '' : 'er'}`;
+  if (!adminReportsList) return;
+
+  if (!state.adminReports.length) {
+    adminReportsList.innerHTML = '<div class="empty">Ingen rapporter er indlæst endnu.</div>';
+    return;
+  }
+
+  adminReportsList.innerHTML = state.adminReports.map((report) => {
+    const target = report.target || {};
+    const reporter = report.reporter?.name || 'Ukendt';
+    const targetAuthor = target.author?.name || target.toUser?.name || 'Ukendt';
+    const isResolved = report.status === 'resolved';
+    return `
+      <article class="admin-report-item ${isResolved ? 'resolved' : ''}">
+        <div class="admin-message-topline">
+          <span class="admin-message-label">${escapeHtml(target.label || reportTypeLabel(report.type))}</span>
+          <span>${escapeHtml(formatTime(report.createdAt))} · ${escapeHtml(report.statusLabel || report.status || 'åben')}</span>
+        </div>
+        <div class="admin-message-main">
+          <strong>Rapporteret af ${escapeHtml(reporter)} · mål: ${escapeHtml(targetAuthor)}</strong>
+          <div class="admin-report-actions">
+            ${isResolved ? `<button class="secondary tiny" type="button" data-admin-reopen-report="${escapeHtml(report.id)}">Genåbn</button>` : `<button class="secondary tiny" type="button" data-admin-resolve-report="${escapeHtml(report.id)}">Markér løst</button>`}
+            <button class="ghost danger tiny" type="button" data-admin-delete-report-target="${escapeHtml(report.id)}" ${target.exists ? '' : 'disabled'}>${report.type === 'user' ? 'Ban bruger' : 'Slet mål'}</button>
+          </div>
+        </div>
+        <p class="admin-message-body"><strong>Grund:</strong> ${escapeHtml(report.reason || '')}</p>
+        <p class="admin-parent-excerpt"><strong>Rapporteret indhold:</strong> ${escapeHtml(target.body || '')}</p>
+        ${target.parentBody ? `<p class="admin-parent-excerpt">Svar på: ${escapeHtml(target.parentBody)}</p>` : ''}
+      </article>
+    `;
+  }).join('');
+}
+
+async function loadAdminReports() {
+  if (!state.me?.isAdmin || !adminReportsList) return;
+  const status = $('#adminReportStatus')?.value || 'open';
+  const data = await api(`/api/admin/reports?status=${encodeURIComponent(status)}`);
+  state.adminReports = data.reports || [];
+  renderAdminReportViewer();
+}
+
 async function loadAdminUsers() {
   if (!state.me?.isAdmin || !adminUsersList) return;
   const data = await api('/api/admin/users');
@@ -1077,7 +1282,9 @@ async function loadEverything() {
   await Promise.all([loadGlobalMessages(), loadUsers($('#userSearch').value)]);
   if (state.me?.isAdmin) {
     await loadAdminUsers();
+    await loadAdminReports();
     renderAdminMessageViewer();
+    renderAdminReportViewer();
   }
 }
 
@@ -1114,6 +1321,7 @@ function connectSocket() {
     upsertGlobalMessage(message);
     renderGlobalMessages({ forceTop: message.authorId === state.me?.id });
     if (state.me?.isAdmin && state.adminMessages.length) loadAdminMessages().catch(() => {});
+    if (state.me?.isAdmin && state.adminReports.length) loadAdminReports().catch(() => {});
   });
 
   state.socket.on('global-message-updated', (message) => {
@@ -1121,18 +1329,25 @@ function connectSocket() {
     upsertGlobalMessage(message);
     renderGlobalMessages({ forceTop: beforeCount !== state.globalMessages.length && message.authorId === state.me?.id });
     if (state.me?.isAdmin && state.adminMessages.length) loadAdminMessages().catch(() => {});
+    if (state.me?.isAdmin && state.adminReports.length) loadAdminReports().catch(() => {});
   });
 
   state.socket.on('global-message-deleted', ({ messageId }) => {
+    if (messageId === '__reload__') {
+      loadEverything().catch(() => {});
+      return;
+    }
     const before = state.globalMessages.length;
     state.globalMessages = state.globalMessages.filter((message) => message.id !== messageId);
     if (state.activeGlobalMessageId === messageId) state.activeGlobalMessageId = null;
     if (state.globalMessages.length !== before) renderGlobalMessages();
     if (state.me?.isAdmin && state.adminMessages.length) loadAdminMessages().catch(() => {});
+    if (state.me?.isAdmin && state.adminReports.length) loadAdminReports().catch(() => {});
   });
 
   state.socket.on('private-message', (message) => {
     if (state.me?.isAdmin && state.adminMessages.length) loadAdminMessages().catch(() => {});
+    if (state.me?.isAdmin && state.adminReports.length) loadAdminReports().catch(() => {});
     const activeId = state.activeChatUser?.id;
     const isActiveConversation =
       activeId &&
@@ -1166,6 +1381,7 @@ function connectSocket() {
     if (state.activeMessages.length !== before) renderChat();
     loadUsers($('#userSearch').value).catch(() => {});
     if (state.me?.isAdmin && state.adminMessages.length) loadAdminMessages().catch(() => {});
+    if (state.me?.isAdmin && state.adminReports.length) loadAdminReports().catch(() => {});
   });
 
   let typingTimer = null;

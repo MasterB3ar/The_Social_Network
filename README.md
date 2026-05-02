@@ -1,8 +1,22 @@
-# TSN V1.1 — dansk chat-only version
+# TSN V1.2 — dansk safe beta
 
-TSN er nu gjort enkel og dansk: appen har kun **globale opslag** og **privat chat**.
+TSN V1.2 er en dansk social app med **globale opslag**, **likes**, **kommentarer**, **privat chat** og nye sikkerheds-/moderationsfunktioner.
 
-## Hvad er med?
+## Nyt i V1.2
+
+- Rapporteringssystem for globale opslag
+- Rapporteringssystem for globale kommentarer
+- Rapporteringssystem for private beskeder
+- Rapporteringssystem for brugere
+- Admin-dashboard til rapporter
+- Admin kan markere rapporter som løst eller genåbne dem
+- Admin kan håndhæve rapporter ved at slette rapporteret indhold eller banne rapporterede brugere
+- Brugere kan slette deres egen konto
+- Regler/sikkerhedspanel i appen
+- Globale opslag og kommentarer vises med nyeste først
+- MongoDB Atlas og Render fungerer stadig
+
+## Hvad er stadig med?
 
 - Dansk brugerflade
 - Login og opret konto
@@ -18,6 +32,7 @@ TSN er nu gjort enkel og dansk: appen har kun **globale opslag** og **privat cha
 - Render deployment support
 - Cron/keep-awake support via `/api/ping`
 - Krypteret lagring af brugerdata og beskeder
+- Ingen guest/demo-brugere
 
 ## Kør lokalt
 
@@ -41,7 +56,7 @@ Sæt denne environment variable enten i `.env` lokalt eller i Render:
 MONGODB_URI=mongodb+srv://USERNAME:PASSWORD@YOUR-CLUSTER.mongodb.net/?retryWrites=true&w=majority
 ```
 
-Når `MONGODB_URI` er sat, gemmer TSN brugere og beskeder i MongoDB i stedet for en lokal JSON-fil.
+Når `MONGODB_URI` er sat, gemmer TSN brugere, beskeder, globale opslag og rapporter i MongoDB i stedet for en lokal JSON-fil.
 
 ## Deploy på Render
 
@@ -72,6 +87,38 @@ Vigtigt: Skift ikke `TSN_DATA_ENCRYPTION_KEY`, når rigtige brugere/beskeder all
 3. Indtast værdien fra `TSN_ADMIN_SETUP_PASSWORD`.
 4. Din konto får admin-rettigheder.
 
+Som admin kan du:
+
+- Smide brugere ud
+- Banne/fjerne ban
+- Oprette database-backup
+- Gennemgå/slette beskeder
+- Gennemgå rapporter
+- Slette rapporteret indhold
+- Banne rapporterede brugere
+
+## Rapporter
+
+Brugere kan trykke **Rapportér** på:
+
+- Globale opslag
+- Kommentarer
+- Private beskeder
+- Brugere i privat chat
+
+Rapporter gemmes i databasen og kan ses i admin-panelet. Rapportgrund gemmes krypteret ligesom andet følsomt tekstindhold.
+
+## Slet konto
+
+Brugere kan slette deres egen konto fra venstre profilpanel. Det sletter:
+
+- Kontoen
+- Brugerens globale opslag
+- Brugerens kommentarer
+- Brugerens likes
+- Private beskeder til/fra brugeren
+- Rapporter relateret til brugeren
+
 ## Cron / keep-awake
 
 `/api/ping` kan bruges af en ekstern cron-service:
@@ -84,6 +131,4 @@ Se også `CRON_KEEP_AWAKE.md`.
 
 ## Gamle features
 
-Det gamle feed/posts/rooms-system er stadig deaktiveret. De globale opslag bruger den lette global-chat-database, men har nu likes og en separat klik-ind kommentarvisning. De gamle API-ruter returnerer `410`, fordi TSN V1.1 kun understøtter globale opslag og privat chat.
-
-Opdatering: Globale opslag og kommentarer vises nu med de nyeste først.
+Det gamle feed/posts/rooms-system er stadig deaktiveret. De globale opslag bruger den lette global-chat-database, men har nu likes, klik-ind kommentarvisning og rapportering. De gamle API-ruter returnerer `410`, fordi TSN V1.2 er fokuseret på globale opslag, privat chat og moderation.

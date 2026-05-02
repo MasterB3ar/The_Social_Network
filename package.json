@@ -1,7 +1,7 @@
 {
   "name": "the-social-network-tsn",
-  "version": "1.1.0",
-  "description": "TSN V1.1 - dansk chat-only social network med global chat, privat chat, MongoDB Atlas, Render deployment, moderation, ulæste beskeder og cron ping.",
+  "version": "1.2.0",
+  "description": "TSN V1.2 - dansk safe beta social network med globale opslag, kommentarer, likes, privat chat, rapporter, admin moderation, MongoDB Atlas og Render deployment.",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",

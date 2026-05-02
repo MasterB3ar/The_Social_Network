@@ -68,6 +68,7 @@
         </div>
       </div>
       <div class="topbar-actions">
+        <button id="rulesBtn" class="ghost" type="button">Regler</button>
         <button id="refreshBtn" class="ghost" type="button">Opdater</button>
         <button id="logoutBtn" class="ghost danger" type="button">Log ud</button>
       </div>
@@ -95,10 +96,16 @@
           <button class="secondary" type="submit">Gem profil</button>
         </form>
 
+        <section class="danger-zone">
+          <strong>Slet konto</strong>
+          <p>Sletter din konto, dine opslag, dine kommentarer og dine private beskeder.</p>
+          <button id="deleteAccountBtn" class="ghost danger tiny" type="button">Slet min konto</button>
+        </section>
+
         <section id="adminBox" class="admin-box">
           <div id="adminActive" class="admin-active hidden">
             <strong>Admin-tilstand aktiv</strong>
-            <span>Du kan smide brugere ud, banne brugere, lave backups og moderere beskeder.</span>
+            <span>Du kan smide brugere ud, banne brugere, håndtere rapporter, lave backups og moderere beskeder.</span>
           </div>
           <form id="adminClaimForm" class="admin-claim-form">
             <strong>Admin-adgang</strong>
@@ -166,6 +173,26 @@
           <p class="admin-message-notice">Beskeder ligger krypteret i databasen og dekrypteres kun af serveren til admin-moderation.</p>
           <div id="adminMessagesList" class="admin-messages-list"></div>
         </section>
+
+        <section id="adminReportViewer" class="admin-report-viewer card hidden">
+          <div class="admin-message-head">
+            <div>
+              <p class="eyebrow mini">Kun admin</p>
+              <h2>Rapporter</h2>
+              <p>Gennemgå rapporterede opslag, kommentarer, private beskeder og brugere.</p>
+            </div>
+            <span id="adminReportCount" class="pill">0 rapporter</span>
+          </div>
+          <div class="admin-message-controls report-controls">
+            <select id="adminReportStatus" aria-label="Filter for rapportstatus">
+              <option value="open">Åbne rapporter</option>
+              <option value="all">Alle rapporter</option>
+              <option value="resolved">Løste rapporter</option>
+            </select>
+            <button id="loadAdminReportsBtn" class="secondary" type="button">Indlæs rapporter</button>
+          </div>
+          <div id="adminReportsList" class="admin-reports-list"></div>
+        </section>
       </section>
 
       <aside class="right-rail people-rail">
@@ -195,7 +222,10 @@
           <span id="chatBio" class="chat-bio">Ingen bio endnu.</span>
         </div>
       </div>
-      <button id="closeChatBtn" class="icon-button" type="button" aria-label="Luk chat">×</button>
+      <div class="chat-header-actions">
+        <button id="reportChatUserBtn" class="ghost tiny" type="button">Rapportér</button>
+        <button id="closeChatBtn" class="icon-button" type="button" aria-label="Luk chat">×</button>
+      </div>
     </header>
     <div id="messagesList" class="messages"></div>
     <div id="typingLabel" class="typing hidden">skriver...</div>
@@ -203,6 +233,25 @@
       <input id="messageInput" placeholder="Skriv en privat besked..." autocomplete="off" />
       <button class="primary" type="submit">Send</button>
     </form>
+  </section>
+
+  <section id="rulesPanel" class="rules-panel hidden" aria-modal="true" role="dialog">
+    <div class="rules-card card">
+      <div class="section-heading">
+        <div>
+          <p class="eyebrow mini">TSN V1.2</p>
+          <h2>Regler og sikkerhed</h2>
+        </div>
+        <button id="closeRulesBtn" class="icon-button" type="button" aria-label="Luk regler">×</button>
+      </div>
+      <ul>
+        <li>Ingen spam, chikane, trusler eller hate speech.</li>
+        <li>Del ikke private oplysninger om dig selv eller andre.</li>
+        <li>Rapportér opslag, kommentarer, private beskeder eller brugere, hvis noget er forkert.</li>
+        <li>Admins kan slette indhold, smide brugere ud og banne konti for at holde TSN sikkert.</li>
+      </ul>
+      <p>TSN er stadig en beta. Inviter kun personer, du stoler på, indtil moderation og sikkerhed er testet.</p>
+    </div>
   </section>
 
   <div id="toast" class="toast hidden"></div>

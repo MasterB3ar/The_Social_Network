@@ -1,4 +1,4 @@
-# Render Blueprint for TSN V1.1 + MongoDB Atlas.
+# Render Blueprint for TSN V1.2 + MongoDB Atlas.
 # Recommended free-friendly setup: Render Free web service + MongoDB Atlas M0.
 # Data is stored in MongoDB, not Render's filesystem, so redeploys/restarts do not wipe accounts/messages.
 services:
