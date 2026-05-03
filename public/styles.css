@@ -2142,7 +2142,7 @@ button:disabled {
   }
 }
 
-/* TSN V1.2.1 stronger admin dashboard */
+/* TSN V1.2.2 stronger admin dashboard */
 .admin-dashboard {
   gap: 12px;
 }
@@ -2312,5 +2312,119 @@ button:disabled {
   .admin-user-toolbar,
   .enhanced-report-controls {
     grid-template-columns: 1fr;
+  }
+}
+
+/* TSN V1.2.2 smoother admin message moderation */
+.admin-message-viewer {
+  grid-template-rows: auto auto auto minmax(260px, 1fr) auto;
+  max-height: min(82vh, 860px);
+  overflow: hidden;
+}
+
+.admin-messages-scrollbox {
+  min-height: 300px;
+  max-height: min(58vh, 620px);
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  border-radius: 20px;
+  background: rgba(4, 8, 20, 0.30);
+}
+
+.admin-messages-list {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  height: 100%;
+  min-height: 300px;
+  max-height: min(58vh, 620px);
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  padding: 14px;
+  scrollbar-gutter: stable;
+}
+
+.admin-message-item {
+  flex: 0 0 auto;
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.065);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.16);
+}
+
+.admin-message-item + .admin-message-item {
+  margin-top: 0;
+}
+
+.admin-message-topline,
+.admin-message-main {
+  min-width: 0;
+}
+
+.admin-message-time,
+.admin-message-meta {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.admin-message-meta {
+  padding-top: 2px;
+}
+
+.admin-message-body,
+.admin-parent-excerpt {
+  max-height: 180px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 11px 12px;
+  border-radius: 14px;
+  background: rgba(0, 0, 0, 0.16);
+  line-height: 1.55;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+
+.admin-parent-excerpt {
+  max-height: 130px;
+  border-left: 3px solid rgba(255, 255, 255, 0.18);
+}
+
+.admin-message-empty {
+  min-height: 260px;
+  display: grid;
+  place-items: center;
+}
+
+.admin-message-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.admin-message-footer span {
+  min-width: 0;
+}
+
+@media (max-width: 760px) {
+  .admin-message-viewer {
+    max-height: none;
+  }
+
+  .admin-messages-scrollbox,
+  .admin-messages-list {
+    min-height: 340px;
+    max-height: 62vh;
+  }
+
+  .admin-message-footer {
+    display: grid;
   }
 }

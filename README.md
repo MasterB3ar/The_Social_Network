@@ -1,6 +1,13 @@
-# TSN V1.2 — dansk safe beta
+# TSN V1.2.2 — dansk safe beta
 
-TSN V1.2 er en dansk social app med **globale opslag**, **likes**, **kommentarer**, **privat chat** og nye sikkerheds-/moderationsfunktioner.
+TSN V1.2.2 er en dansk social app med **globale opslag**, **likes**, **kommentarer**, **privat chat** og nye sikkerheds-/moderationsfunktioner.
+
+
+## Nyt i V1.2.2
+
+- Beskedmoderation er gjort hurtigere ved at indlæse beskeder i bidder i stedet for alt på én gang.
+- Beskedmoderation har nu en fast intern scrollbar, så beskeder ikke bliver klemt sammen med resten af dashboardet.
+- Lange beskeder får deres egen lille scroll inde i kortet, så layoutet ikke bliver ødelagt.
 
 ## Nyt i V1.2
 

@@ -194,7 +194,13 @@
             <button id="loadAdminMessagesBtn" class="secondary" type="button">Indlæs beskeder</button>
           </div>
           <p class="admin-message-notice">Beskeder ligger krypteret i databasen og dekrypteres kun af serveren til admin-moderation.</p>
-          <div id="adminMessagesList" class="admin-messages-list"></div>
+          <div class="admin-messages-scrollbox" aria-label="Beskedliste med intern scrollbar">
+            <div id="adminMessagesList" class="admin-messages-list"></div>
+          </div>
+          <div class="admin-message-footer">
+            <span>Listen har sin egen scroll, så dashboardet ikke hopper eller lagger.</span>
+            <button id="loadMoreAdminMessagesBtn" class="ghost tiny hidden" type="button">Indlæs flere</button>
+          </div>
         </section>
 
         <section id="adminReportViewer" class="admin-report-viewer card hidden">

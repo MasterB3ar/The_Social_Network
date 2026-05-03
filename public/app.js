@@ -10,6 +10,9 @@ const state = {
   chatDrafts: {},
   adminUsers: [],
   adminMessages: [],
+  adminMessagesTotalCount: 0,
+  adminMessagesNextOffset: 0,
+  adminMessagesHasMore: false,
   adminReports: [],
   adminStats: null
 };
@@ -31,6 +34,7 @@ const adminMessagesList = $('#adminMessagesList');
 const adminReportViewer = $('#adminReportViewer');
 const adminReportsList = $('#adminReportsList');
 const adminStatsGrid = $('#adminStatsGrid');
+const loadMoreAdminMessagesBtn = $('#loadMoreAdminMessagesBtn');
 
 function escapeHtml(value) {
   return String(value || '')
@@ -494,6 +498,10 @@ if (createBackupBtn) {
 const loadAdminMessagesBtn = $('#loadAdminMessagesBtn');
 if (loadAdminMessagesBtn) {
   loadAdminMessagesBtn.addEventListener('click', () => loadAdminMessages().catch((error) => showToast(error.message)));
+}
+
+if (loadMoreAdminMessagesBtn) {
+  loadMoreAdminMessagesBtn.addEventListener('click', () => loadAdminMessages({ append: true }).catch((error) => showToast(error.message)));
 }
 
 const loadAdminReportsBtn = $('#loadAdminReportsBtn');
@@ -1250,33 +1258,58 @@ function adminMessageMeta(item) {
   return parts.filter(Boolean).join(' · ');
 }
 
+let adminMessagesRefreshTimer = null;
+function queueAdminMessagesRefresh() {
+  if (!state.me?.isAdmin || !state.adminMessages.length) return;
+  clearTimeout(adminMessagesRefreshTimer);
+  adminMessagesRefreshTimer = setTimeout(() => {
+    loadAdminMessages().catch(() => {});
+  }, 700);
+}
+
 function renderAdminMessageViewer() {
   if (!adminMessageViewer) return;
   const isAdmin = Boolean(state.me?.isAdmin);
   adminMessageViewer.classList.toggle('hidden', !isAdmin);
   if (!isAdmin) return;
 
+  const shownCount = state.adminMessages.length;
+  const totalCount = Number(state.adminMessagesTotalCount || shownCount);
   const count = $('#adminMessageCount');
-  if (count) count.textContent = `${state.adminMessages.length} besked${state.adminMessages.length === 1 ? '' : 'er'}`;
+  if (count) {
+    count.textContent = totalCount > shownCount
+      ? `${formatNumber(shownCount)} af ${formatNumber(totalCount)} beskeder`
+      : `${formatNumber(shownCount)} besked${shownCount === 1 ? '' : 'er'}`;
+  }
+
+  if (loadMoreAdminMessagesBtn) {
+    loadMoreAdminMessagesBtn.classList.toggle('hidden', !state.adminMessagesHasMore);
+    loadMoreAdminMessagesBtn.textContent = state.adminMessagesHasMore
+      ? `Indlæs flere (${formatNumber(totalCount - shownCount)} tilbage)`
+      : 'Alle beskeder er indlæst';
+  }
+
   if (!adminMessagesList) return;
 
-  if (!state.adminMessages.length) {
-    adminMessagesList.innerHTML = '<div class="empty">Klik på “Indlæs beskeder” for at gennemgå gemte TSN-beskeder.</div>';
+  if (!shownCount) {
+    adminMessagesList.innerHTML = '<div class="empty admin-message-empty">Klik på “Indlæs beskeder” for at gennemgå gemte TSN-beskeder.</div>';
+    adminMessagesList.scrollTop = 0;
     return;
   }
 
-  adminMessagesList.innerHTML = state.adminMessages.map((item) => `
-    <article class="admin-message-item ${escapeHtml(item.kind)}">
+  adminMessagesList.innerHTML = state.adminMessages.map((item, index) => `
+    <article class="admin-message-item ${escapeHtml(item.kind)}" data-admin-message-row="${index + 1}">
       <div class="admin-message-topline">
         <span class="admin-message-label">${escapeHtml(item.label)}</span>
-        <span>${escapeHtml(adminMessageMeta(item))}</span>
+        <span class="admin-message-time">${escapeHtml(formatExactDate(item.createdAt))}</span>
       </div>
       <div class="admin-message-main">
         <strong>${escapeHtml(adminMessageParticipants(item))}</strong>
         <button class="admin-delete small" type="button" data-admin-delete-message-item="${escapeHtml(item.id)}">Slet</button>
       </div>
+      <div class="admin-message-meta">${escapeHtml(adminMessageMeta(item))}</div>
       <p class="admin-message-body">${escapeHtml(item.body || '')}</p>
-      ${item.parentBody ? `<p class="admin-parent-excerpt">Svar på: ${escapeHtml(item.parentBody)}</p>` : ''}
+      ${item.parentBody ? `<p class="admin-parent-excerpt"><strong>Svar på:</strong><br>${escapeHtml(item.parentBody)}</p>` : ''}
     </article>
   `).join('');
 }
@@ -1360,13 +1393,46 @@ async function loadAdminDashboard() {
   await Promise.all([loadAdminUsers(), loadAdminReports(), loadAdminStats()]);
 }
 
-async function loadAdminMessages() {
+async function loadAdminMessages(options = {}) {
   if (!state.me?.isAdmin || !adminMessagesList) return;
+  const append = Boolean(options.append);
   const type = $('#adminMessageType')?.value || 'all';
   const q = $('#adminMessageSearch')?.value || '';
-  const data = await api(`/api/admin/messages?type=${encodeURIComponent(type)}&q=${encodeURIComponent(q)}`);
-  state.adminMessages = data.items || [];
-  renderAdminMessageViewer();
+  const limit = 60;
+  const offset = append ? Number(state.adminMessagesNextOffset || state.adminMessages.length || 0) : 0;
+  const button = append ? loadMoreAdminMessagesBtn : loadAdminMessagesBtn;
+
+  if (button) button.disabled = true;
+  if (!append) {
+    state.adminMessages = [];
+    state.adminMessagesTotalCount = 0;
+    state.adminMessagesNextOffset = 0;
+    state.adminMessagesHasMore = false;
+    renderAdminMessageViewer();
+  }
+
+  try {
+    const data = await api(`/api/admin/messages?type=${encodeURIComponent(type)}&q=${encodeURIComponent(q)}&limit=${limit}&offset=${offset}`);
+    const incoming = data.items || [];
+
+    if (append) {
+      const existingIds = new Set(state.adminMessages.map((item) => item.id));
+      state.adminMessages = [
+        ...state.adminMessages,
+        ...incoming.filter((item) => !existingIds.has(item.id))
+      ];
+    } else {
+      state.adminMessages = incoming;
+      adminMessagesList.scrollTop = 0;
+    }
+
+    state.adminMessagesTotalCount = Number(data.totalCount || state.adminMessages.length);
+    state.adminMessagesNextOffset = Number(data.nextOffset || state.adminMessages.length);
+    state.adminMessagesHasMore = Boolean(data.hasMore);
+    renderAdminMessageViewer();
+  } finally {
+    if (button) button.disabled = false;
+  }
 }
 
 async function deleteAdminMessageItem(item) {
@@ -1446,7 +1512,7 @@ function connectSocket() {
   state.socket.on('global-message', (message) => {
     upsertGlobalMessage(message);
     renderGlobalMessages({ forceTop: message.authorId === state.me?.id });
-    if (state.me?.isAdmin && state.adminMessages.length) loadAdminMessages().catch(() => {});
+    queueAdminMessagesRefresh();
     if (state.me?.isAdmin && state.adminReports.length) loadAdminReports().catch(() => {});
   });
 
@@ -1454,7 +1520,7 @@ function connectSocket() {
     const beforeCount = state.globalMessages.length;
     upsertGlobalMessage(message);
     renderGlobalMessages({ forceTop: beforeCount !== state.globalMessages.length && message.authorId === state.me?.id });
-    if (state.me?.isAdmin && state.adminMessages.length) loadAdminMessages().catch(() => {});
+    queueAdminMessagesRefresh();
     if (state.me?.isAdmin && state.adminReports.length) loadAdminReports().catch(() => {});
   });
 
@@ -1467,12 +1533,12 @@ function connectSocket() {
     state.globalMessages = state.globalMessages.filter((message) => message.id !== messageId);
     if (state.activeGlobalMessageId === messageId) state.activeGlobalMessageId = null;
     if (state.globalMessages.length !== before) renderGlobalMessages();
-    if (state.me?.isAdmin && state.adminMessages.length) loadAdminMessages().catch(() => {});
+    queueAdminMessagesRefresh();
     if (state.me?.isAdmin && state.adminReports.length) loadAdminReports().catch(() => {});
   });
 
   state.socket.on('private-message', (message) => {
-    if (state.me?.isAdmin && state.adminMessages.length) loadAdminMessages().catch(() => {});
+    queueAdminMessagesRefresh();
     if (state.me?.isAdmin && state.adminReports.length) loadAdminReports().catch(() => {});
     const activeId = state.activeChatUser?.id;
     const isActiveConversation =
@@ -1506,7 +1572,7 @@ function connectSocket() {
     state.activeMessages = state.activeMessages.filter((message) => message.id !== messageId);
     if (state.activeMessages.length !== before) renderChat();
     loadUsers($('#userSearch').value).catch(() => {});
-    if (state.me?.isAdmin && state.adminMessages.length) loadAdminMessages().catch(() => {});
+    queueAdminMessagesRefresh();
     if (state.me?.isAdmin && state.adminReports.length) loadAdminReports().catch(() => {});
   });
 

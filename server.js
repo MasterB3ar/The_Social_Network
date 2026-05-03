@@ -1381,8 +1381,8 @@ app.get('/api/health', (req, res) => {
     const storage = getStorageStatus();
     res.json({
       ok: true,
-      app: 'TSN V1.2.1',
-      shortName: 'TSN V1.2.1',
+      app: 'TSN V1.2.2',
+      shortName: 'TSN V1.2.2',
       environment: process.env.NODE_ENV || 'development',
       storage: {
         ok: storage.ok,
@@ -1411,8 +1411,8 @@ app.get('/api/health', (req, res) => {
   } catch (error) {
     res.status(503).json({
       ok: false,
-      app: 'TSN V1.2.1',
-      shortName: 'TSN V1.2.1',
+      app: 'TSN V1.2.2',
+      shortName: 'TSN V1.2.2',
       error: 'Lageret er ikke klar.',
       detail: error.message
     });
@@ -1569,6 +1569,10 @@ app.get('/api/admin/users', requireAuth, requireAdmin, (req, res) => {
 app.get('/api/admin/messages', requireAuth, requireAdmin, (req, res) => {
   const type = cleanText(req.query.type || 'all', 32);
   const q = cleanText(req.query.q || '', 120).toLowerCase();
+  const requestedLimit = Number.parseInt(req.query.limit, 10);
+  const requestedOffset = Number.parseInt(req.query.offset, 10);
+  const limit = Math.min(Math.max(Number.isFinite(requestedLimit) ? requestedLimit : 60, 10), 120);
+  const offset = Math.max(Number.isFinite(requestedOffset) ? requestedOffset : 0, 0);
 
   let items = buildAdminMessageArchive(req.db);
 
@@ -1582,9 +1586,18 @@ app.get('/api/admin/messages', requireAuth, requireAdmin, (req, res) => {
     items = items.filter((item) => item.searchText.includes(q));
   }
 
+  const totalCount = items.length;
+  const pageItems = items.slice(offset, offset + limit);
+  const nextOffset = offset + pageItems.length;
+
   res.json({
-    items: items.map(publicAdminMessageItem),
-    count: items.length,
+    items: pageItems.map(publicAdminMessageItem),
+    count: pageItems.length,
+    totalCount,
+    limit,
+    offset,
+    nextOffset,
+    hasMore: nextOffset < totalCount,
     generatedAt: new Date().toISOString(),
     notice: 'Moderationsvisning kun for admin. Beskeder er krypteret i databasen og dekrypteres på serveren for admins.'
   });
@@ -1936,7 +1949,7 @@ app.post('/api/reports', requireAuth, async (req, res) => {
 });
 
 app.all(['/api/posts', '/api/posts/*', '/api/rooms', '/api/rooms/*'], requireAuth, (req, res) => {
-  res.status(410).json({ error: 'TSN V1.2.1 understøtter globale opslag, privat chat og forbedret moderation.' });
+  res.status(410).json({ error: 'TSN V1.2.2 understøtter globale opslag, privat chat og forbedret moderation.' });
 });
 
 app.get('/api/messages/:userId', requireAuth, async (req, res) => {
