@@ -150,3 +150,16 @@ Se også `CRON_KEEP_AWAKE.md`.
 ## Gamle features
 
 Det gamle feed/posts/rooms-system er stadig deaktiveret. De globale opslag bruger den lette global-chat-database, men har nu likes, klik-ind kommentarvisning og rapportering. De gamle API-ruter returnerer `410`, fordi TSN V1.2 er fokuseret på globale opslag, privat chat og moderation.
+
+## TSN V1.2.7 - mobile-only design polish
+
+This update improves the phone layout without changing the laptop/desktop layout. The mobile improvements are scoped with CSS media queries, mainly for screens under 780px wide.
+
+Added mobile improvements:
+- Better spacing and card sizing on phones
+- Cleaner top navigation on small screens
+- Better global post/comment sizing
+- Private chat modal fits phone screens better
+- Scrollable user list, admin lists, report lists, and message moderation panels
+- Larger tap targets for buttons and inputs
+- iOS-friendly input sizing to avoid zoom on focus

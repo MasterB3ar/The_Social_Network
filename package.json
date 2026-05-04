@@ -1,6 +1,6 @@
 {
   "name": "the-social-network-tsn",
-  "version": "1.2.6",
+  "version": "1.2.7",
   "description": "TSN V1.2.6 - dansk safe beta social network med globale opslag, kommentarer, likes, privat chat, læsekvitteringer, sletning af egne private chats, 15-minutters slet-for-alle, rapporter, MongoDB Atlas og Render deployment.",
   "main": "server.js",
   "scripts": {
