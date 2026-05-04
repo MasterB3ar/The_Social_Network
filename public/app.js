@@ -17,6 +17,8 @@ const state = {
   adminStats: null
 };
 
+const PRIVATE_MESSAGE_DELETE_FOR_EVERYONE_MS = 15 * 60 * 1000;
+
 const $ = (selector) => document.querySelector(selector);
 const authScreen = $('#authScreen');
 const appScreen = $('#appScreen');
@@ -77,6 +79,24 @@ function formatNumber(value) {
 
 function canDeleteMessage(authorId) {
   return Boolean(state.me && (state.me.isAdmin || authorId === state.me.id));
+}
+
+function canDeletePrivateMessageForEveryone(message) {
+  if (!state.me || !message) return false;
+  if (state.me.isAdmin) return true;
+  if (message.from !== state.me.id) return false;
+  const sentAt = new Date(message.createdAt || 0).getTime();
+  if (!Number.isFinite(sentAt)) return false;
+  const ageMs = Date.now() - sentAt;
+  return ageMs >= 0 && ageMs <= PRIVATE_MESSAGE_DELETE_FOR_EVERYONE_MS;
+}
+
+function deletePrivateMessageLabel(message) {
+  if (state.me?.isAdmin) return 'Slet for alle';
+  const sentAt = new Date(message.createdAt || 0).getTime();
+  const remainingMs = Math.max(0, PRIVATE_MESSAGE_DELETE_FOR_EVERYONE_MS - (Date.now() - sentAt));
+  const remainingMinutes = Math.max(1, Math.ceil(remainingMs / 60000));
+  return `Slet for alle (${remainingMinutes} min.)`;
 }
 
 
@@ -579,7 +599,7 @@ if (adminMessagesList) {
         renderChat();
       }
       renderAdminMessageViewer();
-      showToast('Besked slettet');
+      showToast('Beskeden er slettet for alle.');
     } catch (error) {
       showToast(error.message);
     }
@@ -885,13 +905,35 @@ if (messagesList) {
       }
 
       if (deleteButton) {
-        if (!confirm('Slet denne private besked for alle?')) return;
+        if (!confirm('Slet denne private besked for alle? Det virker kun for dine egne beskeder inden for 15 minutter efter afsendelse.')) return;
         const messageId = deleteButton.dataset.deleteMessage;
         await api(`/api/messages/${messageId}`, { method: 'DELETE' });
         state.activeMessages = state.activeMessages.filter((message) => message.id !== messageId);
         renderChat();
-        showToast('Besked slettet');
+        showToast('Beskeden er slettet for alle.');
       }
+    } catch (error) {
+      showToast(error.message);
+    }
+  });
+}
+
+const deleteConversationBtn = $('#deleteConversationBtn');
+if (deleteConversationBtn) {
+  deleteConversationBtn.addEventListener('click', async () => {
+    if (!state.activeChatUser) return;
+    const user = state.activeChatUser;
+    if (!confirm(`Slet din private chat med ${user.name}? Den bliver kun fjernet for dig.`)) return;
+
+    try {
+      await api(`/api/conversations/${user.id}`, { method: 'DELETE' });
+      state.activeMessages = [];
+      state.chatDrafts[user.id] = '';
+      setUnreadForUser(user.id, 0);
+      state.activeChatUser = null;
+      chatPanel.classList.add('hidden');
+      renderUsers();
+      showToast('Chatten er slettet for dig.');
     } catch (error) {
       showToast(error.message);
     }
@@ -1153,7 +1195,7 @@ function renderChat({ forceBottom = false } = {}) {
         <div class="message-content">
           <span>${escapeHtml(message.text)}</span>
           ${message.from !== state.me.id ? `<button class="message-report" type="button" data-report-direct-message="${escapeHtml(message.id)}">Rapportér</button>` : ''}
-          ${state.me?.isAdmin ? `<button class="message-delete" type="button" data-delete-message="${escapeHtml(message.id)}" aria-label="Slet besked">×</button>` : ''}
+          ${canDeletePrivateMessageForEveryone(message) ? `<button class="message-delete" type="button" data-delete-message="${escapeHtml(message.id)}" aria-label="${escapeHtml(deletePrivateMessageLabel(message))}" title="${escapeHtml(deletePrivateMessageLabel(message))}">×</button>` : ''}
         </div>
         <small>${escapeHtml(formatTime(message.createdAt))}${message.from === state.me.id ? ` · <span class="message-receipt ${messageReadStatus(message) === 'Læst' ? 'read' : ''}">${escapeHtml(messageReadStatus(message))}</span>` : ''}</small>
       </div>
@@ -1619,6 +1661,17 @@ function connectSocket() {
     if (state.me?.isAdmin && state.adminReports.length) loadAdminReports().catch(() => {});
   });
 
+  state.socket.on('conversation-deleted', ({ userId }) => {
+    if (state.activeChatUser?.id === userId) {
+      state.activeMessages = [];
+      state.chatDrafts[userId] = '';
+      state.activeChatUser = null;
+      chatPanel.classList.add('hidden');
+    }
+    setUnreadForUser(userId, 0);
+    renderUsers();
+  });
+
   let typingTimer = null;
   state.socket.on('typing', ({ from }) => {
     if (!state.activeChatUser || from !== state.activeChatUser.id) return;
@@ -1661,6 +1714,13 @@ async function initApp() {
     showToast(error?.message ? `Logget ind. Noget data kunne ikke indlæses: ${error.message}` : 'Logget ind. Noget data kunne ikke indlæses.');
   }
 }
+
+
+setInterval(() => {
+  if (state.me && state.activeChatUser && state.activeMessages.some((message) => message.from === state.me.id)) {
+    renderChat();
+  }
+}, 30000);
 
 if (state.token) {
   initApp().catch((error) => {

@@ -1,10 +1,11 @@
-# TSN V1.2.4 — dansk safe beta
+# TSN V1.2.6 — dansk safe beta
 
-TSN V1.2.4 er en dansk social app med **globale opslag**, **likes**, **kommentarer**, **privat chat** og nye sikkerheds-/moderationsfunktioner.
+TSN V1.2.6 er en dansk social app med **globale opslag**, **likes**, **kommentarer**, **privat chat**, læsekvitteringer, sletning af egne private chats, 15-minutters slet-for-alle på private beskeder og sikkerheds-/moderationsfunktioner.
 
 
-## Nyt i V1.2.4
+## Nyt i V1.2.6
 
+- Du kan nu slette en privat chat for dig selv. Den bliver skjult fra din konto, men slettes ikke automatisk hos den anden person.
 - Læsekvitteringer i private beskeder: dine beskeder viser **Sendt** eller **Læst**.
 
 - Dublet-profiler bliver nu automatisk fundet og flettet sammen ved serverstart.

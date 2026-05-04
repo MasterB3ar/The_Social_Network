@@ -37,6 +37,7 @@ const MONGODB_STATE_ID = process.env.MONGODB_STATE_ID || 'main';
 const PUBLIC_DIR = path.join(__dirname, 'public');
 const ADMIN_SETUP_PASSWORD = process.env.TSN_ADMIN_SETUP_PASSWORD || 'TSN-Admin!ChangeMe-2026';
 const ADMIN_SETUP_PASSWORD_HASH = process.env.TSN_ADMIN_SETUP_PASSWORD_HASH || '';
+const PRIVATE_MESSAGE_DELETE_FOR_EVERYONE_MS = 15 * 60 * 1000;
 const ROOMS = Array.from({ length: 7 }, (_, index) => {
   const id = index + 1;
   return {
@@ -1290,10 +1291,20 @@ function hasReadMessage(message, userId) {
   return Array.isArray(message.readBy) && message.readBy.includes(userId);
 }
 
+function isMessageHiddenFor(message, userId) {
+  return Array.isArray(message.deletedFor) && message.deletedFor.includes(userId);
+}
+
+function hideMessageForUser(message, userId) {
+  if (!Array.isArray(message.deletedFor)) message.deletedFor = [];
+  if (!message.deletedFor.includes(userId)) message.deletedFor.push(userId);
+}
+
 function getUnreadMessageCount(db, currentUserId, otherUserId) {
   return db.messages.filter((message) =>
     message.from === otherUserId &&
     message.to === currentUserId &&
+    !isMessageHiddenFor(message, currentUserId) &&
     !hasReadMessage(message, currentUserId)
   ).length;
 }
@@ -1304,7 +1315,7 @@ async function markConversationRead(db, currentUserId, otherUserId) {
   const readMessageIds = [];
 
   db.messages.forEach((message) => {
-    if (message.conversationId !== key || message.to !== currentUserId) return;
+    if (message.conversationId !== key || message.to !== currentUserId || isMessageHiddenFor(message, currentUserId)) return;
     if (!Array.isArray(message.readBy)) message.readBy = message.from && message.to ? [message.from, message.to] : [];
     if (message.from && !message.readBy.includes(message.from)) message.readBy.push(message.from);
     if (!message.readBy.includes(currentUserId)) {
@@ -2102,7 +2113,7 @@ app.post('/api/reports', requireAuth, async (req, res) => {
 });
 
 app.all(['/api/posts', '/api/posts/*', '/api/rooms', '/api/rooms/*'], requireAuth, (req, res) => {
-  res.status(410).json({ error: 'TSN V1.2.4 understøtter globale opslag, privat chat og forbedret moderation.' });
+  res.status(410).json({ error: 'TSN V1.2.6 understøtter globale opslag, privat chat, læsekvitteringer og tidsbegrænset slet-for-alle.' });
 });
 
 app.get('/api/messages/:userId', requireAuth, async (req, res) => {
@@ -2113,11 +2124,34 @@ app.get('/api/messages/:userId', requireAuth, async (req, res) => {
   await markConversationRead(req.db, req.user.id, other.id);
 
   const messages = req.db.messages
-    .filter((message) => message.conversationId === key)
+    .filter((message) => message.conversationId === key && !isMessageHiddenFor(message, req.user.id))
     .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt))
     .map(publicMessage);
 
   res.json({ user: { ...publicUser(other), unreadCount: 0 }, messages });
+});
+
+app.delete('/api/conversations/:userId', requireAuth, async (req, res) => {
+  const db = req.db;
+  const other = db.users.find((user) => user.id === req.params.userId);
+  if (!other) return res.status(404).json({ error: 'Brugeren blev ikke fundet.' });
+
+  const key = conversationId(req.user.id, other.id);
+  let hiddenCount = 0;
+
+  db.messages = (Array.isArray(db.messages) ? db.messages : []).filter((message) => {
+    if (message.conversationId !== key) return true;
+    hideMessageForUser(message, req.user.id);
+    hiddenCount += 1;
+    const participants = [message.from, message.to].filter(Boolean);
+    const uniqueParticipants = [...new Set(participants)];
+    const hiddenFor = Array.isArray(message.deletedFor) ? message.deletedFor : [];
+    return !uniqueParticipants.length || !uniqueParticipants.every((participantId) => hiddenFor.includes(participantId));
+  });
+
+  await writeDb(db);
+  io.to(req.user.id).emit('conversation-deleted', { userId: other.id, conversationId: key });
+  res.json({ ok: true, userId: other.id, conversationId: key, hiddenCount });
 });
 
 app.post('/api/messages/:userId/read', requireAuth, async (req, res) => {
@@ -2128,16 +2162,32 @@ app.post('/api/messages/:userId/read', requireAuth, async (req, res) => {
   res.json({ ok: true, userId: other.id, unreadCount: 0 });
 });
 
-app.delete('/api/messages/:messageId', requireAuth, requireAdmin, async (req, res) => {
+app.delete('/api/messages/:messageId', requireAuth, async (req, res) => {
   const db = req.db;
   const index = db.messages.findIndex((candidate) => candidate.id === req.params.messageId);
   if (index < 0) return res.status(404).json({ error: 'Beskeden blev ikke fundet.' });
+
+  const message = db.messages[index];
+  const isAdmin = req.user.role === 'admin';
+  const isSender = message.from === req.user.id;
+  const sentAt = new Date(message.createdAt || 0).getTime();
+  const messageAgeMs = Date.now() - sentAt;
+  const isInsideDeleteWindow = Number.isFinite(sentAt) && messageAgeMs >= 0 && messageAgeMs <= PRIVATE_MESSAGE_DELETE_FOR_EVERYONE_MS;
+
+  if (!isAdmin) {
+    if (!isSender) {
+      return res.status(403).json({ error: 'Du kan kun slette dine egne private beskeder for alle.' });
+    }
+    if (!isInsideDeleteWindow) {
+      return res.status(403).json({ error: 'Du kan kun slette en privat besked for alle inden for 15 minutter efter, at du har sendt den.' });
+    }
+  }
 
   const [deleted] = db.messages.splice(index, 1);
   await writeDb(db);
 
   io.to(deleted.from).to(deleted.to).emit('message-deleted', { messageId: deleted.id, conversationId: deleted.conversationId });
-  res.json({ ok: true, messageId: deleted.id, conversationId: deleted.conversationId });
+  res.json({ ok: true, messageId: deleted.id, conversationId: deleted.conversationId, deletedForEveryone: true });
 });
 
 const onlineUsers = new Map();
@@ -2249,7 +2299,7 @@ async function startServer() {
       console.log(`Backup directory: ${DB_BACKUP_DIR}`);
       const warning = storagePersistenceWarning();
       if (warning) console.warn(`Persistence warning: ${warning}`);
-      console.log('TSN V1.2 mode: safe beta with global posts, private chat, reports and account deletion.');
+      console.log('TSN V1.2.6 mode: safe beta with global posts, private chat, read receipts and 15-minute delete-for-everyone.');
       console.log('Admin rights can be claimed inside the app with TSN_ADMIN_SETUP_PASSWORD or TSN_ADMIN_SETUP_PASSWORD_HASH.');
 
       if (process.env.NODE_ENV === 'production' && JWT_SECRET === DEFAULT_JWT_SECRET) {

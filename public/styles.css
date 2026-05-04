@@ -2437,3 +2437,16 @@ button:disabled {
     display: grid;
   }
 }
+
+/* TSN V1.2.5 delete-own-private-chat */
+.ghost.danger {
+  border-color: rgba(255, 111, 111, 0.34);
+  color: #ffb7b7;
+  background: rgba(255, 111, 111, 0.08);
+}
+
+.ghost.danger:hover,
+.ghost.danger:focus-visible {
+  border-color: rgba(255, 111, 111, 0.58);
+  background: rgba(255, 111, 111, 0.14);
+}
