@@ -952,6 +952,15 @@ button.tiny {
   font-size: .74rem;
 }
 
+.message-receipt {
+  color: rgba(255,255,255,0.72);
+  font-weight: 800;
+}
+
+.message-receipt.read {
+  color: rgba(203, 246, 207, 0.95);
+}
+
 .typing {
   color: var(--muted);
   padding: 0 18px 10px;

@@ -1033,13 +1033,16 @@ function emitGlobalMessageUpdated(db, message) {
 }
 
 function publicMessage(message) {
+  const readBy = Array.isArray(message.readBy) ? [...new Set(message.readBy.filter(Boolean))] : [];
   return {
     id: message.id,
     conversationId: message.conversationId,
     from: message.from,
     to: message.to,
     text: getEncryptedObjectField(message, 'text'),
-    createdAt: message.createdAt
+    createdAt: message.createdAt,
+    readBy,
+    isReadByRecipient: Boolean(message.to && readBy.includes(message.to))
   };
 }
 
@@ -1298,19 +1301,35 @@ function getUnreadMessageCount(db, currentUserId, otherUserId) {
 async function markConversationRead(db, currentUserId, otherUserId) {
   let changed = false;
   const key = conversationId(currentUserId, otherUserId);
+  const readMessageIds = [];
 
   db.messages.forEach((message) => {
     if (message.conversationId !== key || message.to !== currentUserId) return;
     if (!Array.isArray(message.readBy)) message.readBy = message.from && message.to ? [message.from, message.to] : [];
+    if (message.from && !message.readBy.includes(message.from)) message.readBy.push(message.from);
     if (!message.readBy.includes(currentUserId)) {
       message.readBy.push(currentUserId);
+      readMessageIds.push(message.id);
       changed = true;
     }
   });
 
   if (changed) {
     await writeDb(db);
-    io.to(currentUserId).emit('messages-read', { userId: otherUserId, unreadCount: 0 });
+    io.to(currentUserId).emit('messages-read', {
+      userId: otherUserId,
+      conversationId: key,
+      unreadCount: 0,
+      readByUserId: currentUserId,
+      readMessageIds
+    });
+    io.to(otherUserId).emit('messages-read', {
+      userId: currentUserId,
+      conversationId: key,
+      unreadCount: 0,
+      readByUserId: currentUserId,
+      readMessageIds
+    });
   }
 
   return changed;
@@ -1492,8 +1511,8 @@ app.get('/api/health', (req, res) => {
     const storage = getStorageStatus();
     res.json({
       ok: true,
-      app: 'TSN V1.2.3',
-      shortName: 'TSN V1.2.3',
+      app: 'TSN V1.2.4',
+      shortName: 'TSN V1.2.4',
       environment: process.env.NODE_ENV || 'development',
       storage: {
         ok: storage.ok,
@@ -1522,8 +1541,8 @@ app.get('/api/health', (req, res) => {
   } catch (error) {
     res.status(503).json({
       ok: false,
-      app: 'TSN V1.2.3',
-      shortName: 'TSN V1.2.3',
+      app: 'TSN V1.2.4',
+      shortName: 'TSN V1.2.4',
       error: 'Lageret er ikke klar.',
       detail: error.message
     });
@@ -2083,7 +2102,7 @@ app.post('/api/reports', requireAuth, async (req, res) => {
 });
 
 app.all(['/api/posts', '/api/posts/*', '/api/rooms', '/api/rooms/*'], requireAuth, (req, res) => {
-  res.status(410).json({ error: 'TSN V1.2.3 understøtter globale opslag, privat chat og forbedret moderation.' });
+  res.status(410).json({ error: 'TSN V1.2.4 understøtter globale opslag, privat chat og forbedret moderation.' });
 });
 
 app.get('/api/messages/:userId', requireAuth, async (req, res) => {
@@ -2091,12 +2110,13 @@ app.get('/api/messages/:userId', requireAuth, async (req, res) => {
   if (!other) return res.status(404).json({ error: 'Brugeren blev ikke fundet.' });
 
   const key = conversationId(req.user.id, other.id);
+  await markConversationRead(req.db, req.user.id, other.id);
+
   const messages = req.db.messages
     .filter((message) => message.conversationId === key)
     .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt))
     .map(publicMessage);
 
-  await markConversationRead(req.db, req.user.id, other.id);
   res.json({ user: { ...publicUser(other), unreadCount: 0 }, messages });
 });
 

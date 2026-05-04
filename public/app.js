@@ -1104,6 +1104,35 @@ function renderUsers() {
   });
 }
 
+function messageReadStatus(message) {
+  if (!state.me || message.from !== state.me.id) return '';
+  const readBy = Array.isArray(message.readBy) ? message.readBy : [];
+  return (message.isReadByRecipient || readBy.includes(message.to)) ? 'Læst' : 'Sendt';
+}
+
+function markMessagesReadLocally({ conversationId, readByUserId, readMessageIds = [] } = {}) {
+  if (!readByUserId || !Array.isArray(state.activeMessages)) return false;
+  const ids = new Set(Array.isArray(readMessageIds) ? readMessageIds : []);
+  let changed = false;
+
+  state.activeMessages.forEach((message) => {
+    const sameConversation = !conversationId || message.conversationId === conversationId;
+    const targetMessage = !ids.size || ids.has(message.id);
+    if (!sameConversation || !targetMessage) return;
+    if (!Array.isArray(message.readBy)) message.readBy = [];
+    if (!message.readBy.includes(readByUserId)) {
+      message.readBy.push(readByUserId);
+      changed = true;
+    }
+    if (message.to === readByUserId) {
+      message.isReadByRecipient = true;
+      changed = true;
+    }
+  });
+
+  return changed;
+}
+
 function renderChat({ forceBottom = false } = {}) {
   const user = state.activeChatUser;
   if (!user) return;
@@ -1126,7 +1155,7 @@ function renderChat({ forceBottom = false } = {}) {
           ${message.from !== state.me.id ? `<button class="message-report" type="button" data-report-direct-message="${escapeHtml(message.id)}">Rapportér</button>` : ''}
           ${state.me?.isAdmin ? `<button class="message-delete" type="button" data-delete-message="${escapeHtml(message.id)}" aria-label="Slet besked">×</button>` : ''}
         </div>
-        <small>${escapeHtml(formatTime(message.createdAt))}</small>
+        <small>${escapeHtml(formatTime(message.createdAt))}${message.from === state.me.id ? ` · <span class="message-receipt ${messageReadStatus(message) === 'Læst' ? 'read' : ''}">${escapeHtml(messageReadStatus(message))}</span>` : ''}</small>
       </div>
     `).join('');
   }
@@ -1574,9 +1603,11 @@ function connectSocket() {
     }
   });
 
-  state.socket.on('messages-read', ({ userId, unreadCount }) => {
+  state.socket.on('messages-read', ({ userId, unreadCount, conversationId, readByUserId, readMessageIds }) => {
     setUnreadForUser(userId, unreadCount || 0);
+    const changed = markMessagesReadLocally({ conversationId, readByUserId, readMessageIds });
     renderUsers();
+    if (changed) renderChat();
   });
 
   state.socket.on('message-deleted', ({ messageId }) => {
