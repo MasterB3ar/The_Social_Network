@@ -176,3 +176,24 @@ Added mobile improvements:
 - Scrollable user list, admin lists, report lists, and message moderation panels
 - Larger tap targets for buttons and inputs
 - iOS-friendly input sizing to avoid zoom on focus
+
+## TSN V1.2.10 - TSN Stock standalone support
+
+This TSN version does not show TSN Stock inside the main TSN app. TSN Stock is now meant to run as a separate website.
+
+The original TSN server exposes a safe public data endpoint for the standalone TSN Stock site:
+
+```txt
+GET /api/public/stock
+```
+
+This endpoint returns only a fictional TSN Stock snapshot and aggregated activity metrics:
+
+- online users count
+- messages per hour count
+- global posts per hour count
+- price, change, trend and history
+
+It does not expose passwords, sessions, private message text, user emails, or private account data.
+
+Deploy this original TSN project first. Then deploy the separate `tsn-stock-standalone` project and set `TSN_API_BASE_URL` to your original TSN Render URL.

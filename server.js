@@ -73,7 +73,7 @@ app.use(express.static(PUBLIC_DIR, {
 }));
 
 function emptyDatabase() {
-  return { users: [], posts: [], messages: [], globalMessages: [], rooms: [], roomMessages: [], reports: [] };
+  return { users: [], posts: [], messages: [], globalMessages: [], rooms: [], roomMessages: [], reports: [], tsnStock: null };
 }
 
 function databaseHasUserData(db) {
@@ -86,6 +86,7 @@ function databaseHasUserData(db) {
         (Array.isArray(db.globalMessages) && db.globalMessages.length) ||
         (Array.isArray(db.roomMessages) && db.roomMessages.length) ||
         (Array.isArray(db.reports) && db.reports.length) ||
+        (db.tsnStock && Array.isArray(db.tsnStock.history) && db.tsnStock.history.length) ||
         (Array.isArray(db.rooms) && db.rooms.some((room) => room.ownerId || room.nameEnc || room.passwordHash))
       )
   );
@@ -99,7 +100,8 @@ function normalizeDatabaseShape(db) {
     globalMessages: Array.isArray(db?.globalMessages) ? db.globalMessages : [],
     rooms: Array.isArray(db?.rooms) ? db.rooms : [],
     roomMessages: Array.isArray(db?.roomMessages) ? db.roomMessages : [],
-    reports: Array.isArray(db?.reports) ? db.reports : []
+    reports: Array.isArray(db?.reports) ? db.reports : [],
+    tsnStock: normalizeTsnStockState(db?.tsnStock)
   };
 }
 
@@ -109,6 +111,131 @@ function readJsonFile(filePath) {
 
 function writeJsonFileSync(filePath, data) {
   fs.writeFileSync(filePath, JSON.stringify(data, null, 2));
+}
+
+
+function normalizeTsnStockState(stock) {
+  const history = Array.isArray(stock?.history)
+    ? stock.history
+        .filter((point) => point && Number.isFinite(Number(point.price)) && point.createdAt)
+        .slice(-240)
+    : [];
+  const lastPoint = history[history.length - 1] || null;
+  const price = Number.isFinite(Number(stock?.price)) ? Number(stock.price) : Number(lastPoint?.price) || 100;
+  return {
+    price: Number(price.toFixed(2)),
+    previousPrice: Number.isFinite(Number(stock?.previousPrice)) ? Number(stock.previousPrice) : Number((price * 0.995).toFixed(2)),
+    updatedAt: stock?.updatedAt || lastPoint?.createdAt || new Date().toISOString(),
+    history
+  };
+}
+
+function expectedActivityForHour(hour) {
+  const onlineCurve = [0.20, 0.14, 0.10, 0.08, 0.07, 0.08, 0.13, 0.22, 0.34, 0.42, 0.48, 0.52, 0.56, 0.58, 0.60, 0.66, 0.78, 0.92, 1.00, 0.96, 0.86, 0.68, 0.46, 0.30];
+  const messageCurve = [0.16, 0.11, 0.08, 0.06, 0.05, 0.07, 0.12, 0.21, 0.32, 0.40, 0.48, 0.54, 0.58, 0.62, 0.66, 0.74, 0.84, 0.98, 1.00, 0.94, 0.82, 0.63, 0.42, 0.25];
+  const postCurve = [0.12, 0.08, 0.06, 0.05, 0.05, 0.06, 0.10, 0.18, 0.30, 0.38, 0.46, 0.52, 0.56, 0.60, 0.63, 0.70, 0.80, 0.92, 1.00, 0.96, 0.84, 0.62, 0.38, 0.20];
+  const index = Math.max(0, Math.min(23, Number(hour) || 0));
+  return {
+    online: onlineCurve[index],
+    messages: messageCurve[index],
+    posts: postCurve[index]
+  };
+}
+
+function countSince(items, sinceMs, predicate = null) {
+  return (Array.isArray(items) ? items : []).filter((item) => {
+    const createdAt = new Date(item?.createdAt || 0).getTime();
+    if (!Number.isFinite(createdAt) || createdAt < sinceMs) return false;
+    return predicate ? predicate(item) : true;
+  }).length;
+}
+
+function getTsnStockSnapshot(db, { persist = false, reason = 'view' } = {}) {
+  const now = new Date();
+  const nowMs = now.getTime();
+  const hourAgoMs = nowMs - 60 * 60 * 1000;
+  db.tsnStock = normalizeTsnStockState(db.tsnStock);
+
+  const usersTotal = Math.max(1, (Array.isArray(db.users) ? db.users : []).filter((user) => !isBanned(user)).length);
+  const onlineCount = onlineUsers.size;
+  const privateMessagesPerHour = countSince(db.messages, hourAgoMs);
+  const globalCommentsPerHour = (Array.isArray(db.globalMessages) ? db.globalMessages : []).reduce((total, message) => {
+    return total + countSince(message.comments || [], hourAgoMs);
+  }, 0);
+  const messagesPerHour = privateMessagesPerHour + globalCommentsPerHour;
+  const postsPerHour = countSince(db.globalMessages, hourAgoMs);
+  const expected = expectedActivityForHour(now.getHours());
+
+  const expectedOnline = Math.max(1, usersTotal * expected.online);
+  const expectedMessages = Math.max(1, usersTotal * 3.2 * expected.messages);
+  const expectedPosts = Math.max(1, usersTotal * 0.9 * expected.posts);
+  const onlineRatio = onlineCount / expectedOnline;
+  const messageRatio = messagesPerHour / expectedMessages;
+  const postRatio = postsPerHour / expectedPosts;
+  const activityScore = Math.max(0, Math.min(3.5, onlineRatio * 0.45 + messageRatio * 0.30 + postRatio * 0.25));
+
+  const previousPrice = Number(db.tsnStock.price) || 100;
+  const targetPrice = 100 * (0.68 + activityScore * 0.62);
+  const timePressure = (expected.online + expected.messages + expected.posts) / 3;
+  const momentum = Math.max(-3.5, Math.min(5.5, (postsPerHour * 0.35 + messagesPerHour * 0.07 + onlineCount * 0.45) * (0.55 + timePressure) - 1.2));
+  const rawPrice = previousPrice + (targetPrice - previousPrice) * 0.22 + momentum;
+  const price = Number(Math.max(1, Math.min(9999, rawPrice)).toFixed(2));
+  const change = Number((price - previousPrice).toFixed(2));
+  const changePercent = Number((previousPrice ? (change / previousPrice) * 100 : 0).toFixed(2));
+  const trend = change > 0.01 ? 'up' : change < -0.01 ? 'down' : 'flat';
+  const generatedAt = now.toISOString();
+
+  const snapshot = {
+    symbol: 'TSN',
+    name: 'TSN Stock',
+    disclaimer: 'Fiktiv TSN-aktivitetspris. Ikke en rigtig aktie og ikke finansiel rådgivning.',
+    price,
+    previousPrice,
+    change,
+    changePercent,
+    trend,
+    reason,
+    metrics: {
+      onlineUsers: onlineCount,
+      usersTotal,
+      messagesPerHour,
+      privateMessagesPerHour,
+      globalCommentsPerHour,
+      postsPerHour,
+      hour: now.getHours(),
+      expectedOnline: Number(expectedOnline.toFixed(2)),
+      expectedMessagesPerHour: Number(expectedMessages.toFixed(2)),
+      expectedPostsPerHour: Number(expectedPosts.toFixed(2)),
+      activityScore: Number(activityScore.toFixed(3))
+    },
+    weights: {
+      onlineUsers: 45,
+      messagesPerHour: 30,
+      postsPerHour: 25
+    },
+    history: [...db.tsnStock.history, { price, createdAt: generatedAt }].slice(-120),
+    updatedAt: generatedAt
+  };
+
+  if (persist) {
+    const lastPoint = db.tsnStock.history[db.tsnStock.history.length - 1];
+    const shouldAppend = !lastPoint || nowMs - new Date(lastPoint.createdAt || 0).getTime() >= 20 * 1000 || Math.abs(Number(lastPoint.price) - price) >= 0.05;
+    db.tsnStock.previousPrice = previousPrice;
+    db.tsnStock.price = price;
+    db.tsnStock.updatedAt = generatedAt;
+    if (shouldAppend) db.tsnStock.history.push({ price, createdAt: generatedAt });
+    db.tsnStock.history = db.tsnStock.history.slice(-120);
+    snapshot.history = [...db.tsnStock.history];
+  }
+
+  return snapshot;
+}
+
+async function broadcastTsnStock(db, reason = 'activity') {
+  const snapshot = getTsnStockSnapshot(db, { persist: true, reason });
+  await writeDb(db);
+  io.emit('tsn-stock-updated', snapshot);
+  return snapshot;
 }
 
 function tryReadExistingFileDatabase() {
@@ -1456,6 +1583,12 @@ async function migrateDatabaseAtRest() {
     changed = true;
   }
 
+  const normalizedStock = normalizeTsnStockState(db.tsnStock);
+  if (JSON.stringify(normalizedStock) !== JSON.stringify(db.tsnStock)) {
+    db.tsnStock = normalizedStock;
+    changed = true;
+  }
+
   db.reports.forEach((report) => {
     if (migrateRecordField(report, 'reason')) changed = true;
     if (!report.status) {
@@ -1522,7 +1655,7 @@ app.get('/api/health', (req, res) => {
     const storage = getStorageStatus();
     res.json({
       ok: true,
-      app: 'TSN V1.2.4',
+      app: 'TSN V1.2.9',
       shortName: 'TSN V1.2.4',
       environment: process.env.NODE_ENV || 'development',
       storage: {
@@ -1552,7 +1685,7 @@ app.get('/api/health', (req, res) => {
   } catch (error) {
     res.status(503).json({
       ok: false,
-      app: 'TSN V1.2.4',
+      app: 'TSN V1.2.9',
       shortName: 'TSN V1.2.4',
       error: 'Lageret er ikke klar.',
       detail: error.message
@@ -1934,6 +2067,19 @@ app.get('/api/users', requireAuth, (req, res) => {
   res.json({ users });
 });
 
+
+app.get('/api/public/stock', (req, res) => {
+  const db = readDb();
+  const snapshot = getTsnStockSnapshot(db, { persist: false, reason: 'public-view' });
+  res.setHeader('Cache-Control', 'no-store');
+  res.json({ stock: snapshot });
+});
+
+app.get('/api/stock', requireAuth, (req, res) => {
+  const snapshot = getTsnStockSnapshot(req.db, { persist: false, reason: 'view' });
+  res.json({ stock: snapshot });
+});
+
 app.get('/api/global/messages', requireAuth, (req, res) => {
   const limit = Math.min(Math.max(Number(req.query.limit) || 200, 1), 500);
   const messages = [...(req.db.globalMessages || [])]
@@ -1968,6 +2114,7 @@ app.post('/api/global/messages', requireAuth, async (req, res) => {
   await writeDb(db);
 
   emitGlobalMessageUpdated(db, message);
+  broadcastTsnStock(readDb(), 'global-post').catch((error) => console.warn(`TSN Stock update failed: ${error.message}`));
   res.status(201).json({ message: attachGlobalMessagePeople(message, db.users, req.user.id) });
 });
 
@@ -2016,6 +2163,7 @@ app.post('/api/global/messages/:messageId/comments', requireAuth, async (req, re
 
   await writeDb(db);
   emitGlobalMessageUpdated(db, message);
+  broadcastTsnStock(readDb(), 'global-comment').catch((error) => console.warn(`TSN Stock update failed: ${error.message}`));
   res.status(201).json({ comment: publicGlobalComment(comment, db.users), message: attachGlobalMessagePeople(message, db.users, req.user.id) });
 });
 
@@ -2221,6 +2369,7 @@ io.on('connection', (socket) => {
   onlineUsers.set(user.id, socket.id);
   socket.join(user.id);
   io.emit('presence', { userId: user.id, online: true });
+  io.emit('tsn-stock-updated', getTsnStockSnapshot(readDb(), { persist: false, reason: 'presence' }));
 
   socket.on('private-message', async (payload, callback) => {
     try {
@@ -2248,6 +2397,7 @@ io.on('connection', (socket) => {
 
       db.messages.push(message);
       await writeDb(db);
+      broadcastTsnStock(readDb(), 'private-message').catch((error) => console.warn(`TSN Stock update failed: ${error.message}`));
       io.to(user.id).to(recipient.id).emit('private-message', safeMessage);
       if (typeof callback === 'function') callback({ ok: true, message: safeMessage });
     } catch (error) {
@@ -2265,6 +2415,7 @@ io.on('connection', (socket) => {
     if (currentSocket === socket.id) {
       onlineUsers.delete(user.id);
       io.emit('presence', { userId: user.id, online: false });
+      io.emit('tsn-stock-updated', getTsnStockSnapshot(readDb(), { persist: false, reason: 'presence' }));
     }
   });
 });
@@ -2299,7 +2450,7 @@ async function startServer() {
       console.log(`Backup directory: ${DB_BACKUP_DIR}`);
       const warning = storagePersistenceWarning();
       if (warning) console.warn(`Persistence warning: ${warning}`);
-      console.log('TSN V1.2.6 mode: safe beta with global posts, private chat, read receipts and 15-minute delete-for-everyone.');
+      console.log('TSN V1.2.10 mode: clean layout with public TSN Stock API, global posts and private chat.');
       console.log('Admin rights can be claimed inside the app with TSN_ADMIN_SETUP_PASSWORD or TSN_ADMIN_SETUP_PASSWORD_HASH.');
 
       if (process.env.NODE_ENV === 'production' && JWT_SECRET === DEFAULT_JWT_SECRET) {
