@@ -1,7 +1,7 @@
 {
   "name": "the-social-network-tsn",
-  "version": "1.2.2",
-  "description": "TSN V1.2.2 - dansk safe beta social network med forbedret admin-dashboard, globale opslag, kommentarer, likes, privat chat, rapporter, MongoDB Atlas og Render deployment.",
+  "version": "1.2.3",
+  "description": "TSN V1.2.3 - dansk safe beta social network med forbedret admin-dashboard, globale opslag, kommentarer, likes, privat chat, rapporter, MongoDB Atlas og Render deployment.",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",

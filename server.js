@@ -46,6 +46,7 @@ const ROOMS = Array.from({ length: 7 }, (_, index) => {
   };
 });
 const app = express();
+const pendingUsernameRegistrations = new Set();
 app.set('trust proxy', 1);
 
 const server = http.createServer(app);
@@ -542,6 +543,110 @@ function removeEasyLoginUsersFromDatabase(db) {
     likesRemoved,
     reportsRemoved: beforeReports - db.reports.length
   };
+}
+
+
+function duplicateUserKey(user) {
+  const username = normalizeUsername(getUserField(user, 'username'));
+  if (username) return `username:${username}`;
+  if (user?.usernameHash) return `hash:${user.usernameHash}`;
+  return '';
+}
+
+function userContentScore(db, userId) {
+  let score = 0;
+  (db.globalMessages || []).forEach((message) => {
+    if (message.authorId === userId) score += 10;
+    (message.comments || []).forEach((comment) => {
+      if (comment.authorId === userId) score += 3;
+    });
+    (message.likes || []).forEach((likeUserId) => {
+      if (likeUserId === userId) score += 1;
+    });
+  });
+  (db.messages || []).forEach((message) => {
+    if (message.from === userId || message.to === userId) score += 2;
+  });
+  (db.reports || []).forEach((report) => {
+    if (report.reporterId === userId || report.targetUserId === userId || report.reportedUserId === userId) score += 1;
+  });
+  return score;
+}
+
+function chooseDuplicateUserToKeep(db, users) {
+  return [...users].sort((a, b) => {
+    const adminDiff = Number(b.role === 'admin') - Number(a.role === 'admin');
+    if (adminDiff) return adminDiff;
+    const contentDiff = userContentScore(db, b.id) - userContentScore(db, a.id);
+    if (contentDiff) return contentDiff;
+    return new Date(a.createdAt || 0) - new Date(b.createdAt || 0);
+  })[0];
+}
+
+function mergeDuplicateProfilesInDatabase(db) {
+  const users = Array.isArray(db.users) ? db.users : [];
+  const groups = new Map();
+
+  users.forEach((user) => {
+    const key = duplicateUserKey(user);
+    if (!key) return;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(user);
+  });
+
+  const duplicateToKeep = new Map();
+  groups.forEach((group) => {
+    if (group.length < 2) return;
+    const keep = chooseDuplicateUserToKeep(db, group);
+    group.forEach((user) => {
+      if (user.id !== keep.id) duplicateToKeep.set(user.id, keep.id);
+    });
+  });
+
+  if (!duplicateToKeep.size) return { changed: false, usersRemoved: 0, mergedIds: [] };
+
+  const remapUserId = (userId) => duplicateToKeep.get(userId) || userId;
+  const remapUserIdList = (ids) => [...new Set((Array.isArray(ids) ? ids : []).map(remapUserId).filter(Boolean))];
+
+  db.globalMessages = (Array.isArray(db.globalMessages) ? db.globalMessages : []).map((message) => {
+    message.authorId = remapUserId(message.authorId);
+    message.likes = remapUserIdList(message.likes);
+    message.comments = (Array.isArray(message.comments) ? message.comments : []).map((comment) => ({
+      ...comment,
+      authorId: remapUserId(comment.authorId)
+    }));
+    return message;
+  });
+
+  db.messages = (Array.isArray(db.messages) ? db.messages : []).map((message) => {
+    message.from = remapUserId(message.from);
+    message.to = remapUserId(message.to);
+    message.readBy = remapUserIdList(message.readBy);
+    if (message.from && message.to) message.conversationId = conversationId(message.from, message.to);
+    return message;
+  }).filter((message) => message.from && message.to && message.from !== message.to);
+
+  db.reports = (Array.isArray(db.reports) ? db.reports : []).map((report) => ({
+    ...report,
+    reporterId: remapUserId(report.reporterId),
+    targetUserId: remapUserId(report.targetUserId),
+    reportedUserId: remapUserId(report.reportedUserId)
+  }));
+
+  db.roomMessages = (Array.isArray(db.roomMessages) ? db.roomMessages : []).map((message) => ({
+    ...message,
+    authorId: remapUserId(message.authorId)
+  }));
+
+  db.rooms = (Array.isArray(db.rooms) ? db.rooms : []).map((room) => ({
+    ...room,
+    ownerId: remapUserId(room.ownerId)
+  }));
+
+  const duplicateIds = new Set(duplicateToKeep.keys());
+  db.users = users.filter((user) => !duplicateIds.has(user.id));
+
+  return { changed: true, usersRemoved: duplicateIds.size, mergedIds: [...duplicateIds] };
 }
 
 async function verifyAdminSetupPassword(password) {
@@ -1268,6 +1373,12 @@ async function migrateDatabaseAtRest() {
     console.log(`Removed ${easyLoginCleanup.usersRemoved} guest/demo user(s), ${easyLoginCleanup.globalMessagesRemoved} global message(s), and ${easyLoginCleanup.privateMessagesRemoved} private message(s).`);
   }
 
+  const duplicateProfileCleanup = mergeDuplicateProfilesInDatabase(db);
+  if (duplicateProfileCleanup.changed) {
+    changed = true;
+    console.log(`Merged and removed ${duplicateProfileCleanup.usersRemoved} duplicate TSN profile(s).`);
+  }
+
   db.posts.forEach((post) => {
     if (migrateRecordField(post, 'body')) changed = true;
     (post.comments || []).forEach((comment) => {
@@ -1381,8 +1492,8 @@ app.get('/api/health', (req, res) => {
     const storage = getStorageStatus();
     res.json({
       ok: true,
-      app: 'TSN V1.2.2',
-      shortName: 'TSN V1.2.2',
+      app: 'TSN V1.2.3',
+      shortName: 'TSN V1.2.3',
       environment: process.env.NODE_ENV || 'development',
       storage: {
         ok: storage.ok,
@@ -1411,8 +1522,8 @@ app.get('/api/health', (req, res) => {
   } catch (error) {
     res.status(503).json({
       ok: false,
-      app: 'TSN V1.2.2',
-      shortName: 'TSN V1.2.2',
+      app: 'TSN V1.2.3',
+      shortName: 'TSN V1.2.3',
       error: 'Lageret er ikke klar.',
       detail: error.message
     });
@@ -1442,26 +1553,40 @@ app.post('/api/auth/register', async (req, res) => {
   if (rejectBlockedContent(res, name, 'Visningsnavn')) return;
   if (rejectBlockedContent(res, username, 'Brugernavn')) return;
 
-  const db = readDb();
-  const taken = db.users.some((user) => userMatchesUsername(user, username));
-  if (taken) return res.status(409).json({ error: 'Brugernavnet er allerede i brug.' });
+  const registrationKey = lookupHash('username', username) || username;
+  if (pendingUsernameRegistrations.has(registrationKey)) {
+    return res.status(409).json({ error: 'Brugernavnet er allerede ved at blive oprettet. Prøv at logge ind.' });
+  }
 
-  const passwordHash = await bcrypt.hash(password, 12);
-  const user = {
-    id: id('usr'),
-    ...encryptedUserIdentity({
-      name,
-      username,
-      bio: 'Ny på TSN.'
-    }),
-    passwordHash,
-    sessionVersion: 0,
-    createdAt: new Date().toISOString()
-  };
+  pendingUsernameRegistrations.add(registrationKey);
+  try {
+    const initialDb = readDb();
+    const alreadyTaken = initialDb.users.some((user) => userMatchesUsername(user, username));
+    if (alreadyTaken) return res.status(409).json({ error: 'Brugernavnet er allerede i brug.' });
 
-  db.users.push(user);
-  await writeDb(db);
-  res.status(201).json({ token: signToken(user), user: publicUser(user) });
+    const passwordHash = await bcrypt.hash(password, 12);
+    const db = readDb();
+    const takenAfterHash = db.users.some((user) => userMatchesUsername(user, username));
+    if (takenAfterHash) return res.status(409).json({ error: 'Brugernavnet er allerede i brug.' });
+
+    const user = {
+      id: id('usr'),
+      ...encryptedUserIdentity({
+        name,
+        username,
+        bio: 'Ny på TSN.'
+      }),
+      passwordHash,
+      sessionVersion: 0,
+      createdAt: new Date().toISOString()
+    };
+
+    db.users.push(user);
+    await writeDb(db);
+    res.status(201).json({ token: signToken(user), user: publicUser(user) });
+  } finally {
+    pendingUsernameRegistrations.delete(registrationKey);
+  }
 });
 
 app.post('/api/auth/login', async (req, res) => {
@@ -1757,8 +1882,17 @@ app.post('/api/admin/users/:userId/unban', requireAuth, requireAdmin, async (req
 
 app.get('/api/users', requireAuth, (req, res) => {
   const q = cleanText(req.query.q || '', 80).toLowerCase();
+  const seenUserKeys = new Set();
+  const ownDuplicateKey = duplicateUserKey(req.user);
+  if (ownDuplicateKey) seenUserKeys.add(ownDuplicateKey);
   const users = req.db.users
     .filter((user) => user.id !== req.user.id && !isBanned(user))
+    .filter((user) => {
+      const key = duplicateUserKey(user) || `id:${user.id}`;
+      if (seenUserKeys.has(key)) return false;
+      seenUserKeys.add(key);
+      return true;
+    })
     .map((user) => ({
       ...publicUser(user),
       online: onlineUsers.has(user.id),
@@ -1949,7 +2083,7 @@ app.post('/api/reports', requireAuth, async (req, res) => {
 });
 
 app.all(['/api/posts', '/api/posts/*', '/api/rooms', '/api/rooms/*'], requireAuth, (req, res) => {
-  res.status(410).json({ error: 'TSN V1.2.2 understøtter globale opslag, privat chat og forbedret moderation.' });
+  res.status(410).json({ error: 'TSN V1.2.3 understøtter globale opslag, privat chat og forbedret moderation.' });
 });
 
 app.get('/api/messages/:userId', requireAuth, async (req, res) => {

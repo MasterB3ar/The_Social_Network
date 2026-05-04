@@ -79,6 +79,18 @@ function canDeleteMessage(authorId) {
   return Boolean(state.me && (state.me.isAdmin || authorId === state.me.id));
 }
 
+
+function dedupeUsers(users) {
+  const seen = new Set();
+  return (Array.isArray(users) ? users : []).filter((user) => {
+    const username = String(user?.username || '').trim().toLowerCase();
+    const key = username || user?.id || '';
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 function unreadBadgeText(count) {
   const number = Number(count) || 0;
   if (number <= 0) return '';
@@ -1454,7 +1466,7 @@ async function deleteAdminMessageItem(item) {
 async function loadUsers(q = '') {
   const query = q ? `?q=${encodeURIComponent(q)}` : '';
   const data = await api(`/api/users${query}`);
-  state.users = data.users || [];
+  state.users = dedupeUsers(data.users || []);
 
   if (state.activeChatUser) {
     const updated = state.users.find((candidate) => candidate.id === state.activeChatUser.id);
