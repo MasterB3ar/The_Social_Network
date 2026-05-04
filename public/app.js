@@ -278,6 +278,62 @@ function showAuth() {
 function showApp() {
   authScreen.classList.add('hidden');
   appScreen.classList.remove('hidden');
+  updateAppNavigation();
+}
+
+
+
+function switchAppView(view) {
+  const allowedViews = new Set(['profile', 'global', 'private', 'admin']);
+  const nextView = allowedViews.has(view) ? view : 'global';
+
+  if (nextView === 'admin' && !state.me?.isAdmin) {
+    showToast('Admin er kun synlig for admins.');
+    appScreen.dataset.view = 'global';
+  } else {
+    appScreen.dataset.view = nextView;
+  }
+
+  const activeView = appScreen.dataset.view || 'global';
+  document.querySelectorAll('[data-app-nav]').forEach((button) => {
+    button.classList.toggle('active', button.dataset.appNav === activeView);
+  });
+
+  if (activeView !== 'private') {
+    chatPanel.classList.add('hidden');
+  }
+
+  if (activeView === 'global') {
+    requestAnimationFrame(() => scrollElementToTop(globalMessagesList));
+  }
+
+  if (activeView === 'admin' && state.me?.isAdmin) {
+    loadAdminDashboard().catch((error) => showToast(error.message));
+    loadAdminMessages().catch((error) => showToast(error.message));
+    loadAdminReports().catch((error) => showToast(error.message));
+  }
+}
+
+function updateAppNavigation() {
+  const adminButton = $('#adminNavButton');
+  if (adminButton) adminButton.classList.toggle('hidden', !state.me?.isAdmin);
+  if (appScreen.dataset.view === 'admin' && !state.me?.isAdmin) {
+    switchAppView('global');
+    return;
+  }
+  switchAppView(appScreen.dataset.view || 'global');
+}
+
+document.querySelectorAll('[data-app-nav]').forEach((button) => {
+  button.addEventListener('click', () => switchAppView(button.dataset.appNav));
+});
+
+const mobileMenuBtn = $('#mobileMenuBtn');
+if (mobileMenuBtn) {
+  mobileMenuBtn.addEventListener('click', () => {
+    const switcher = document.querySelector('.app-switcher');
+    if (switcher) switcher.classList.toggle('is-open');
+  });
 }
 
 function forceLocalLogout(message = 'Du er blevet logget ud.') {
@@ -1248,6 +1304,12 @@ function renderAdminTools() {
   adminActive.classList.toggle('hidden', !state.me?.isAdmin);
   adminClaimForm.classList.toggle('hidden', Boolean(state.me?.isAdmin));
   if (adminModerationPanel) adminModerationPanel.classList.toggle('hidden', !state.me?.isAdmin);
+  const adminNavButton = $('#adminNavButton');
+  if (adminNavButton) adminNavButton.classList.toggle('hidden', !state.me?.isAdmin);
+  if (appScreen.dataset.view === 'admin' && !state.me?.isAdmin) appScreen.dataset.view = 'global';
+  document.querySelectorAll('[data-app-nav]').forEach((button) => {
+    button.classList.toggle('active', button.dataset.appNav === (appScreen.dataset.view || 'global'));
+  });
   renderAdminStats();
   renderAdminUsers();
   renderAdminMessageViewer();

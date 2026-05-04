@@ -2943,3 +2943,238 @@ button:disabled {
     grid-template-columns: 1fr;
   }
 }
+
+/* TSN V1.2.8 clean app navigation layout */
+.mobile-menu-btn {
+  display: none;
+}
+
+.clean-discord-layout {
+  width: min(1480px, calc(100vw - 32px)) !important;
+  display: grid !important;
+  grid-template-columns: 108px minmax(0, 1fr) !important;
+  gap: 18px !important;
+  align-items: start !important;
+}
+
+.app-switcher {
+  position: sticky;
+  top: 88px;
+  min-height: calc(100vh - 112px);
+  padding: 12px !important;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  border-radius: 28px !important;
+}
+
+.app-nav-button {
+  width: 100%;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.045);
+  color: var(--muted);
+  border-radius: 22px;
+  padding: 12px 8px;
+  min-height: 76px;
+  cursor: pointer;
+  font-weight: 900;
+  display: grid;
+  place-items: center;
+  gap: 6px;
+  transition: transform 160ms ease, border-color 160ms ease, background 160ms ease, color 160ms ease;
+}
+
+.app-nav-button:hover,
+.app-nav-button.active {
+  transform: translateY(-1px);
+  color: var(--text);
+  border-color: rgba(124, 92, 255, 0.45);
+  background: linear-gradient(135deg, rgba(124, 92, 255, 0.23), rgba(36, 214, 255, 0.10));
+}
+
+.app-nav-button .nav-icon {
+  font-size: 1.32rem;
+  line-height: 1;
+}
+
+.app-nav-button span:last-child {
+  font-size: 0.72rem;
+  line-height: 1.05;
+  text-align: center;
+}
+
+.clean-discord-layout > .route-view {
+  grid-column: 2;
+  width: 100%;
+  min-width: 0;
+}
+
+.clean-discord-layout > .sidebar,
+.clean-discord-layout > .chat-main,
+.clean-discord-layout > .people-rail {
+  display: none !important;
+}
+
+.app[data-view="profile"] .clean-discord-layout > .sidebar {
+  display: block !important;
+  max-width: 760px;
+  margin: 0 auto;
+}
+
+.app[data-view="global"] .clean-discord-layout > .chat-main {
+  display: grid !important;
+  max-width: 920px;
+  margin: 0 auto;
+}
+
+.app[data-view="global"] .admin-message-viewer,
+.app[data-view="global"] .admin-report-viewer {
+  display: none !important;
+}
+
+.app[data-view="private"] .clean-discord-layout > .people-rail {
+  display: block !important;
+  max-width: 760px;
+  margin: 0 auto;
+  position: static !important;
+}
+
+.app[data-view="private"] .people.card {
+  min-height: calc(100vh - 150px);
+}
+
+.app[data-view="private"] .users-list {
+  max-height: calc(100vh - 320px);
+  overflow-y: auto;
+}
+
+.app[data-view="admin"] .clean-discord-layout {
+  grid-template-columns: 108px minmax(330px, 420px) minmax(0, 1fr) !important;
+}
+
+.app[data-view="admin"] .clean-discord-layout > .sidebar {
+  display: block !important;
+  grid-column: 2;
+  position: sticky;
+  top: 88px;
+  max-height: calc(100vh - 112px);
+  overflow: auto;
+}
+
+.app[data-view="admin"] .clean-discord-layout > .chat-main {
+  display: grid !important;
+  grid-column: 3;
+  max-width: none;
+  margin: 0;
+}
+
+.app[data-view="admin"] .global-chat {
+  display: none !important;
+}
+
+.app[data-view="admin"] .profile-block,
+.app[data-view="admin"] .profile-form,
+.app[data-view="admin"] .danger-zone,
+.app[data-view="admin"] .chat-stats {
+  display: none !important;
+}
+
+.app[data-view="admin"] #adminBox {
+  margin-top: 0;
+}
+
+.app[data-view="admin"] #adminModerationPanel:not(.hidden),
+.app[data-view="admin"] #adminMessageViewer:not(.hidden),
+.app[data-view="admin"] #adminReportViewer:not(.hidden) {
+  display: block !important;
+}
+
+.global-chat.card,
+.people.card,
+.sidebar.card,
+.admin-message-viewer.card,
+.admin-report-viewer.card {
+  box-shadow: 0 28px 90px rgba(0, 0, 0, 0.24);
+}
+
+.app[data-view="global"] .global-chat {
+  min-height: calc(100vh - 148px);
+}
+
+.app[data-view="global"] .global-messages {
+  max-height: calc(100vh - 315px);
+}
+
+@media (max-width: 1180px) {
+  .app[data-view="admin"] .clean-discord-layout {
+    grid-template-columns: 96px minmax(0, 1fr) !important;
+  }
+
+  .app[data-view="admin"] .clean-discord-layout > .sidebar,
+  .app[data-view="admin"] .clean-discord-layout > .chat-main {
+    grid-column: 2;
+    position: static;
+    max-height: none;
+  }
+}
+
+@media (max-width: 780px) {
+  .mobile-menu-btn {
+    display: inline-flex;
+  }
+
+  .clean-discord-layout {
+    width: 100% !important;
+    grid-template-columns: 1fr !important;
+    padding-top: 8px !important;
+  }
+
+  .app-switcher {
+    grid-column: 1 !important;
+    position: sticky;
+    top: 68px;
+    z-index: 30;
+    min-height: 0;
+    flex-direction: row;
+    overflow-x: auto;
+    padding: 8px !important;
+    border-radius: 18px !important;
+  }
+
+  .app-nav-button {
+    min-width: 112px;
+    min-height: 58px;
+    padding: 9px 10px;
+    border-radius: 16px;
+    grid-auto-flow: column;
+    grid-template-columns: auto 1fr;
+    justify-content: start;
+  }
+
+  .app-nav-button span:last-child {
+    font-size: 0.76rem;
+    text-align: left;
+  }
+
+  .clean-discord-layout > .route-view,
+  .app[data-view="admin"] .clean-discord-layout > .sidebar,
+  .app[data-view="admin"] .clean-discord-layout > .chat-main {
+    grid-column: 1 !important;
+  }
+
+  .app[data-view="profile"] .clean-discord-layout > .sidebar,
+  .app[data-view="global"] .clean-discord-layout > .chat-main,
+  .app[data-view="private"] .clean-discord-layout > .people-rail {
+    max-width: none;
+  }
+
+  .app[data-view="private"] .people.card,
+  .app[data-view="global"] .global-chat {
+    min-height: calc(100dvh - 180px);
+  }
+
+  .app[data-view="global"] .global-messages,
+  .app[data-view="private"] .users-list {
+    max-height: 58dvh;
+  }
+}

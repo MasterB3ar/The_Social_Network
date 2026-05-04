@@ -1,3 +1,16 @@
+# TSN V1.2.8
+
+Denne version har et renere app-design med side-navigation:
+
+- **Din profil**
+- **Global chat** i midten
+- **Privat chat**
+- **Admin** kun synlig for admins
+
+MongoDB Atlas, Render deployment, private beskeder, læsekvitteringer, rapporter, admin-dashboard, mobil-layout og 15-minutters “slet for alle” er stadig bevaret.
+
+---
+
 # TSN V1.2.6 — dansk safe beta
 
 TSN V1.2.6 er en dansk social app med **globale opslag**, **likes**, **kommentarer**, **privat chat**, læsekvitteringer, sletning af egne private chats, 15-minutters slet-for-alle på private beskeder og sikkerheds-/moderationsfunktioner.

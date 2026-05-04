@@ -59,7 +59,7 @@
     </div>
   </section>
 
-  <main id="appScreen" class="app hidden">
+  <main id="appScreen" class="app hidden" data-view="global">
     <nav class="topbar">
       <div class="brand">
         <div class="brand-mark small">TSN</div>
@@ -68,14 +68,34 @@
         </div>
       </div>
       <div class="topbar-actions">
+        <button id="mobileMenuBtn" class="ghost mobile-menu-btn" type="button">Menu</button>
         <button id="rulesBtn" class="ghost" type="button">Regler</button>
         <button id="refreshBtn" class="ghost" type="button">Opdater</button>
         <button id="logoutBtn" class="ghost danger" type="button">Log ud</button>
       </div>
     </nav>
 
-    <div class="chat-only-layout">
-      <aside class="sidebar card">
+    <div class="chat-only-layout clean-discord-layout">
+      <aside class="app-switcher card" aria-label="TSN navigation">
+        <button class="app-nav-button active" type="button" data-app-nav="profile">
+          <span class="nav-icon">👤</span>
+          <span>Din profil</span>
+        </button>
+        <button class="app-nav-button" type="button" data-app-nav="global">
+          <span class="nav-icon">🌐</span>
+          <span>Global chat</span>
+        </button>
+        <button class="app-nav-button" type="button" data-app-nav="private">
+          <span class="nav-icon">💬</span>
+          <span>Privat chat</span>
+        </button>
+        <button id="adminNavButton" class="app-nav-button hidden" type="button" data-app-nav="admin">
+          <span class="nav-icon">🛡️</span>
+          <span>Admin</span>
+        </button>
+      </aside>
+
+      <aside class="sidebar card route-view" data-route-view="profile">
         <div class="profile-block">
           <div id="myAvatar" class="avatar large">?</div>
           <div>
@@ -156,7 +176,7 @@
         </div>
       </aside>
 
-      <section class="chat-main">
+      <section class="chat-main route-view" data-route-view="global">
         <section class="global-chat card">
           <div class="section-heading compact-heading">
             <div>
@@ -232,7 +252,7 @@
         </section>
       </section>
 
-      <aside class="right-rail people-rail">
+      <aside class="right-rail people-rail route-view" data-route-view="private">
         <section class="people card side-card">
           <div class="section-heading compact-heading">
             <div>
