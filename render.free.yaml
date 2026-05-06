@@ -23,12 +23,6 @@ services:
         value: app_state
       - key: MONGODB_STATE_ID
         value: main
-      - key: TSNS_MONGODB_URI
-        sync: false
-      - key: TSNS_MONGODB_DATABASE
-        value: tsn_stock
-      - key: TSNS_WALLET_COLLECTION
-        value: tsnMoneyWallets
       - key: JWT_SECRET
         generateValue: true
       - key: TSN_DATA_ENCRYPTION_KEY

@@ -1,115 +1,51 @@
-# TSN V1.3.2 — More expensive TSNM Market using TSN-S wallet only
+# TSN V1.3.4 — Shop/currency removed + private-message privacy
 
-This version implements **TSNM Market inside normal TSN** with much higher cosmetic prices, but normal TSN does **not** create or reward TSNM.
+This version removes the TSN shop/currency system from normal TSN.
 
-Important rule:
+## Changed
 
-> Users can only earn TSNM in **TSN-S / TSN-Stock**. Normal TSN only reads the shared TSN-S wallet balance and lets users spend TSNM on cosmetics.
+- Removed the shop page from the sidebar.
+- Removed the user balance display from profiles.
+- Removed purchasable profile pictures, animated avatars, and chat pictures from normal TSN.
+- Removed chat-picture sending from private chat.
+- New users no longer receive any shop/currency fields.
+- Normal TSN no longer needs TSN-S wallet environment variables.
 
+## Admin privacy change
 
-## V1.3.2 price update
+Admins can no longer read private message content in the admin message archive.
 
-The TSNM Market cosmetics are now much more expensive:
+Admins can still see private-message counts:
 
-| Item | New price |
-| --- | ---: |
-| Neon Core | Free |
-| Midnight Bear | 1,000 TSNM |
-| Cyber Cat | 2,500 TSNM |
-| Gold Crown | 5,000 TSNM |
-| Fire Loop GIF | 3,500 TSNM |
-| Galaxy Spin GIF | 7,500 TSNM |
-| Matrix Rain GIF | 9,000 TSNM |
-| Thunder VIP GIF | 15,000 TSNM |
+- total private messages in admin stats
+- per-user private message counts in the user moderation table
+- `/api/admin/messages` returns `privateMessagesCount`
 
-## What is included
+Private-message reports keep metadata for moderation, but the message body is redacted.
 
-- New **TSNM Market** page in the TSN sidebar.
-- Users can buy and equip:
-  - profile pictures
-  - animated GIF-style avatars
-- Cosmetics are saved on the normal TSN account.
-- Cosmetics show in:
-  - profile
-  - global posts
-  - comments
-  - private chat user list
-  - private chat header
-  - admin user list
-- Normal TSN no longer gives:
-  - starting TSNM
-  - daily TSNM claims
-  - TSNM for posts
-  - TSNM for comments
-  - TSNM for private messages
-- Purchases are paid from the **TSN-S wallet collection**.
-
-## Required setup for TSN-S wallet sharing
-
-Normal TSN must be able to read the same MongoDB wallet database used by TSN-S / TSN-Stock.
-
-If TSN and TSN-S use the same MongoDB Atlas connection, add these to normal TSN on Render:
-
-```env
-MONGODB_URI=mongodb+srv://USERNAME:PASSWORD@YOUR-CLUSTER.mongodb.net/?retryWrites=true&w=majority
-MONGODB_DB_NAME=tsn
-
-TSNS_MONGODB_URI=mongodb+srv://USERNAME:PASSWORD@YOUR-CLUSTER.mongodb.net/?retryWrites=true&w=majority
-TSNS_MONGODB_DATABASE=tsn_stock
-TSNS_WALLET_COLLECTION=tsnMoneyWallets
-```
-
-If `TSNS_MONGODB_URI` is omitted, TSN falls back to `MONGODB_URI`, but you should still set `TSNS_MONGODB_DATABASE=tsn_stock` so it knows where TSN-S stores wallets.
-
-## Render settings
+## Deploy on Render
 
 Use:
 
 ```txt
 Build Command: npm cache clean --force && npm install --omit=dev --no-audit --no-fund --prefer-online
-Start Command: node server.js
-```
-
-Recommended env vars:
-
-```env
-NODE_ENV=production
+Start Command: npm start
 NODE_VERSION=20.12.2
+```
 
-MONGODB_URI=mongodb+srv://USERNAME:PASSWORD@YOUR-CLUSTER.mongodb.net/?retryWrites=true&w=majority
+Required env vars:
+
+```txt
+NODE_ENV=production
+MONGODB_URI=your MongoDB Atlas connection string
 MONGODB_DB_NAME=tsn
-MONGODB_STATE_COLLECTION=app_state
-MONGODB_STATE_ID=main
-
-TSNS_MONGODB_URI=mongodb+srv://USERNAME:PASSWORD@YOUR-CLUSTER.mongodb.net/?retryWrites=true&w=majority
-TSNS_MONGODB_DATABASE=tsn_stock
-TSNS_WALLET_COLLECTION=tsnMoneyWallets
-
-JWT_SECRET=<generate-a-long-random-secret>
-TSN_DATA_ENCRYPTION_KEY=<generate-a-different-long-random-secret>
-TSN_ADMIN_SETUP_PASSWORD=<your-admin-setup-password>
+JWT_SECRET=long random secret
+TSN_DATA_ENCRYPTION_KEY=long random secret
+TSN_ADMIN_SETUP_PASSWORD=your admin setup password
 ```
 
-## API routes
-
-Market routes in normal TSN:
+Recommended deployment step after replacing the old version:
 
 ```txt
-GET  /api/market
-POST /api/market/buy
-POST /api/market/equip
+Manual Deploy → Clear build cache & deploy
 ```
-
-The old daily-claim route exists only to reject old clients:
-
-```txt
-POST /api/market/claim-daily -> 403, because TSNM is earned only in TSN-S
-```
-
-## Deploy order
-
-1. Deploy/update TSN-S / TSN-Stock first.
-2. Confirm TSN-S wallet works and users can earn TSNM there.
-3. Deploy this TSN version.
-4. Make sure normal TSN has the `TSNS_*` env vars pointing at the TSN-S wallet database.
-5. Log into normal TSN, open **TSNM Market**, and confirm the balance matches TSN-S.

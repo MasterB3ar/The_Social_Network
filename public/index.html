@@ -55,7 +55,7 @@
 
       <p id="authError" class="error"></p>
       <p class="save-note">TSN holder dig logget ind på denne enhed i 7 dage.</p>
-      <p class="privacy-note">Til moderation kan TSN-admins gennemgå globale og private beskeder.</p>
+      <p class="privacy-note">Til moderation kan TSN-admins gennemgå globale beskeder og se antal private beskeder, men ikke læse private beskeder.</p>
     </div>
   </section>
 
@@ -89,10 +89,6 @@
           <span class="nav-icon">💬</span>
           <span>Privat chat</span>
         </button>
-        <button class="app-nav-button" type="button" data-app-nav="market">
-          <span class="nav-icon">🛍️</span>
-          <span>TSNM Market</span>
-        </button>
         <button id="adminNavButton" class="app-nav-button hidden" type="button" data-app-nav="admin">
           <span class="nav-icon">🛡️</span>
           <span>Admin</span>
@@ -105,7 +101,6 @@
           <div>
             <h2 id="myName">Indlæser...</h2>
             <p id="myUsername">@username</p>
-            <span id="myTsnmBalance" class="tsnm-balance-pill">0 TSNM</span>
           </div>
         </div>
 
@@ -181,41 +176,6 @@
         </div>
       </aside>
 
-
-      <section class="market-panel card route-view" data-route-view="market">
-        <div class="section-heading compact-heading market-heading">
-          <div>
-            <p class="eyebrow mini">TSNM</p>
-            <h2>TSNM Market</h2>
-            <p>Køb profile pictures og animated GIF-avatarer med TSNM, som du optjener i TSN-S / TSN-Stock.</p>
-          </div>
-          <div class="market-balance-card">
-            <span>Balance</span>
-            <strong id="marketBalance">– TSNM</strong>
-            <small id="marketOwnedCount">0 items</small>
-          </div>
-        </div>
-
-        <div class="market-daily-card">
-          <div>
-            <strong>TSN-S wallet</strong>
-            <span id="marketDailyStatus">TSNM optjenes kun i TSN-S / TSN-Stock.</span>
-          </div>
-        </div>
-
-        <div id="marketItemsGrid" class="market-items-grid"></div>
-
-        <section class="market-history">
-          <div class="section-heading compact-heading">
-            <div>
-              <p class="eyebrow mini">Wallet</p>
-              <h2>TSNM historik</h2>
-            </div>
-          </div>
-          <div id="marketTransactionsList" class="market-transactions-list"></div>
-        </section>
-      </section>
-
       <section class="chat-main route-view" data-route-view="global">
         <section class="global-chat card">
           <div class="section-heading compact-heading">
@@ -240,7 +200,7 @@
             <div>
               <p class="eyebrow mini">Kun admin</p>
               <h2>Beskedmoderation</h2>
-              <p>Gennemgå og slet gemte globale/private beskeder.</p>
+              <p>Gennemgå og slet gemte globale beskeder. Private beskeder er skjult; kun antal vises.</p>
             </div>
             <span id="adminMessageCount" class="pill">0 beskeder</span>
           </div>
@@ -248,12 +208,11 @@
             <select id="adminMessageType" aria-label="Filter for beskedtype">
               <option value="all">Alle beskeder</option>
               <option value="global">Globale beskeder</option>
-              <option value="direct">Private beskeder</option>
             </select>
-            <input id="adminMessageSearch" placeholder="Søg i beskedtekst eller brugere..." />
+            <input id="adminMessageSearch" placeholder="Søg i globale beskeder eller brugere..." />
             <button id="loadAdminMessagesBtn" class="secondary" type="button">Indlæs beskeder</button>
           </div>
-          <p class="admin-message-notice">Beskeder ligger krypteret i databasen og dekrypteres kun af serveren til admin-moderation.</p>
+          <p class="admin-message-notice">Private beskeder vises ikke for admins. Admins kan kun se private besked-antal.</p>
           <div class="admin-messages-scrollbox" aria-label="Beskedliste med intern scrollbar">
             <div id="adminMessagesList" class="admin-messages-list"></div>
           </div>
@@ -268,7 +227,7 @@
             <div>
               <p class="eyebrow mini">Kun admin</p>
               <h2>Rapporter</h2>
-              <p>Gennemgå rapporterede opslag, kommentarer, private beskeder og brugere.</p>
+              <p>Gennemgå rapporterede opslag, kommentarer og brugere. Private besked-rapporter skjuler selve indholdet.</p>
             </div>
             <span id="adminReportCount" class="pill">0 rapporter</span>
           </div>
