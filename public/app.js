@@ -276,6 +276,25 @@ function scrollElementToTop(element) {
   setTimeout(apply, 80);
 }
 
+function scrollElementToBottom(element) {
+  if (!element) return;
+
+  const apply = () => {
+    const previousBehavior = element.style.scrollBehavior;
+    element.style.scrollBehavior = 'auto';
+    element.scrollTop = element.scrollHeight;
+    if (typeof element.scrollTo === 'function') {
+      element.scrollTo({ top: element.scrollHeight, left: 0, behavior: 'auto' });
+    }
+    element.style.scrollBehavior = previousBehavior;
+  };
+
+  apply();
+  requestAnimationFrame(apply);
+  setTimeout(apply, 0);
+  setTimeout(apply, 80);
+}
+
 function forceGlobalDetailTop() {
   blurActiveElement();
 
@@ -345,7 +364,7 @@ function switchAppView(view) {
   }
 
   if (activeView === 'global') {
-    requestAnimationFrame(() => scrollElementToTop(globalMessagesList));
+    requestAnimationFrame(() => scrollElementToBottom(globalMessagesList));
   }
 
 
@@ -1524,7 +1543,7 @@ function connectSocket() {
 
   state.socket.on('global-message', (message) => {
     upsertGlobalMessage(message);
-    renderGlobalMessages({ forceBottom: true });
+    renderGlobalMessages({ forceBottom: message.authorId === state.me?.id });
     queueAdminMessagesRefresh();
     if (state.me?.isAdmin && state.adminReports.length) loadAdminReports().catch(() => {});
   });
@@ -1532,7 +1551,7 @@ function connectSocket() {
   state.socket.on('global-message-updated', (message) => {
     const beforeCount = state.globalMessages.length;
     upsertGlobalMessage(message);
-    renderGlobalMessages({ forceBottom: true });
+    renderGlobalMessages({ forceBottom: message.authorId === state.me?.id });
     queueAdminMessagesRefresh();
     if (state.me?.isAdmin && state.adminReports.length) loadAdminReports().catch(() => {});
   });

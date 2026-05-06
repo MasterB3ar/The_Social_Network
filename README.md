@@ -1,4 +1,4 @@
-# TSN V1.3.5 — Chat-first global TSN
+# TSN V1.3.6 — Global chat scroll fix
 
 This version removes the TSN shop/currency system from normal TSN.
 
@@ -10,6 +10,13 @@ This version removes the TSN shop/currency system from normal TSN.
 - Removed chat-picture sending from private chat.
 - New users no longer receive any shop/currency fields.
 - Normal TSN no longer needs TSN-S wallet environment variables.
+
+
+## Global chat scroll fix
+
+- Opening/loading TSN now starts the global chat at the newest messages at the bottom.
+- If you scroll up to read older global chat messages, new incoming messages no longer force you down to the bottom.
+- Your own sent global chat messages still scroll to the bottom immediately after sending.
 
 ## Admin privacy change
 
