@@ -159,11 +159,12 @@ function getTsnStockSnapshot(db, { persist = false, reason = 'view' } = {}) {
   const usersTotal = Math.max(1, (Array.isArray(db.users) ? db.users : []).filter((user) => !isBanned(user)).length);
   const onlineCount = onlineUsers.size;
   const privateMessagesPerHour = countSince(db.messages, hourAgoMs);
+  const globalChatMessagesPerHour = countSince(db.globalMessages, hourAgoMs);
   const globalCommentsPerHour = (Array.isArray(db.globalMessages) ? db.globalMessages : []).reduce((total, message) => {
     return total + countSince(message.comments || [], hourAgoMs);
   }, 0);
-  const messagesPerHour = privateMessagesPerHour + globalCommentsPerHour;
-  const postsPerHour = countSince(db.globalMessages, hourAgoMs);
+  const messagesPerHour = privateMessagesPerHour + globalChatMessagesPerHour + globalCommentsPerHour;
+  const postsPerHour = 0;
   const expected = expectedActivityForHour(now.getHours());
 
   const expectedOnline = Math.max(1, usersTotal * expected.online);
@@ -172,12 +173,12 @@ function getTsnStockSnapshot(db, { persist = false, reason = 'view' } = {}) {
   const onlineRatio = onlineCount / expectedOnline;
   const messageRatio = messagesPerHour / expectedMessages;
   const postRatio = postsPerHour / expectedPosts;
-  const activityScore = Math.max(0, Math.min(3.5, onlineRatio * 0.45 + messageRatio * 0.30 + postRatio * 0.25));
+  const activityScore = Math.max(0, Math.min(3.5, onlineRatio * 0.45 + messageRatio * 0.55));
 
   const previousPrice = Number(db.tsnStock.price) || 100;
   const targetPrice = 100 * (0.68 + activityScore * 0.62);
   const timePressure = (expected.online + expected.messages + expected.posts) / 3;
-  const momentum = Math.max(-3.5, Math.min(5.5, (postsPerHour * 0.35 + messagesPerHour * 0.07 + onlineCount * 0.45) * (0.55 + timePressure) - 1.2));
+  const momentum = Math.max(-3.5, Math.min(5.5, (messagesPerHour * 0.10 + onlineCount * 0.45) * (0.55 + timePressure) - 1.2));
   const rawPrice = previousPrice + (targetPrice - previousPrice) * 0.22 + momentum;
   const price = Number(Math.max(1, Math.min(9999, rawPrice)).toFixed(2));
   const change = Number((price - previousPrice).toFixed(2));
@@ -188,7 +189,7 @@ function getTsnStockSnapshot(db, { persist = false, reason = 'view' } = {}) {
   const snapshot = {
     symbol: 'TSN',
     name: 'TSN Stock',
-    disclaimer: 'Fiktiv TSN-aktivitetspris. Ikke en rigtig aktie og ikke finansiel rådgivning.',
+    disclaimer: 'Fiktiv TSN-chataktivitetspris. Ikke en rigtig aktie og ikke finansiel rådgivning.',
     price,
     previousPrice,
     change,
@@ -200,6 +201,7 @@ function getTsnStockSnapshot(db, { persist = false, reason = 'view' } = {}) {
       usersTotal,
       messagesPerHour,
       privateMessagesPerHour,
+      globalChatMessagesPerHour,
       globalCommentsPerHour,
       postsPerHour,
       hour: now.getHours(),
@@ -210,8 +212,8 @@ function getTsnStockSnapshot(db, { persist = false, reason = 'view' } = {}) {
     },
     weights: {
       onlineUsers: 45,
-      messagesPerHour: 30,
-      postsPerHour: 25
+      messagesPerHour: 55,
+      postsPerHour: 0
     },
     history: [...db.tsnStock.history, { price, createdAt: generatedAt }].slice(-120),
     updatedAt: generatedAt
@@ -920,6 +922,7 @@ function buildAdminStats(db) {
     onlineUsers: users.filter((user) => onlineUsers.has(user.id)).length,
     bannedUsers: users.filter(isBanned).length,
     globalPosts: globalMessages.length,
+    globalChatMessages: globalMessages.length,
     globalComments: commentsCount,
     globalLikes: likesCount,
     directMessages: directMessages.length,
@@ -1205,8 +1208,8 @@ function findReportTarget(db, report) {
     return {
       exists: Boolean(message),
       type: report.type,
-      label: 'Globalt opslag',
-      body: message ? getEncryptedObjectField(message, 'text') : 'Opslaget findes ikke længere.',
+      label: 'Global chatbesked',
+      body: message ? getEncryptedObjectField(message, 'text') : 'Chatbeskeden findes ikke længere.',
       createdAt: message?.createdAt || null,
       author: adminMessageActor(author),
       messageId: report.messageId
@@ -1221,7 +1224,7 @@ function findReportTarget(db, report) {
     return {
       exists: Boolean(message && comment),
       type: report.type,
-      label: 'Global kommentar',
+      label: 'Historisk global kommentar',
       body: comment ? getEncryptedObjectField(comment, 'text') : 'Kommentaren findes ikke længere.',
       parentBody: message ? getEncryptedObjectField(message, 'text') : '',
       createdAt: comment?.createdAt || null,
@@ -1387,8 +1390,8 @@ function buildAdminMessageArchive(db) {
       pushItem({
         id: `global-comment:${message.id}:${comment.id}`,
         kind: 'global-comment',
-        label: 'global kommentar',
-        source: 'Kommentar til global chat',
+        label: 'historisk global kommentar',
+        source: 'Historisk kommentar til global chat',
         messageId: message.id,
         commentId: comment.id,
         author: adminMessageActor(findUser(comment.authorId)),
@@ -1942,7 +1945,7 @@ app.delete('/api/admin/reports/:reportId/target', requireAuth, requireAdmin, asy
   let deleted = null;
   if (report.type === 'global-message') {
     deleted = removeGlobalMessageById(db, report.messageId);
-    if (!deleted) return res.status(404).json({ error: 'Opslaget findes ikke længere.' });
+    if (!deleted) return res.status(404).json({ error: 'Chatbeskeden findes ikke længere.' });
   } else if (report.type === 'global-comment') {
     deleted = removeGlobalCommentById(db, report.messageId, report.commentId);
     if (!deleted) return res.status(404).json({ error: 'Kommentaren findes ikke længere.' });
@@ -2081,6 +2084,7 @@ app.get('/api/global/messages', requireAuth, (req, res) => {
   const messages = [...(req.db.globalMessages || [])]
     .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
     .slice(0, limit)
+    .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt))
     .map((message) => attachGlobalMessagePeople(message, req.db.users, req.user.id));
 
   res.json({ messages });
@@ -2088,8 +2092,8 @@ app.get('/api/global/messages', requireAuth, (req, res) => {
 
 app.post('/api/global/messages', requireAuth, async (req, res) => {
   const text = cleanText(req.body.text || req.body.body, 600);
-  if (!text) return res.status(400).json({ error: 'Global besked må ikke være tom.' });
-  if (rejectBlockedContent(res, text, 'Global besked')) return;
+  if (!text) return res.status(400).json({ error: 'Global chatbesked må ikke være tom.' });
+  if (rejectBlockedContent(res, text, 'Global chatbesked')) return;
 
   const db = req.db;
   const message = {
@@ -2110,7 +2114,7 @@ app.post('/api/global/messages', requireAuth, async (req, res) => {
   await writeDb(db);
 
   emitGlobalMessageUpdated(db, message);
-  broadcastTsnStock(readDb(), 'global-post').catch((error) => console.warn(`TSN Stock update failed: ${error.message}`));
+  broadcastTsnStock(readDb(), 'global-chat').catch((error) => console.warn(`TSN Stock update failed: ${error.message}`));
   res.status(201).json({ message: attachGlobalMessagePeople(message, db.users, req.user.id) });
 });
 
@@ -2118,7 +2122,7 @@ app.post('/api/global/messages/:messageId/like', requireAuth, async (req, res) =
   const db = req.db;
   db.globalMessages = Array.isArray(db.globalMessages) ? db.globalMessages : [];
   const message = db.globalMessages.find((candidate) => candidate.id === req.params.messageId);
-  if (!message) return res.status(404).json({ error: 'Globalt opslag blev ikke fundet.' });
+  if (!message) return res.status(404).json({ error: 'Global chatbesked blev ikke fundet.' });
 
   normalizeGlobalMessageInteractions(message);
   const existingIndex = message.likes.indexOf(req.user.id);
@@ -2142,7 +2146,7 @@ app.post('/api/global/messages/:messageId/comments', requireAuth, async (req, re
   const db = req.db;
   db.globalMessages = Array.isArray(db.globalMessages) ? db.globalMessages : [];
   const message = db.globalMessages.find((candidate) => candidate.id === req.params.messageId);
-  if (!message) return res.status(404).json({ error: 'Globalt opslag blev ikke fundet.' });
+  if (!message) return res.status(404).json({ error: 'Global chatbesked blev ikke fundet.' });
 
   normalizeGlobalMessageInteractions(message);
   const comment = {
@@ -2167,7 +2171,7 @@ app.delete('/api/global/messages/:messageId/comments/:commentId', requireAuth, a
   const db = req.db;
   db.globalMessages = Array.isArray(db.globalMessages) ? db.globalMessages : [];
   const message = db.globalMessages.find((candidate) => candidate.id === req.params.messageId);
-  if (!message) return res.status(404).json({ error: 'Globalt opslag blev ikke fundet.' });
+  if (!message) return res.status(404).json({ error: 'Global chatbesked blev ikke fundet.' });
 
   normalizeGlobalMessageInteractions(message);
   const index = message.comments.findIndex((candidate) => candidate.id === req.params.commentId);
@@ -2192,7 +2196,7 @@ app.delete('/api/global/messages/:messageId', requireAuth, async (req, res) => {
 
   const message = db.globalMessages[index];
   if (req.user.role !== 'admin' && message.authorId !== req.user.id) {
-    return res.status(403).json({ error: 'Du kan kun slette dine egne globale beskeder, medmindre du er admin.' });
+    return res.status(403).json({ error: 'Du kan kun slette dine egne globale chatbeskeder, medmindre du er admin.' });
   }
 
   const [deleted] = db.globalMessages.splice(index, 1);
@@ -2221,12 +2225,12 @@ app.post('/api/reports', requireAuth, async (req, res) => {
 
   if (type === 'global-message') {
     const message = (Array.isArray(db.globalMessages) ? db.globalMessages : []).find((candidate) => candidate.id === req.body.messageId);
-    if (!message) return res.status(404).json({ error: 'Opslaget blev ikke fundet.' });
+    if (!message) return res.status(404).json({ error: 'Chatbeskeden blev ikke fundet.' });
     report.messageId = message.id;
     report.targetUserId = message.authorId;
   } else if (type === 'global-comment') {
     const message = (Array.isArray(db.globalMessages) ? db.globalMessages : []).find((candidate) => candidate.id === req.body.messageId);
-    if (!message) return res.status(404).json({ error: 'Opslaget blev ikke fundet.' });
+    if (!message) return res.status(404).json({ error: 'Chatbeskeden blev ikke fundet.' });
     normalizeGlobalMessageInteractions(message);
     const comment = message.comments.find((candidate) => candidate.id === req.body.commentId);
     if (!comment) return res.status(404).json({ error: 'Kommentaren blev ikke fundet.' });
@@ -2257,7 +2261,7 @@ app.post('/api/reports', requireAuth, async (req, res) => {
 });
 
 app.all(['/api/posts', '/api/posts/*', '/api/rooms', '/api/rooms/*'], requireAuth, (req, res) => {
-  res.status(410).json({ error: 'TSN V1.2.6 understøtter globale opslag, privat chat, læsekvitteringer og tidsbegrænset slet-for-alle.' });
+  res.status(410).json({ error: 'TSN V1.2.6 understøtter globale chatbeskeder, privat chat, læsekvitteringer og tidsbegrænset slet-for-alle.' });
 });
 
 app.get('/api/messages/:userId', requireAuth, async (req, res) => {

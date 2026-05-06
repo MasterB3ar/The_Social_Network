@@ -3,7 +3,6 @@ const state = {
   me: null,
   users: [],
   globalMessages: [],
-  activeGlobalMessageId: null,
   socket: null,
   activeChatUser: null,
   activeMessages: [],
@@ -175,7 +174,7 @@ function adminStatusClass(user) {
 }
 
 function reportTypeLabel(type) {
-  if (type === 'global-message') return 'globalt opslag';
+  if (type === 'global-message') return 'global chatbesked';
   if (type === 'global-comment') return 'global kommentar';
   if (type === 'direct-message') return 'privat besked';
   if (type === 'user') return 'bruger';
@@ -220,7 +219,7 @@ function upsertGlobalMessage(message) {
   } else {
     state.globalMessages.push(message);
   }
-  state.globalMessages.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+  state.globalMessages.sort((a, b) => new Date(a.createdAt || 0) - new Date(b.createdAt || 0));
   return true;
 }
 
@@ -517,7 +516,7 @@ if (deleteAccountBtn) {
       showToast('Adgangskode er påkrævet.');
       return;
     }
-    if (!confirm('Er du helt sikker? Kontoen, opslag, kommentarer og private beskeder bliver slettet.')) return;
+    if (!confirm('Er du helt sikker? Kontoen, globale chatbeskeder og private beskeder bliver slettet.')) return;
 
     try {
       await api('/api/me', {
@@ -818,7 +817,7 @@ $('#globalMessageForm').addEventListener('submit', async (event) => {
     });
     input.value = '';
     upsertGlobalMessage(data.message);
-    renderGlobalMessages({ forceTop: true });
+    renderGlobalMessages({ forceBottom: true });
   } catch (error) {
     showToast(error.message);
   }
@@ -826,32 +825,10 @@ $('#globalMessageForm').addEventListener('submit', async (event) => {
 
 if (globalMessagesList) {
   globalMessagesList.addEventListener('click', async (event) => {
-    const backButton = event.target.closest('[data-close-global-detail]');
-    const likeButton = event.target.closest('[data-like-global-message]');
     const deleteMessageButton = event.target.closest('[data-delete-global-message]');
-    const deleteCommentButton = event.target.closest('[data-delete-global-comment]');
     const reportMessageButton = event.target.closest('[data-report-global-message]');
-    const reportCommentButton = event.target.closest('[data-report-global-comment]');
-    const openButton = event.target.closest('[data-open-global-message]');
-
-    if (backButton) {
-      event.preventDefault();
-      event.stopPropagation();
-      blurActiveElement();
-      state.activeGlobalMessageId = null;
-      renderGlobalMessages({ forceTop: true });
-      return;
-    }
 
     try {
-      if (likeButton) {
-        const messageId = likeButton.dataset.likeGlobalMessage;
-        const data = await api(`/api/global/messages/${messageId}/like`, { method: 'POST' });
-        upsertGlobalMessage(data.message);
-        renderGlobalMessages();
-        return;
-      }
-
       if (reportMessageButton) {
         event.preventDefault();
         event.stopPropagation();
@@ -859,87 +836,14 @@ if (globalMessagesList) {
         return;
       }
 
-      if (reportCommentButton) {
-        event.preventDefault();
-        event.stopPropagation();
-        await createReport('global-comment', {
-          messageId: reportCommentButton.dataset.messageId,
-          commentId: reportCommentButton.dataset.reportGlobalComment
-        });
-        return;
-      }
-
-      if (deleteCommentButton) {
-        const messageId = deleteCommentButton.dataset.messageId;
-        const commentId = deleteCommentButton.dataset.deleteGlobalComment;
-        if (!confirm('Slet denne kommentar for alle?')) return;
-        await api(`/api/global/messages/${messageId}/comments/${commentId}`, { method: 'DELETE' });
-        const message = state.globalMessages.find((candidate) => candidate.id === messageId);
-        if (message) {
-          message.comments = (message.comments || []).filter((comment) => comment.id !== commentId);
-          message.commentsCount = Math.max(0, Number(message.commentsCount || 0) - 1);
-        }
-        renderGlobalMessages();
-        showToast('Kommentar slettet');
-        return;
-      }
-
       if (deleteMessageButton) {
-        if (!confirm('Slet dette globale opslag for alle?')) return;
+        if (!confirm('Slet denne globale chatbesked for alle?')) return;
         const messageId = deleteMessageButton.dataset.deleteGlobalMessage;
         await api(`/api/global/messages/${messageId}`, { method: 'DELETE' });
         state.globalMessages = state.globalMessages.filter((message) => message.id !== messageId);
-        if (state.activeGlobalMessageId === messageId) state.activeGlobalMessageId = null;
         renderGlobalMessages();
-        showToast('Globalt opslag slettet');
-        return;
+        showToast('Global chatbesked slettet');
       }
-
-      if (openButton) {
-        event.preventDefault();
-        event.stopPropagation();
-        blurActiveElement();
-        const messageId = openButton.dataset.openGlobalMessage;
-        if (messageId) {
-          state.activeGlobalMessageId = messageId;
-          renderGlobalMessages({ forceTop: true });
-        }
-      }
-    } catch (error) {
-      showToast(error.message);
-    }
-  });
-
-  globalMessagesList.addEventListener('keydown', (event) => {
-    if (event.key !== 'Enter' && event.key !== ' ') return;
-    const openButton = event.target.closest('[data-open-global-message]');
-    if (!openButton) return;
-    event.preventDefault();
-    const messageId = openButton.dataset.openGlobalMessage;
-    if (messageId) {
-      blurActiveElement();
-      state.activeGlobalMessageId = messageId;
-      renderGlobalMessages({ forceTop: true });
-    }
-  });
-  globalMessagesList.addEventListener('submit', async (event) => {
-    const form = event.target.closest('[data-global-comment-form]');
-    if (!form) return;
-    event.preventDefault();
-
-    const messageId = form.dataset.globalCommentForm;
-    const input = form.querySelector('input[name="comment"]');
-    const text = input?.value.trim();
-    if (!messageId || !text) return;
-
-    try {
-      const data = await api(`/api/global/messages/${messageId}/comments`, {
-        method: 'POST',
-        body: JSON.stringify({ text })
-      });
-      input.value = '';
-      upsertGlobalMessage(data.message);
-      renderGlobalMessages({ forceTop: true });
     } catch (error) {
       showToast(error.message);
     }
@@ -1075,7 +979,7 @@ function renderStats() {
   $('#userCount').textContent = String(state.users.length);
   $('#onlineCount').textContent = String(online);
   $('#onlinePill').textContent = `${online} online`;
-  $("#globalStatus").textContent = `${state.globalMessages.length} opslag`;
+  $('#globalStatus').textContent = `${state.globalMessages.length} beskeder`;
 }
 
 function renderMe() {
@@ -1088,136 +992,45 @@ function renderMe() {
   renderAdminTools();
 }
 
-function getGlobalMessageById(messageId) {
-  return state.globalMessages.find((message) => message.id === messageId) || null;
-}
 
-function renderGlobalPostCard(message, { detail = false } = {}) {
+function renderGlobalChatMessage(message) {
   const mine = message.authorId === state.me?.id;
   const authorName = message.author?.name || 'Ukendt';
-  const likesCount = Number(message.likesCount) || 0;
-  const comments = Array.isArray(message.comments) ? message.comments : [];
-  const liked = Boolean(message.likedByMe);
-  const likeLabel = liked ? 'Synes godt om ✓' : 'Synes godt om';
-  const likeCountLabel = likesCount === 1 ? '1 like' : `${likesCount} likes`;
-  const commentCountLabel = comments.length === 1 ? '1 kommentar' : `${comments.length} kommentarer`;
-  const clickableAttrs = detail ? '' : ` data-open-global-message="${escapeHtml(message.id)}" role="button" tabindex="0"`;
-  const detailClass = detail ? 'global-message-detail' : 'global-message-preview';
-
   return `
-    <article class="global-message ${detailClass} ${mine ? 'mine' : ''}"${clickableAttrs}>
-      <div class="post-row-top">
-        <div class="post-person">
-          ${avatarHtml(message.author || authorName)}
-          <div>
-            <strong>${escapeHtml(authorName)}</strong>
-            <span>@${escapeHtml(message.author?.username || 'ukendt')} · ${escapeHtml(formatTime(message.createdAt))}</span>
-          </div>
+    <article class="global-chat-message ${mine ? 'mine' : ''}" data-global-message-id="${escapeHtml(message.id)}">
+      ${avatarHtml(message.author || authorName, 'chat-avatar')}
+      <div class="global-chat-bubble">
+        <div class="global-chat-meta">
+          <strong>${escapeHtml(authorName)}</strong>
+          <span>@${escapeHtml(message.author?.username || 'ukendt')} · ${escapeHtml(formatTime(message.createdAt))}</span>
         </div>
-        <div class="post-admin-actions">
+        <p>${escapeHtml(message.text)}</p>
+        <div class="global-chat-actions">
           <button class="ghost tiny report-button" type="button" data-report-global-message="${escapeHtml(message.id)}">Rapportér</button>
           ${canDeleteMessage(message.authorId) ? `<button class="admin-delete" type="button" data-delete-global-message="${escapeHtml(message.id)}">Slet</button>` : ''}
         </div>
-      </div>
-      <p class="global-post-text">${escapeHtml(message.text)}</p>
-      <div class="global-post-actions">
-        <button class="like-button ${liked ? 'liked' : ''}" type="button" data-like-global-message="${escapeHtml(message.id)}">${escapeHtml(likeLabel)}</button>
-        <span>${escapeHtml(likeCountLabel)}</span>
-        <span>${escapeHtml(commentCountLabel)}</span>
-        ${detail ? '' : `<button class="secondary tiny open-comments-button" type="button" data-open-global-message="${escapeHtml(message.id)}">Åbn kommentarer</button>`}
       </div>
     </article>
   `;
 }
 
-function renderGlobalComments(message) {
-  const comments = (Array.isArray(message.comments) ? [...message.comments] : [])
-    .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
-  const commentsHtml = comments.length ? comments.map((comment) => {
-    const commentAuthorName = comment.author?.name || 'Ukendt';
-    return `
-      <article class="global-comment">
-        ${avatarHtml(comment.author || commentAuthorName, 'comment-avatar')}
-        <div class="global-comment-body">
-          <div class="global-comment-meta">
-            <strong>${escapeHtml(commentAuthorName)}</strong>
-            <span>@${escapeHtml(comment.author?.username || 'ukendt')} · ${escapeHtml(formatTime(comment.createdAt))}</span>
-            <button class="comment-report" type="button" data-message-id="${escapeHtml(message.id)}" data-report-global-comment="${escapeHtml(comment.id)}">Rapportér</button>
-            ${canDeleteMessage(comment.authorId) ? `<button class="comment-delete" type="button" data-message-id="${escapeHtml(message.id)}" data-delete-global-comment="${escapeHtml(comment.id)}">Slet</button>` : ''}
-          </div>
-          <p>${escapeHtml(comment.text)}</p>
-        </div>
-      </article>
-    `;
-  }).join('') : '<div class="global-comments-empty">Ingen kommentarer endnu.</div>';
-
-  return `
-    <div class="global-comments detail-comments">
-      <div class="detail-comments-head">
-        <strong>Kommentarer</strong>
-        <span>${comments.length === 1 ? '1 kommentar' : `${comments.length} kommentarer`}</span>
-      </div>
-      <form class="global-comment-form detail-comment-form" data-global-comment-form="${escapeHtml(message.id)}">
-        <input name="comment" maxlength="400" placeholder="Skriv en kommentar..." autocomplete="off" />
-        <button class="secondary tiny" type="submit">Kommentér</button>
-      </form>
-      <div class="global-comments-list">
-        ${commentsHtml}
-      </div>
-    </div>
-  `;
-}
-
-function renderGlobalDetail(message) {
-  return `
-    <div class="global-detail-view">
-      <button class="ghost detail-back-button" type="button" data-close-global-detail>← Tilbage til globale opslag</button>
-      ${renderGlobalPostCard(message, { detail: true })}
-      ${renderGlobalComments(message)}
-    </div>
-  `;
-}
-
-function renderGlobalMessages({ forceBottom = false, forceTop = false } = {}) {
+function renderGlobalMessages({ forceBottom = false } = {}) {
   renderStats();
   if (!globalMessagesList) return;
   const scrollSnapshot = getScrollSnapshot(globalMessagesList);
-  const globalMessageForm = $('#globalMessageForm');
 
   if (!state.globalMessages.length) {
-    state.activeGlobalMessageId = null;
     globalMessagesList.classList.remove('is-detail-mode');
-    globalMessagesList.innerHTML = '<div class="empty">Der er ingen globale opslag endnu. Skriv det første.</div>';
-    globalMessageForm?.classList.remove('hidden');
+    globalMessagesList.innerHTML = '<div class="empty">Der er ingen globale chatbeskeder endnu. Skriv den første.</div>';
     restoreMessageScroll(globalMessagesList, scrollSnapshot, { forceBottom });
     return;
   }
 
-  if (state.activeGlobalMessageId) {
-    const activeMessage = getGlobalMessageById(state.activeGlobalMessageId);
-    if (activeMessage) {
-      globalMessagesList.classList.add('is-detail-mode');
-      globalMessageForm?.classList.add('hidden');
-      globalMessagesList.innerHTML = renderGlobalDetail(activeMessage);
-      if (forceTop) {
-        forceGlobalDetailTop();
-      } else {
-        restoreMessageScroll(globalMessagesList, scrollSnapshot, { forceBottom: false });
-      }
-      return;
-    }
-    state.activeGlobalMessageId = null;
-  }
-
   globalMessagesList.classList.remove('is-detail-mode');
-  globalMessageForm?.classList.remove('hidden');
-  globalMessagesList.innerHTML = state.globalMessages.map((message) => renderGlobalPostCard(message)).join('');
-  if (forceTop) {
-    scrollElementToTop(globalMessagesList);
-  } else {
-    restoreMessageScroll(globalMessagesList, scrollSnapshot, { forceBottom });
-  }
+  globalMessagesList.innerHTML = state.globalMessages.map((message) => renderGlobalChatMessage(message)).join('');
+  restoreMessageScroll(globalMessagesList, scrollSnapshot, { forceBottom });
 }
+
 function renderUsers() {
   renderStats();
 
@@ -1379,7 +1192,7 @@ function renderAdminStats() {
   const cards = [
     { label: 'Brugere', value: stats.usersTotal, sub: `${formatNumber(stats.onlineUsers)} online · ${formatNumber(stats.bannedUsers)} banned` },
     { label: 'Åbne rapporter', value: stats.openReports, sub: `${formatNumber(stats.reportsTotal)} rapporter i alt` },
-    { label: 'Opslag', value: stats.globalPosts, sub: `${formatNumber(stats.globalComments)} kommentarer · ${formatNumber(stats.globalLikes)} likes` },
+    { label: 'Global chat', value: stats.globalChatMessages ?? stats.globalPosts, sub: stats.latestGlobalPostAt ? `Seneste ${formatTime(stats.latestGlobalPostAt)}` : 'Ingen globale chatbeskeder endnu' },
     { label: 'Private beskeder', value: stats.directMessages, sub: stats.latestDirectMessageAt ? `Seneste ${formatTime(stats.latestDirectMessageAt)}` : 'Ingen private beskeder endnu' }
   ];
 
@@ -1420,8 +1233,8 @@ function renderAdminUsers() {
           </div>
         </div>
         <div class="admin-user-metrics" aria-label="Brugerstatistik">
-          <span>${formatNumber(stats.globalPostsCount)} opslag</span>
-          <span>${formatNumber(stats.commentsCount)} kommentarer</span>
+          <span>${formatNumber(stats.globalPostsCount)} global chat</span>
+          <span>${formatNumber(stats.commentsCount)} hist. kommentarer</span>
           <span>${formatNumber(stats.privateMessagesCount)} DM</span>
           <span class="${openReports ? 'hot' : ''}">${formatNumber(openReports)} åbne rapporter</span>
         </div>
@@ -1440,15 +1253,15 @@ function renderAdminUsers() {
 function adminMessageParticipants(item) {
   if (item.kind === 'direct-message') return `${item.fromUser?.name || 'Ukendt'} → ${item.toUser?.name || 'Ukendt'}`;
   if (item.kind === 'global-message') return `${item.author?.name || 'Ukendt'} i global chat`;
-  if (item.kind === 'global-comment') return `${item.author?.name || 'Ukendt'} kommenterede på ${item.parentAuthor?.name || 'et globalt opslag'}`;
+  if (item.kind === 'global-comment') return `${item.author?.name || 'Ukendt'} skrev en historisk kommentar`;
   return item.author?.name || 'Ukendt';
 }
 
 function adminMessageMeta(item) {
   const parts = [item.source || item.label, formatTime(item.createdAt)];
   if (item.kind === 'direct-message') parts.push('privat');
-  if (item.kind === 'global-message') parts.push(`${formatNumber(item.likesCount)} likes`, `${formatNumber(item.commentsCount)} kommentarer`);
-  if (item.kind === 'global-comment') parts.push('global kommentar');
+  if (item.kind === 'global-message') parts.push('global chat');
+  if (item.kind === 'global-comment') parts.push('historisk kommentar');
   return parts.filter(Boolean).join(' · ');
 }
 
@@ -1668,7 +1481,7 @@ async function loadUsers(q = '') {
 async function loadGlobalMessages() {
   const data = await api('/api/global/messages');
   state.globalMessages = data.messages || [];
-  renderGlobalMessages({ forceTop: true });
+  renderGlobalMessages({ forceBottom: true });
 }
 
 async function loadEverything() {
@@ -1711,7 +1524,7 @@ function connectSocket() {
 
   state.socket.on('global-message', (message) => {
     upsertGlobalMessage(message);
-    renderGlobalMessages({ forceTop: message.authorId === state.me?.id });
+    renderGlobalMessages({ forceBottom: true });
     queueAdminMessagesRefresh();
     if (state.me?.isAdmin && state.adminReports.length) loadAdminReports().catch(() => {});
   });
@@ -1719,7 +1532,7 @@ function connectSocket() {
   state.socket.on('global-message-updated', (message) => {
     const beforeCount = state.globalMessages.length;
     upsertGlobalMessage(message);
-    renderGlobalMessages({ forceTop: beforeCount !== state.globalMessages.length && message.authorId === state.me?.id });
+    renderGlobalMessages({ forceBottom: true });
     queueAdminMessagesRefresh();
     if (state.me?.isAdmin && state.adminReports.length) loadAdminReports().catch(() => {});
   });
@@ -1731,7 +1544,6 @@ function connectSocket() {
     }
     const before = state.globalMessages.length;
     state.globalMessages = state.globalMessages.filter((message) => message.id !== messageId);
-    if (state.activeGlobalMessageId === messageId) state.activeGlobalMessageId = null;
     if (state.globalMessages.length !== before) renderGlobalMessages();
     queueAdminMessagesRefresh();
     if (state.me?.isAdmin && state.adminReports.length) loadAdminReports().catch(() => {});

@@ -1,4 +1,4 @@
-# TSN V1.3.4 — Shop/currency removed + private-message privacy
+# TSN V1.3.5 — Chat-first global TSN
 
 This version removes the TSN shop/currency system from normal TSN.
 

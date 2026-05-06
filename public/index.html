@@ -118,7 +118,7 @@
 
         <section class="danger-zone">
           <strong>Slet konto</strong>
-          <p>Sletter din konto, dine opslag, dine kommentarer og dine private beskeder.</p>
+          <p>Sletter din konto, dine globale chatbeskeder og dine private beskeder.</p>
           <button id="deleteAccountBtn" class="ghost danger tiny" type="button">Slet min konto</button>
         </section>
 
@@ -145,7 +145,7 @@
             <div id="adminStatsGrid" class="admin-stats-grid">
               <div><strong>–</strong><span>Brugere</span></div>
               <div><strong>–</strong><span>Åbne rapporter</span></div>
-              <div><strong>–</strong><span>Opslag</span></div>
+              <div><strong>–</strong><span>Global chat</span></div>
               <div><strong>–</strong><span>Private beskeder</span></div>
             </div>
 
@@ -181,8 +181,8 @@
           <div class="section-heading compact-heading">
             <div>
               <p class="eyebrow mini">Global</p>
-              <h2>Globale opslag</h2>
-              <p>Alle, der er logget ind på TSN, kan læse, skrive og like her. Klik på et opslag for at åbne kommentarer.</p>
+              <h2>Global chat</h2>
+              <p>Alle, der er logget ind på TSN, kan skrive i samme live chat. Fokus er hurtige beskeder og samtaler i realtid.</p>
             </div>
             <span id="globalStatus" class="pill">0 beskeder</span>
           </div>
@@ -190,7 +190,7 @@
           <div id="globalMessagesList" class="messages global-messages"></div>
 
           <form id="globalMessageForm" class="message-form global-message-form">
-            <input id="globalMessageInput" maxlength="600" placeholder="Skriv et globalt opslag..." autocomplete="off" />
+            <input id="globalMessageInput" maxlength="600" placeholder="Skriv en global chatbesked..." autocomplete="off" />
             <button class="primary" type="submit">Send</button>
           </form>
         </section>
@@ -227,7 +227,7 @@
             <div>
               <p class="eyebrow mini">Kun admin</p>
               <h2>Rapporter</h2>
-              <p>Gennemgå rapporterede opslag, kommentarer og brugere. Private besked-rapporter skjuler selve indholdet.</p>
+              <p>Gennemgå rapporterede globale chatbeskeder og brugere. Private besked-rapporter skjuler selve indholdet.</p>
             </div>
             <span id="adminReportCount" class="pill">0 rapporter</span>
           </div>
@@ -239,8 +239,8 @@
             </select>
             <select id="adminReportType" aria-label="Filter for rapporttype">
               <option value="all">Alle typer</option>
-              <option value="global-message">Opslag</option>
-              <option value="global-comment">Kommentarer</option>
+              <option value="global-message">Global chat</option>
+              <option value="global-comment">Historiske kommentarer</option>
               <option value="direct-message">Private beskeder</option>
               <option value="user">Brugere</option>
             </select>
@@ -304,7 +304,7 @@
       <ul>
         <li>Ingen spam, chikane, trusler eller hate speech.</li>
         <li>Del ikke private oplysninger om dig selv eller andre.</li>
-        <li>Rapportér opslag, kommentarer, private beskeder eller brugere, hvis noget er forkert.</li>
+        <li>Rapportér globale chatbeskeder, private beskeder eller brugere, hvis noget er forkert.</li>
         <li>Admins kan slette indhold, smide brugere ud og banne konti for at holde TSN sikkert.</li>
       </ul>
       <p>TSN er stadig en beta. Inviter kun personer, du stoler på, indtil moderation og sikkerhed er testet.</p>
