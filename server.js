@@ -67,7 +67,7 @@ const TSNM_MARKET_ITEMS = Object.freeze([
     id: 'pfp-midnight-bear',
     type: 'profile-picture',
     name: 'Midnight Bear',
-    price: 80,
+    price: 1000,
     rarity: 'common',
     symbol: '🐻',
     colors: ['#1b2440', '#7c5cff'],
@@ -78,7 +78,7 @@ const TSNM_MARKET_ITEMS = Object.freeze([
     id: 'pfp-cyber-cat',
     type: 'profile-picture',
     name: 'Cyber Cat',
-    price: 120,
+    price: 2500,
     rarity: 'rare',
     symbol: '🐱',
     colors: ['#00d4ff', '#ff4ecd'],
@@ -89,7 +89,7 @@ const TSNM_MARKET_ITEMS = Object.freeze([
     id: 'pfp-gold-crown',
     type: 'profile-picture',
     name: 'Gold Crown',
-    price: 180,
+    price: 5000,
     rarity: 'epic',
     symbol: '👑',
     colors: ['#ffb703', '#ff6b35'],
@@ -100,7 +100,7 @@ const TSNM_MARKET_ITEMS = Object.freeze([
     id: 'gif-fire-loop',
     type: 'animated-gif',
     name: 'Fire Loop GIF',
-    price: 220,
+    price: 3500,
     rarity: 'rare',
     symbol: '🔥',
     colors: ['#ff3b30', '#ffb703'],
@@ -111,7 +111,7 @@ const TSNM_MARKET_ITEMS = Object.freeze([
     id: 'gif-galaxy-spin',
     type: 'animated-gif',
     name: 'Galaxy Spin GIF',
-    price: 280,
+    price: 7500,
     rarity: 'epic',
     symbol: '🌌',
     colors: ['#7c5cff', '#00e5ff'],
@@ -122,7 +122,7 @@ const TSNM_MARKET_ITEMS = Object.freeze([
     id: 'gif-matrix-rain',
     type: 'animated-gif',
     name: 'Matrix Rain GIF',
-    price: 320,
+    price: 9000,
     rarity: 'epic',
     symbol: '⌁',
     colors: ['#00ff88', '#062b18'],
@@ -133,7 +133,7 @@ const TSNM_MARKET_ITEMS = Object.freeze([
     id: 'gif-thunder-vip',
     type: 'animated-gif',
     name: 'Thunder VIP GIF',
-    price: 420,
+    price: 15000,
     rarity: 'legendary',
     symbol: '⚡',
     colors: ['#f9f871', '#7c5cff'],
@@ -2843,7 +2843,7 @@ async function startServer() {
       console.log(`Backup directory: ${DB_BACKUP_DIR}`);
       const warning = storagePersistenceWarning();
       if (warning) console.warn(`Persistence warning: ${warning}`);
-      console.log('TSN V1.3.1 mode: TSNM Market uses TSN-S wallet only, public TSN Stock API, global posts and private chat.');
+      console.log('TSN V1.3.2 mode: TSNM Market uses TSN-S wallet only with higher cosmetic prices, public TSN Stock API, global posts and private chat.');
       console.log('Admin rights can be claimed inside the app with TSN_ADMIN_SETUP_PASSWORD or TSN_ADMIN_SETUP_PASSWORD_HASH.');
 
       if (process.env.NODE_ENV === 'production' && JWT_SECRET === DEFAULT_JWT_SECRET) {

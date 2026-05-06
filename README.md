@@ -1,10 +1,26 @@
-# TSN V1.3.1 — TSNM Market using TSN-S wallet only
+# TSN V1.3.2 — More expensive TSNM Market using TSN-S wallet only
 
-This version implements **TSNM Market inside normal TSN**, but normal TSN does **not** create or reward TSNM.
+This version implements **TSNM Market inside normal TSN** with much higher cosmetic prices, but normal TSN does **not** create or reward TSNM.
 
 Important rule:
 
 > Users can only earn TSNM in **TSN-S / TSN-Stock**. Normal TSN only reads the shared TSN-S wallet balance and lets users spend TSNM on cosmetics.
+
+
+## V1.3.2 price update
+
+The TSNM Market cosmetics are now much more expensive:
+
+| Item | New price |
+| --- | ---: |
+| Neon Core | Free |
+| Midnight Bear | 1,000 TSNM |
+| Cyber Cat | 2,500 TSNM |
+| Gold Crown | 5,000 TSNM |
+| Fire Loop GIF | 3,500 TSNM |
+| Galaxy Spin GIF | 7,500 TSNM |
+| Matrix Rain GIF | 9,000 TSNM |
+| Thunder VIP GIF | 15,000 TSNM |
 
 ## What is included
 

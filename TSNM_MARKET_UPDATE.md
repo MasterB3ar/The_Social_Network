@@ -1,6 +1,6 @@
-# TSN V1.3.1 — TSNM Market update
+# TSN V1.3.2 — TSNM Market price update
 
-This build adds TSNM Market into normal TSN, but TSNM is **only earned in TSN-S / TSN-Stock**.
+This build keeps TSNM Market inside normal TSN, but makes cosmetics much more expensive. TSNM is still **only earned in TSN-S / TSN-Stock**.
 
 ## Changed from V1.3.0
 
@@ -33,3 +33,15 @@ POST /api/market/equip
 ```
 
 `POST /api/market/claim-daily` intentionally returns `403` because TSNM must only be earned in TSN-S.
+
+
+## New V1.3.2 prices
+
+- Neon Core: Free
+- Midnight Bear: 1,000 TSNM
+- Cyber Cat: 2,500 TSNM
+- Gold Crown: 5,000 TSNM
+- Fire Loop GIF: 3,500 TSNM
+- Galaxy Spin GIF: 7,500 TSNM
+- Matrix Rain GIF: 9,000 TSNM
+- Thunder VIP GIF: 15,000 TSNM
