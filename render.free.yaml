@@ -6,7 +6,7 @@ services:
     runtime: node
     plan: free
     region: frankfurt
-    buildCommand: npm install
+    buildCommand: npm cache clean --force && npm install --omit=dev --no-audit --no-fund --prefer-online
     startCommand: npm start
     healthCheckPath: /api/health
     autoDeployTrigger: commit
@@ -14,7 +14,7 @@ services:
       - key: NODE_ENV
         value: production
       - key: NODE_VERSION
-        value: 24.14.1
+        value: 20.12.2
       - key: MONGODB_URI
         sync: false
       - key: MONGODB_DB_NAME
@@ -23,6 +23,12 @@ services:
         value: app_state
       - key: MONGODB_STATE_ID
         value: main
+      - key: TSNS_MONGODB_URI
+        sync: false
+      - key: TSNS_MONGODB_DATABASE
+        value: tsn_stock
+      - key: TSNS_WALLET_COLLECTION
+        value: tsnMoneyWallets
       - key: JWT_SECRET
         generateValue: true
       - key: TSN_DATA_ENCRYPTION_KEY

@@ -89,6 +89,10 @@
           <span class="nav-icon">💬</span>
           <span>Privat chat</span>
         </button>
+        <button class="app-nav-button" type="button" data-app-nav="market">
+          <span class="nav-icon">🛍️</span>
+          <span>TSNM Market</span>
+        </button>
         <button id="adminNavButton" class="app-nav-button hidden" type="button" data-app-nav="admin">
           <span class="nav-icon">🛡️</span>
           <span>Admin</span>
@@ -101,6 +105,7 @@
           <div>
             <h2 id="myName">Indlæser...</h2>
             <p id="myUsername">@username</p>
+            <span id="myTsnmBalance" class="tsnm-balance-pill">0 TSNM</span>
           </div>
         </div>
 
@@ -175,6 +180,41 @@
           <div><strong id="onlineCount">0</strong><span>Online</span></div>
         </div>
       </aside>
+
+
+      <section class="market-panel card route-view" data-route-view="market">
+        <div class="section-heading compact-heading market-heading">
+          <div>
+            <p class="eyebrow mini">TSNM</p>
+            <h2>TSNM Market</h2>
+            <p>Køb profile pictures og animated GIF-avatarer med TSNM, som du optjener i TSN-S / TSN-Stock.</p>
+          </div>
+          <div class="market-balance-card">
+            <span>Balance</span>
+            <strong id="marketBalance">– TSNM</strong>
+            <small id="marketOwnedCount">0 items</small>
+          </div>
+        </div>
+
+        <div class="market-daily-card">
+          <div>
+            <strong>TSN-S wallet</strong>
+            <span id="marketDailyStatus">TSNM optjenes kun i TSN-S / TSN-Stock.</span>
+          </div>
+        </div>
+
+        <div id="marketItemsGrid" class="market-items-grid"></div>
+
+        <section class="market-history">
+          <div class="section-heading compact-heading">
+            <div>
+              <p class="eyebrow mini">Wallet</p>
+              <h2>TSNM historik</h2>
+            </div>
+          </div>
+          <div id="marketTransactionsList" class="market-transactions-list"></div>
+        </section>
+      </section>
 
       <section class="chat-main route-view" data-route-view="global">
         <section class="global-chat card">

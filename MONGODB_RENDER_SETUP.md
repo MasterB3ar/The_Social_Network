@@ -35,7 +35,7 @@ TSN_CONTENT_FILTER_ENABLED=true
 Brug:
 
 ```bash
-Build Command: npm install
+Build Command: npm cache clean --force && npm install --omit=dev --no-audit --no-fund --prefer-online
 Start Command: npm start
 ```
 

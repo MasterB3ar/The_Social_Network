@@ -46,6 +46,101 @@ const ROOMS = Array.from({ length: 7 }, (_, index) => {
     tagline: 'Claim this room to rename it and optionally set a password.'
   };
 });
+// TSNM is earned only in TSN-S / TSN-Stock. Normal TSN only reads and spends the shared TSN-S wallet.
+const TSNS_MONGODB_URI = process.env.TSNS_MONGODB_URI || process.env.TSN_STOCK_MONGODB_URI || MONGODB_URI;
+const TSNS_MONGODB_DATABASE = process.env.TSNS_MONGODB_DATABASE || process.env.TSN_STOCK_MONGODB_DATABASE || 'tsn_stock';
+const TSNS_WALLET_COLLECTION = process.env.TSNS_WALLET_COLLECTION || process.env.MONGODB_WALLET_COLLECTION || 'tsnMoneyWallets';
+const DEFAULT_MARKET_ITEM_ID = 'pfp-neon-core';
+const TSNM_MARKET_ITEMS = Object.freeze([
+  {
+    id: 'pfp-neon-core',
+    type: 'profile-picture',
+    name: 'Neon Core',
+    price: 0,
+    rarity: 'starter',
+    symbol: '⚡',
+    colors: ['#7c5cff', '#24d6ff'],
+    animated: false,
+    description: 'Gratis TSN-startprofilbillede.'
+  },
+  {
+    id: 'pfp-midnight-bear',
+    type: 'profile-picture',
+    name: 'Midnight Bear',
+    price: 80,
+    rarity: 'common',
+    symbol: '🐻',
+    colors: ['#1b2440', '#7c5cff'],
+    animated: false,
+    description: 'Mørkt profilbillede med lilla TSN-glow.'
+  },
+  {
+    id: 'pfp-cyber-cat',
+    type: 'profile-picture',
+    name: 'Cyber Cat',
+    price: 120,
+    rarity: 'rare',
+    symbol: '🐱',
+    colors: ['#00d4ff', '#ff4ecd'],
+    animated: false,
+    description: 'Farverigt profilbillede til chat og opslag.'
+  },
+  {
+    id: 'pfp-gold-crown',
+    type: 'profile-picture',
+    name: 'Gold Crown',
+    price: 180,
+    rarity: 'epic',
+    symbol: '👑',
+    colors: ['#ffb703', '#ff6b35'],
+    animated: false,
+    description: 'Premium-look til din TSN-profil.'
+  },
+  {
+    id: 'gif-fire-loop',
+    type: 'animated-gif',
+    name: 'Fire Loop GIF',
+    price: 220,
+    rarity: 'rare',
+    symbol: '🔥',
+    colors: ['#ff3b30', '#ffb703'],
+    animated: true,
+    description: 'Animeret GIF-avatar med varm glow-effekt.'
+  },
+  {
+    id: 'gif-galaxy-spin',
+    type: 'animated-gif',
+    name: 'Galaxy Spin GIF',
+    price: 280,
+    rarity: 'epic',
+    symbol: '🌌',
+    colors: ['#7c5cff', '#00e5ff'],
+    animated: true,
+    description: 'Animeret galaxy-profilbillede til TSN.'
+  },
+  {
+    id: 'gif-matrix-rain',
+    type: 'animated-gif',
+    name: 'Matrix Rain GIF',
+    price: 320,
+    rarity: 'epic',
+    symbol: '⌁',
+    colors: ['#00ff88', '#062b18'],
+    animated: true,
+    description: 'Hacker-agtig animeret GIF-avatar.'
+  },
+  {
+    id: 'gif-thunder-vip',
+    type: 'animated-gif',
+    name: 'Thunder VIP GIF',
+    price: 420,
+    rarity: 'legendary',
+    symbol: '⚡',
+    colors: ['#f9f871', '#7c5cff'],
+    animated: true,
+    description: 'Legendarisk animeret GIF-avatar med elektrisk effekt.'
+  }
+]);
 const app = express();
 const pendingUsernameRegistrations = new Set();
 app.set('trust proxy', 1);
@@ -73,7 +168,7 @@ app.use(express.static(PUBLIC_DIR, {
 }));
 
 function emptyDatabase() {
-  return { users: [], posts: [], messages: [], globalMessages: [], rooms: [], roomMessages: [], reports: [], tsnStock: null };
+  return { users: [], posts: [], messages: [], globalMessages: [], rooms: [], roomMessages: [], reports: [], marketTransactions: [], tsnStock: null };
 }
 
 function databaseHasUserData(db) {
@@ -86,6 +181,7 @@ function databaseHasUserData(db) {
         (Array.isArray(db.globalMessages) && db.globalMessages.length) ||
         (Array.isArray(db.roomMessages) && db.roomMessages.length) ||
         (Array.isArray(db.reports) && db.reports.length) ||
+        (Array.isArray(db.marketTransactions) && db.marketTransactions.length) ||
         (db.tsnStock && Array.isArray(db.tsnStock.history) && db.tsnStock.history.length) ||
         (Array.isArray(db.rooms) && db.rooms.some((room) => room.ownerId || room.nameEnc || room.passwordHash))
       )
@@ -101,6 +197,7 @@ function normalizeDatabaseShape(db) {
     rooms: Array.isArray(db?.rooms) ? db.rooms : [],
     roomMessages: Array.isArray(db?.roomMessages) ? db.roomMessages : [],
     reports: Array.isArray(db?.reports) ? db.reports : [],
+    marketTransactions: Array.isArray(db?.marketTransactions) ? db.marketTransactions : [],
     tsnStock: normalizeTsnStockState(db?.tsnStock)
   };
 }
@@ -281,6 +378,8 @@ function ensureDatabase() {
 }
 
 let mongoClient = null;
+let tsnsMoneyMongoClient = null;
+let tsnsMoneyWalletCollection = null;
 let mongoCollection = null;
 let cachedDb = null;
 let writeQueue = Promise.resolve();
@@ -407,6 +506,226 @@ function id(prefix) {
 
 function cleanText(value, max = 2000) {
   return String(value || '').replace(/\s+/g, ' ').trim().slice(0, max);
+}
+
+function clampInteger(value, min, max) {
+  const number = Math.floor(Number(value));
+  if (!Number.isFinite(number)) return min;
+  return Math.max(min, Math.min(max, number));
+}
+
+function getMarketItem(itemId) {
+  const normalized = String(itemId || '').trim();
+  return TSNM_MARKET_ITEMS.find((item) => item.id === normalized) || null;
+}
+
+function publicMarketItem(item) {
+  if (!item) return null;
+  return {
+    id: item.id,
+    type: item.type,
+    name: item.name,
+    price: item.price,
+    rarity: item.rarity,
+    symbol: item.symbol,
+    colors: Array.isArray(item.colors) ? item.colors.slice(0, 2) : ['#7c5cff', '#24d6ff'],
+    animated: Boolean(item.animated),
+    description: item.description
+  };
+}
+
+function sanitizeTsnmPlayerId(value) {
+  return String(value || '').trim().replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 80);
+}
+
+function getTsnmPlayerName(user) {
+  return cleanText(getUserField(user, 'name') || getUserField(user, 'username') || 'TSN User', 40) || 'TSN User';
+}
+
+function defaultTsnmWallet(user) {
+  const now = new Date().toISOString();
+  return {
+    playerId: sanitizeTsnmPlayerId(user?.id),
+    playerName: getTsnmPlayerName(user),
+    balance: 0,
+    shares: 0,
+    avgBuyPrice: 0,
+    realizedProfit: 0,
+    totalEarned: 0,
+    totalBought: 0,
+    totalSold: 0,
+    lastRewardAt: now,
+    createdAt: now,
+    updatedAt: now
+  };
+}
+
+function walletBalance(wallet) {
+  const balance = Number(wallet?.balance);
+  return Number.isFinite(balance) ? clampInteger(balance, 0, 999999999) : 0;
+}
+
+async function getTsnsMoneyWalletCollection() {
+  if (!TSNS_MONGODB_URI) throw new Error('TSN-S wallet MongoDB is not configured. Set TSNS_MONGODB_URI or use the same MONGODB_URI as TSN-S.');
+  if (!MongoClient) throw new Error('MongoDB driver is not installed. Run npm install.');
+  if (tsnsMoneyWalletCollection) return tsnsMoneyWalletCollection;
+
+  if (!tsnsMoneyMongoClient) {
+    tsnsMoneyMongoClient = new MongoClient(TSNS_MONGODB_URI, {
+      serverSelectionTimeoutMS: 12000,
+      connectTimeoutMS: 12000,
+      maxPoolSize: 8
+    });
+    await tsnsMoneyMongoClient.connect();
+  }
+
+  const db = tsnsMoneyMongoClient.db(TSNS_MONGODB_DATABASE);
+  tsnsMoneyWalletCollection = db.collection(TSNS_WALLET_COLLECTION);
+  await tsnsMoneyWalletCollection.createIndex({ playerId: 1 }, { unique: true });
+  await tsnsMoneyWalletCollection.createIndex({ updatedAt: -1 });
+  return tsnsMoneyWalletCollection;
+}
+
+async function getTsnsWallet(user, { create = true } = {}) {
+  if (!user) return defaultTsnmWallet(null);
+  const playerId = sanitizeTsnmPlayerId(user.id);
+  if (!playerId || !TSNS_MONGODB_URI) return defaultTsnmWallet(user);
+
+  const collection = await getTsnsMoneyWalletCollection();
+  const existing = await collection.findOne({ playerId }, { projection: { _id: 0 } });
+  const playerName = getTsnmPlayerName(user);
+  if (existing) {
+    if (existing.playerName !== playerName) {
+      await collection.updateOne({ playerId }, { $set: { playerName, updatedAt: new Date().toISOString() } });
+      existing.playerName = playerName;
+    }
+    return existing;
+  }
+
+  const wallet = defaultTsnmWallet(user);
+  if (create) await collection.insertOne(wallet);
+  return wallet;
+}
+
+async function spendTsnsTsnm(user, amount) {
+  const cost = clampInteger(amount, 0, 999999999);
+  const playerId = sanitizeTsnmPlayerId(user?.id);
+  if (!cost) return getTsnsWallet(user);
+  if (!playerId) throw new Error('Kontoen mangler et gyldigt TSN-S wallet-id.');
+  if (!TSNS_MONGODB_URI) throw new Error('TSN-S wallet er ikke forbundet. Sæt TSNS_MONGODB_URI eller brug samme MONGODB_URI som TSN-S.');
+
+  const collection = await getTsnsMoneyWalletCollection();
+  await getTsnsWallet(user, { create: true });
+  const now = new Date().toISOString();
+  const result = await collection.findOneAndUpdate(
+    { playerId, balance: { $gte: cost } },
+    {
+      $inc: { balance: -cost },
+      $set: { playerName: getTsnmPlayerName(user), updatedAt: now }
+    },
+    { returnDocument: 'after', projection: { _id: 0 } }
+  );
+
+  const updatedWallet = result?.value || result;
+  if (!updatedWallet) {
+    const wallet = await getTsnsWallet(user, { create: true });
+    const missing = Math.max(0, cost - walletBalance(wallet));
+    const error = new Error(`Du mangler ${missing} TSNM for at købe dette item. TSNM kan kun optjenes i TSN-S.`);
+    error.statusCode = 402;
+    throw error;
+  }
+
+  return updatedWallet;
+}
+
+function getTsnmBalance() {
+  // Normal TSN never creates TSNM. The real balance comes from the shared TSN-S wallet in market routes.
+  return 0;
+}
+
+function normalizeOwnedCosmetics(user) {
+  const validIds = new Set(TSNM_MARKET_ITEMS.map((item) => item.id));
+  const owned = Array.isArray(user?.ownedCosmeticIds) ? user.ownedCosmeticIds : [];
+  const unique = [...new Set([DEFAULT_MARKET_ITEM_ID, ...owned.map(String)])]
+    .filter((itemId) => validIds.has(itemId));
+  return unique.length ? unique : [DEFAULT_MARKET_ITEM_ID];
+}
+
+function normalizeUserMarketState(user) {
+  if (!user) return null;
+  user.ownedCosmeticIds = normalizeOwnedCosmetics(user);
+  if (!getMarketItem(user.equippedCosmeticId) || !user.ownedCosmeticIds.includes(user.equippedCosmeticId)) {
+    user.equippedCosmeticId = user.ownedCosmeticIds[0] || DEFAULT_MARKET_ITEM_ID;
+  }
+  return user;
+}
+
+function getEquippedCosmetic(user) {
+  if (!user) return publicMarketItem(getMarketItem(DEFAULT_MARKET_ITEM_ID));
+  const owned = normalizeOwnedCosmetics(user);
+  const itemId = owned.includes(user.equippedCosmeticId) ? user.equippedCosmeticId : owned[0];
+  return publicMarketItem(getMarketItem(itemId) || getMarketItem(DEFAULT_MARKET_ITEM_ID));
+}
+
+function publicMarketState(user, db = null, wallet = null) {
+  normalizeUserMarketState(user);
+  const transactions = (Array.isArray(db?.marketTransactions) ? db.marketTransactions : [])
+    .filter((entry) => entry.userId === user.id)
+    .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))
+    .slice(0, 25)
+    .map((entry) => ({
+      id: entry.id,
+      amount: entry.amount,
+      reason: entry.reason,
+      itemId: entry.itemId || null,
+      createdAt: entry.createdAt
+    }));
+
+  return {
+    currency: 'TSNM',
+    balance: walletBalance(wallet),
+    source: 'TSN-S',
+    earningDisabledInTsn: true,
+    walletConnected: Boolean(TSNS_MONGODB_URI) && !wallet?.error,
+    walletError: wallet?.error || null,
+    ownedItemIds: normalizeOwnedCosmetics(user),
+    equippedItemId: user.equippedCosmeticId || DEFAULT_MARKET_ITEM_ID,
+    equippedItem: getEquippedCosmetic(user),
+    items: TSNM_MARKET_ITEMS.map(publicMarketItem),
+    transactions
+  };
+}
+
+function recordTsnmTransaction(db, user, amount, reason, itemId = null) {
+  if (!db || !user || !amount) return null;
+  db.marketTransactions = Array.isArray(db.marketTransactions) ? db.marketTransactions : [];
+  const entry = {
+    id: id('tsnmtx'),
+    userId: user.id,
+    amount: clampInteger(amount, -999999999, 999999999),
+    reason: cleanText(reason, 80) || 'TSNM',
+    itemId: itemId || null,
+    balanceAfter: null,
+    source: 'TSN-S',
+    createdAt: new Date().toISOString()
+  };
+  db.marketTransactions.push(entry);
+  db.marketTransactions = db.marketTransactions.slice(-3000);
+  return entry;
+}
+
+async function emitMarketState(user, db) {
+  if (!user) return;
+  const wallet = await getTsnsWallet(user).catch(() => defaultTsnmWallet(user));
+  io.to(user.id).emit('market-updated', {
+    user: publicUser(user),
+    market: publicMarketState(user, db, wallet)
+  });
+}
+
+function emitUserProfileUpdated(user) {
+  if (!user) return;
+  io.emit('user-profile-updated', { user: publicUser(user) });
 }
 
 const CONTENT_FILTER_ENABLED = String(process.env.TSN_CONTENT_FILTER_ENABLED || 'true').toLowerCase() !== 'false';
@@ -810,6 +1129,7 @@ function getSessionVersion(user) {
 function publicUser(user) {
   if (!user) return null;
   const role = user.role === 'admin' ? 'admin' : 'user';
+  normalizeUserMarketState(user);
   return {
     id: user.id,
     name: getUserField(user, 'name'),
@@ -819,7 +1139,11 @@ function publicUser(user) {
     isAdmin: role === 'admin',
     banned: isBanned(user),
     bannedAt: user.bannedAt || null,
-    createdAt: user.createdAt
+    createdAt: user.createdAt,
+    tsnmBalance: getTsnmBalance(user),
+    ownedCosmeticIds: normalizeOwnedCosmetics(user),
+    equippedCosmeticId: user.equippedCosmeticId || DEFAULT_MARKET_ITEM_ID,
+    profileCosmetic: getEquippedCosmetic(user)
   };
 }
 
@@ -1741,6 +2065,9 @@ app.post('/api/auth/register', async (req, res) => {
       }),
       passwordHash,
       sessionVersion: 0,
+      // TSNM is earned in TSN-S only. Normal TSN stores cosmetics, not currency generation.
+      ownedCosmeticIds: [DEFAULT_MARKET_ITEM_ID],
+      equippedCosmeticId: DEFAULT_MARKET_ITEM_ID,
       createdAt: new Date().toISOString()
     };
 
@@ -2078,6 +2405,72 @@ app.get('/api/public/stock', (req, res) => {
 app.get('/api/stock', requireAuth, (req, res) => {
   const snapshot = getTsnStockSnapshot(req.db, { persist: false, reason: 'view' });
   res.json({ stock: snapshot });
+});
+
+app.get('/api/market', requireAuth, async (req, res) => {
+  const user = req.db.users.find((candidate) => candidate.id === req.user.id);
+  if (!user) return res.status(404).json({ error: 'Kontoen blev ikke fundet.', logout: true });
+  const wallet = await getTsnsWallet(user).catch((error) => ({ ...defaultTsnmWallet(user), error: error.message }));
+  res.json({ market: publicMarketState(user, req.db, wallet) });
+});
+
+app.post('/api/market/claim-daily', requireAuth, (req, res) => {
+  res.status(403).json({
+    error: 'TSNM kan kun optjenes i TSN-S. Åbn TSN-S/TSN-Stock for at tjene TSNM, og brug dem derefter i TSN Market.'
+  });
+});
+
+app.post('/api/market/buy', requireAuth, async (req, res) => {
+  const item = getMarketItem(req.body.itemId);
+  if (!item) return res.status(404).json({ error: 'Market-item blev ikke fundet.' });
+
+  const db = req.db;
+  const user = db.users.find((candidate) => candidate.id === req.user.id);
+  if (!user) return res.status(404).json({ error: 'Kontoen blev ikke fundet.', logout: true });
+
+  normalizeUserMarketState(user);
+  if (user.ownedCosmeticIds.includes(item.id)) {
+    const wallet = await getTsnsWallet(user).catch(() => defaultTsnmWallet(user));
+    return res.json({ ok: true, alreadyOwned: true, user: publicUser(user), market: publicMarketState(user, db, wallet) });
+  }
+
+  let wallet;
+  try {
+    wallet = await spendTsnsTsnm(user, item.price);
+  } catch (error) {
+    return res.status(error.statusCode || 503).json({ error: error.message });
+  }
+
+  user.ownedCosmeticIds.push(item.id);
+  recordTsnmTransaction(db, user, -item.price, 'buy-cosmetic', item.id);
+  await writeDb(db);
+
+  const market = publicMarketState(user, db, wallet);
+  emitMarketState(user, db).catch((error) => console.warn(`TSNM market emit failed: ${error.message}`));
+  res.json({ ok: true, user: publicUser(user), market, item: publicMarketItem(item) });
+});
+
+app.post('/api/market/equip', requireAuth, async (req, res) => {
+  const item = getMarketItem(req.body.itemId);
+  if (!item) return res.status(404).json({ error: 'Market-item blev ikke fundet.' });
+
+  const db = req.db;
+  const user = db.users.find((candidate) => candidate.id === req.user.id);
+  if (!user) return res.status(404).json({ error: 'Kontoen blev ikke fundet.', logout: true });
+
+  normalizeUserMarketState(user);
+  if (!user.ownedCosmeticIds.includes(item.id)) {
+    return res.status(403).json({ error: 'Du skal købe dette item, før du kan bruge det.' });
+  }
+
+  user.equippedCosmeticId = item.id;
+  await writeDb(db);
+
+  const wallet = await getTsnsWallet(user).catch(() => defaultTsnmWallet(user));
+  const market = publicMarketState(user, db, wallet);
+  emitMarketState(user, db).catch((error) => console.warn(`TSNM market emit failed: ${error.message}`));
+  emitUserProfileUpdated(user);
+  res.json({ ok: true, user: publicUser(user), market, item: publicMarketItem(item) });
 });
 
 app.get('/api/global/messages', requireAuth, (req, res) => {
@@ -2450,7 +2843,7 @@ async function startServer() {
       console.log(`Backup directory: ${DB_BACKUP_DIR}`);
       const warning = storagePersistenceWarning();
       if (warning) console.warn(`Persistence warning: ${warning}`);
-      console.log('TSN V1.2.10 mode: clean layout with public TSN Stock API, global posts and private chat.');
+      console.log('TSN V1.3.1 mode: TSNM Market uses TSN-S wallet only, public TSN Stock API, global posts and private chat.');
       console.log('Admin rights can be claimed inside the app with TSN_ADMIN_SETUP_PASSWORD or TSN_ADMIN_SETUP_PASSWORD_HASH.');
 
       if (process.env.NODE_ENV === 'production' && JWT_SECRET === DEFAULT_JWT_SECRET) {

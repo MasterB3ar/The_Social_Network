@@ -1,7 +1,7 @@
 {
   "name": "the-social-network-tsn",
-  "version": "1.2.10",
-  "description": "TSN V1.2.10 - dansk social network med offentlig TSN Stock data-API til separat TSN Stock website, ren app-navigation, global chat, privat chat, admin-dashboard, MongoDB Atlas og Render deployment.",
+  "version": "1.3.1",
+  "description": "TSN V1.3.1 - Danish social network with TSNM Market that spends the shared TSN-S wallet only; TSNM is earned in TSN-S/TSN-Stock.",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",

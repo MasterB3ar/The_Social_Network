@@ -7,12 +7,12 @@ services:
     runtime: node
     plan: starter
     schedule: "*/10 * * * *"
-    buildCommand: npm install
+    buildCommand: npm cache clean --force && npm install --omit=dev --no-audit --no-fund --prefer-online
     startCommand: npm run ping-self
     envVars:
       - key: NODE_ENV
         value: production
       - key: NODE_VERSION
-        value: 24.14.1
+        value: 20.12.2
       - key: TSN_PING_URL
         sync: false

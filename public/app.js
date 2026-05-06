@@ -14,7 +14,8 @@ const state = {
   adminMessagesNextOffset: 0,
   adminMessagesHasMore: false,
   adminReports: [],
-  adminStats: null
+  adminStats: null,
+  market: null
 };
 
 const PRIVATE_MESSAGE_DELETE_FOR_EVERYONE_MS = 15 * 60 * 1000;
@@ -37,6 +38,12 @@ const adminReportViewer = $('#adminReportViewer');
 const adminReportsList = $('#adminReportsList');
 const adminStatsGrid = $('#adminStatsGrid');
 const loadMoreAdminMessagesBtn = $('#loadMoreAdminMessagesBtn');
+const marketBalanceLabel = $('#marketBalance');
+const marketOwnedCountLabel = $('#marketOwnedCount');
+const marketDailyClaimBtn = $('#marketDailyClaimBtn');
+const marketDailyStatus = $('#marketDailyStatus');
+const marketItemsGrid = $('#marketItemsGrid');
+const marketTransactionsList = $('#marketTransactionsList');
 
 function escapeHtml(value) {
   return String(value || '')
@@ -50,6 +57,94 @@ function escapeHtml(value) {
 function initials(name) {
   const parts = String(name || 'TSN').trim().split(/\s+/).slice(0, 2);
   return parts.map((part) => part[0]?.toUpperCase()).join('') || '?';
+}
+
+function safeCosmeticColor(value, fallback) {
+  const color = String(value || '').trim();
+  return /^#[0-9a-f]{3,8}$/i.test(color) ? color : fallback;
+}
+
+function avatarPayload(userOrName) {
+  if (typeof userOrName === 'string') return { name: userOrName, cosmetic: null };
+  const user = userOrName || {};
+  return {
+    name: user.name || 'TSN',
+    cosmetic: user.profileCosmetic || null
+  };
+}
+
+function avatarClasses(cosmetic, size = '') {
+  return [
+    'avatar',
+    size,
+    cosmetic ? 'cosmetic-avatar' : '',
+    cosmetic?.animated ? 'animated-cosmetic-avatar' : '',
+    cosmetic?.type === 'animated-gif' ? 'gif-cosmetic-avatar' : '',
+    cosmetic?.rarity ? `rarity-${String(cosmetic.rarity).replace(/[^a-z0-9_-]/gi, '')}` : ''
+  ].filter(Boolean).join(' ');
+}
+
+function avatarStyle(cosmetic) {
+  const colors = Array.isArray(cosmetic?.colors) ? cosmetic.colors : [];
+  const first = safeCosmeticColor(colors[0], '#7c5cff');
+  const second = safeCosmeticColor(colors[1], '#24d6ff');
+  return `--avatar-a:${first};--avatar-b:${second};`;
+}
+
+function avatarSymbol(userOrName) {
+  const { name, cosmetic } = avatarPayload(userOrName);
+  return cosmetic?.symbol || initials(name);
+}
+
+function avatarHtml(userOrName, size = '') {
+  const { cosmetic } = avatarPayload(userOrName);
+  return `<div class="${escapeHtml(avatarClasses(cosmetic, size))}" style="${escapeHtml(avatarStyle(cosmetic))}">${escapeHtml(avatarSymbol(userOrName))}</div>`;
+}
+
+function applyAvatarElement(element, userOrName, size = '') {
+  if (!element) return;
+  const { cosmetic } = avatarPayload(userOrName);
+  element.className = avatarClasses(cosmetic, size);
+  element.style.setProperty('--avatar-a', safeCosmeticColor(cosmetic?.colors?.[0], '#7c5cff'));
+  element.style.setProperty('--avatar-b', safeCosmeticColor(cosmetic?.colors?.[1], '#24d6ff'));
+  element.textContent = avatarSymbol(userOrName);
+}
+
+function formatTsnm(value) {
+  return `${formatNumber(value)} TSNM`;
+}
+
+function marketItemById(itemId) {
+  return (state.market?.items || []).find((item) => item.id === itemId) || null;
+}
+
+function tsnmSourceText(market) {
+  if (!market) return 'Indlæser TSN-S wallet...';
+  if (market.walletError) return `TSN-S wallet-fejl: ${market.walletError}`;
+  if (!market.walletConnected) return 'TSN-S wallet er ikke forbundet på serveren endnu.';
+  return 'TSNM optjenes kun i TSN-S / TSN-Stock. TSN bruger samme wallet til køb.';
+}
+
+function mergeUpdatedPublicUser(user) {
+  if (!user?.id) return;
+  if (state.me?.id === user.id) state.me = { ...state.me, ...user };
+  state.users = state.users.map((candidate) => candidate.id === user.id ? { ...candidate, ...user } : candidate);
+  state.adminUsers = state.adminUsers.map((candidate) => candidate.id === user.id ? { ...candidate, ...user } : candidate);
+  if (state.activeChatUser?.id === user.id) state.activeChatUser = { ...state.activeChatUser, ...user };
+  state.globalMessages.forEach((message) => {
+    if (message.author?.id === user.id || message.authorId === user.id) message.author = { ...(message.author || {}), ...user };
+    (message.comments || []).forEach((comment) => {
+      if (comment.author?.id === user.id || comment.authorId === user.id) comment.author = { ...(comment.author || {}), ...user };
+    });
+  });
+}
+
+function rerenderAfterProfileCosmeticChange() {
+  renderMe();
+  renderUsers();
+  renderGlobalMessages();
+  renderChat();
+  renderAdminUsers();
 }
 
 function formatTime(dateString) {
@@ -284,7 +379,7 @@ function showApp() {
 
 
 function switchAppView(view) {
-  const allowedViews = new Set(['profile', 'global', 'private', 'admin']);
+  const allowedViews = new Set(['profile', 'global', 'private', 'market', 'admin']);
   const nextView = allowedViews.has(view) ? view : 'global';
 
   if (nextView === 'admin' && !state.me?.isAdmin) {
@@ -305,6 +400,10 @@ function switchAppView(view) {
 
   if (activeView === 'global') {
     requestAnimationFrame(() => scrollElementToTop(globalMessagesList));
+  }
+
+  if (activeView === 'market') {
+    loadMarket().catch((error) => showToast(error.message));
   }
 
   if (activeView === 'admin' && state.me?.isAdmin) {
@@ -351,6 +450,8 @@ function forceLocalLogout(message = 'Du er blevet logget ud.') {
   state.adminMessages = [];
   state.adminReports = [];
   state.adminStats = null;
+  state.market = null;
+  renderMarket();
   renderAdminMessageViewer();
   renderAdminReportViewer();
   showAuth();
@@ -507,6 +608,29 @@ $('#profileForm').addEventListener('submit', async (event) => {
     showToast(error.message);
   }
 });
+
+if (marketItemsGrid) {
+  marketItemsGrid.addEventListener('click', async (event) => {
+    const buyButton = event.target.closest('[data-market-buy]');
+    const equipButton = event.target.closest('[data-market-equip]');
+    const itemId = buyButton?.dataset.marketBuy || equipButton?.dataset.marketEquip;
+    if (!itemId) return;
+
+    try {
+      const data = await api(buyButton ? '/api/market/buy' : '/api/market/equip', {
+        method: 'POST',
+        body: JSON.stringify({ itemId })
+      });
+      if (data.user) mergeUpdatedPublicUser(data.user);
+      state.market = data.market;
+      rerenderAfterProfileCosmeticChange();
+      renderMarket();
+      showToast(buyButton ? 'Købt med TSNM fra TSN-S' : 'Profilbillede/GIF er aktiveret');
+    } catch (error) {
+      showToast(error.message);
+    }
+  });
+}
 
 const adminClaimForm = $('#adminClaimForm');
 if (adminClaimForm) {
@@ -1035,7 +1159,10 @@ function renderMe() {
   $('#myUsername').textContent = `@${state.me.username}`;
   $('#profileName').value = state.me.name;
   $('#profileBio').value = state.me.bio || '';
-  $('#myAvatar').textContent = initials(state.me.name);
+  applyAvatarElement($('#myAvatar'), state.me, 'large');
+  const balance = state.market?.balance ?? state.me.tsnmBalance ?? 0;
+  const balanceLabel = $('#myTsnmBalance');
+  if (balanceLabel) balanceLabel.textContent = formatTsnm(balance);
   renderAdminTools();
 }
 
@@ -1059,7 +1186,7 @@ function renderGlobalPostCard(message, { detail = false } = {}) {
     <article class="global-message ${detailClass} ${mine ? 'mine' : ''}"${clickableAttrs}>
       <div class="post-row-top">
         <div class="post-person">
-          <div class="avatar">${escapeHtml(initials(authorName))}</div>
+          ${avatarHtml(message.author || authorName)}
           <div>
             <strong>${escapeHtml(authorName)}</strong>
             <span>@${escapeHtml(message.author?.username || 'ukendt')} · ${escapeHtml(formatTime(message.createdAt))}</span>
@@ -1088,7 +1215,7 @@ function renderGlobalComments(message) {
     const commentAuthorName = comment.author?.name || 'Ukendt';
     return `
       <article class="global-comment">
-        <div class="global-comment-avatar">${escapeHtml(initials(commentAuthorName))}</div>
+        ${avatarHtml(comment.author || commentAuthorName, 'comment-avatar')}
         <div class="global-comment-body">
           <div class="global-comment-meta">
             <strong>${escapeHtml(commentAuthorName)}</strong>
@@ -1182,7 +1309,7 @@ function renderUsers() {
     const bio = String(user.bio || '').trim() || 'Ingen bio endnu.';
     return `
       <button class="user-row ${isActive ? 'active' : ''} ${Number(user.unreadCount) > 0 ? 'has-unread' : ''}" data-user-id="${escapeHtml(user.id)}">
-        <div class="avatar">${escapeHtml(initials(user.name))}</div>
+        ${avatarHtml(user)}
         <div class="user-row-main">
           <strong>${escapeHtml(user.name)}</strong>
           <span>@${escapeHtml(user.username)}</span>
@@ -1236,7 +1363,7 @@ function renderChat({ forceBottom = false } = {}) {
   if (!user) return;
   const scrollSnapshot = getScrollSnapshot(messagesList);
 
-  $('#chatAvatar').textContent = initials(user.name);
+  applyAvatarElement($('#chatAvatar'), user);
   $('#chatName').textContent = user.name;
   $('#chatStatus').textContent = user.online ? 'Online nu' : 'Offline';
   const chatBio = $('#chatBio');
@@ -1362,7 +1489,7 @@ function renderAdminUsers() {
     return `
       <article class="admin-user-row ${user.banned ? 'banned' : ''} ${openReports ? 'reported' : ''}">
         <div class="admin-user-main">
-          <div class="avatar small-avatar">${escapeHtml(initials(user.name))}</div>
+          ${avatarHtml(user, 'small-avatar')}
           <div>
             <strong>${escapeHtml(user.name)}${isMe ? ' (dig)' : ''}</strong>
             <span>@${escapeHtml(user.username)} · ${escapeHtml(displayRole(user.role))} · <em class="admin-status ${escapeHtml(adminStatusClass(user))}">${escapeHtml(status)}</em></span>
@@ -1596,6 +1723,78 @@ async function deleteAdminMessageItem(item) {
   throw new Error('Beskedtypen understøttes ikke.');
 }
 
+function renderMarket() {
+  if (!marketBalanceLabel || !marketItemsGrid) return;
+  const market = state.market;
+  if (!market) {
+    marketBalanceLabel.textContent = '– TSNM';
+    if (marketOwnedCountLabel) marketOwnedCountLabel.textContent = '0 items';
+    if (marketDailyStatus) marketDailyStatus.textContent = 'Indlæser TSNM Market...';
+    marketItemsGrid.innerHTML = '<div class="empty">Market indlæses...</div>';
+    if (marketTransactionsList) marketTransactionsList.innerHTML = '';
+    return;
+  }
+
+  const owned = new Set(market.ownedItemIds || []);
+  marketBalanceLabel.textContent = formatTsnm(market.balance || 0);
+  if (marketOwnedCountLabel) marketOwnedCountLabel.textContent = `${owned.size} owned`;
+  if (marketDailyStatus) marketDailyStatus.textContent = tsnmSourceText(market);
+
+  marketItemsGrid.innerHTML = (market.items || []).map((item) => {
+    const isOwned = owned.has(item.id);
+    const isEquipped = market.equippedItemId === item.id;
+    const previewUser = { name: state.me?.name || 'TSN', profileCosmetic: item };
+    return `
+      <article class="market-item ${isOwned ? 'owned' : ''} ${isEquipped ? 'equipped' : ''}">
+        <div class="market-item-preview">${avatarHtml(previewUser, 'large')}</div>
+        <div class="market-item-body">
+          <div class="market-item-title-row">
+            <strong>${escapeHtml(item.name)}</strong>
+            <span class="market-rarity rarity-${escapeHtml(item.rarity)}">${escapeHtml(item.rarity)}</span>
+          </div>
+          <p>${escapeHtml(item.description || '')}</p>
+          <span class="market-type">${item.type === 'animated-gif' ? 'Animated GIF' : 'Profile picture'}</span>
+        </div>
+        <div class="market-item-footer">
+          <strong>${item.price > 0 ? formatTsnm(item.price) : 'Gratis'}</strong>
+          ${isEquipped
+            ? '<button class="secondary tiny" type="button" disabled>Aktiv</button>'
+            : isOwned
+              ? `<button class="secondary tiny" type="button" data-market-equip="${escapeHtml(item.id)}">Brug</button>`
+              : `<button class="primary tiny" type="button" data-market-buy="${escapeHtml(item.id)}">Køb</button>`}
+        </div>
+      </article>
+    `;
+  }).join('');
+
+  if (marketTransactionsList) {
+    const rows = (market.transactions || []).slice(0, 8);
+    marketTransactionsList.innerHTML = rows.length ? rows.map((entry) => {
+      const item = marketItemById(entry.itemId);
+      const amount = Number(entry.amount) || 0;
+      return `
+        <div class="market-transaction ${amount >= 0 ? 'positive' : 'negative'}">
+          <span>${escapeHtml(entry.reason)}${item ? ` · ${escapeHtml(item.name)}` : ''}</span>
+          <strong>${amount >= 0 ? '+' : ''}${formatTsnm(amount)}</strong>
+        </div>
+      `;
+    }).join('') : '<div class="empty small-empty">Ingen TSNM-historik endnu.</div>';
+  }
+}
+
+async function loadMarket() {
+  const data = await api('/api/market');
+  state.market = data.market;
+  if (state.me && state.market) {
+    state.me.tsnmBalance = state.market.balance;
+    state.me.profileCosmetic = state.market.equippedItem;
+    state.me.equippedCosmeticId = state.market.equippedItemId;
+    state.me.ownedCosmeticIds = state.market.ownedItemIds;
+  }
+  renderMe();
+  renderMarket();
+}
+
 async function loadUsers(q = '') {
   const query = q ? `?q=${encodeURIComponent(q)}` : '';
   const data = await api(`/api/users${query}`);
@@ -1617,7 +1816,7 @@ async function loadGlobalMessages() {
 }
 
 async function loadEverything() {
-  await Promise.all([loadGlobalMessages(), loadUsers($('#userSearch').value)]);
+  await Promise.all([loadGlobalMessages(), loadUsers($('#userSearch').value), loadMarket()]);
   if (state.me?.isAdmin) {
     await loadAdminDashboard();
     renderAdminMessageViewer();
@@ -1744,6 +1943,18 @@ function connectSocket() {
 
   state.socket.on('force-logout', ({ reason }) => {
     forceLocalLogout(reason || 'Du er blevet logget ud af en admin.');
+  });
+
+  state.socket.on('market-updated', ({ user, market }) => {
+    if (user) mergeUpdatedPublicUser(user);
+    if (market) state.market = market;
+    rerenderAfterProfileCosmeticChange();
+    renderMarket();
+  });
+
+  state.socket.on('user-profile-updated', ({ user }) => {
+    mergeUpdatedPublicUser(user);
+    rerenderAfterProfileCosmeticChange();
   });
 
   state.socket.on('connect_error', (error) => {
