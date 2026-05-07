@@ -1,3 +1,8 @@
+
+## TSN v1.3.8 — Global chat start-at-bottom fix
+
+This release fixes a regression where Global chat could open at the top after the chat-upgrades release. The chat now requests a bottom scroll after message loading and repeats it briefly while the browser finishes layout, without forcing users down when new messages arrive while they are reading older chat.
+
 # TSN V1.3.7 — Chat upgrades
 
 This version removes the TSN shop/currency system from normal TSN.

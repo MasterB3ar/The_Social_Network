@@ -1,7 +1,7 @@
 {
   "name": "the-social-network-tsn",
-  "version": "1.3.7",
-  "description": "TSN chat network with global new-message indicator, anti-spam mute tools, shop/currency removed, and private message content hidden from admins.",
+  "version": "1.3.8",
+  "description": "TSN chat network with fixed global chat start-at-bottom behavior, new-message indicator, anti-spam mute tools, shop/currency removed, and private message content hidden from admins.",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",

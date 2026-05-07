@@ -15,7 +15,9 @@ const state = {
   adminPrivateMessagesCount: 0,
   adminReports: [],
   adminStats: null,
-  globalNewMessageCount: 0
+  globalNewMessageCount: 0,
+  globalChatHasOpened: false,
+  globalChatNeedsBottomScroll: false
 };
 
 const PRIVATE_MESSAGE_DELETE_FOR_EVERYONE_MS = 15 * 60 * 1000;
@@ -333,6 +335,25 @@ function scrollElementToBottom(element) {
   setTimeout(apply, 80);
 }
 
+function scheduleGlobalChatBottomScroll() {
+  if (!globalMessagesList) return;
+
+  const apply = () => scrollElementToBottom(globalMessagesList);
+  apply();
+  requestAnimationFrame(apply);
+  setTimeout(apply, 0);
+  setTimeout(apply, 80);
+  setTimeout(apply, 180);
+  setTimeout(apply, 360);
+  setTimeout(apply, 700);
+}
+
+function requestGlobalChatBottomOnOpen() {
+  state.globalChatNeedsBottomScroll = true;
+  clearGlobalNewMessages();
+  scheduleGlobalChatBottomScroll();
+}
+
 function forceGlobalDetailTop() {
   blurActiveElement();
 
@@ -383,6 +404,7 @@ function showApp() {
 
 function switchAppView(view) {
   const allowedViews = new Set(['profile', 'global', 'private', 'admin']);
+  const previousView = appScreen.dataset.view || '';
   const nextView = allowedViews.has(view) ? view : 'global';
 
   if (nextView === 'admin' && !state.me?.isAdmin) {
@@ -402,7 +424,12 @@ function switchAppView(view) {
   }
 
   if (activeView === 'global') {
-    requestAnimationFrame(() => clearGlobalNewMessages({ scroll: true }));
+    const firstOpen = !state.globalChatHasOpened;
+    const enteringGlobal = previousView !== 'global';
+    if (firstOpen || enteringGlobal) {
+      state.globalChatHasOpened = true;
+      requestAnimationFrame(requestGlobalChatBottomOnOpen);
+    }
   }
 
 
@@ -450,6 +477,9 @@ function forceLocalLogout(message = 'Du er blevet logget ud.') {
   state.adminMessages = [];
   state.adminReports = [];
   state.adminStats = null;
+  state.globalNewMessageCount = 0;
+  state.globalChatHasOpened = false;
+  state.globalChatNeedsBottomScroll = false;
   renderAdminMessageViewer();
   renderAdminReportViewer();
   showAuth();
@@ -1119,17 +1149,23 @@ function renderGlobalMessages({ forceBottom = false } = {}) {
   renderStats();
   if (!globalMessagesList) return;
   const scrollSnapshot = getScrollSnapshot(globalMessagesList);
+  const shouldForceBottom = Boolean(forceBottom || state.globalChatNeedsBottomScroll);
 
   if (!state.globalMessages.length) {
     globalMessagesList.classList.remove('is-detail-mode');
     globalMessagesList.innerHTML = '<div class="empty">Der er ingen globale chatbeskeder endnu. Skriv den første.</div>';
-    restoreMessageScroll(globalMessagesList, scrollSnapshot, { forceBottom });
+    restoreMessageScroll(globalMessagesList, scrollSnapshot, { forceBottom: shouldForceBottom });
+    if (shouldForceBottom) scheduleGlobalChatBottomScroll();
     return;
   }
 
   globalMessagesList.classList.remove('is-detail-mode');
   globalMessagesList.innerHTML = state.globalMessages.map((message) => renderGlobalChatMessage(message)).join('');
-  restoreMessageScroll(globalMessagesList, scrollSnapshot, { forceBottom });
+  restoreMessageScroll(globalMessagesList, scrollSnapshot, { forceBottom: shouldForceBottom });
+  if (shouldForceBottom) {
+    state.globalChatNeedsBottomScroll = false;
+    scheduleGlobalChatBottomScroll();
+  }
 }
 
 function renderUsers() {
@@ -1590,6 +1626,7 @@ async function loadGlobalMessages() {
   const data = await api('/api/global/messages');
   state.globalMessages = data.messages || [];
   state.globalNewMessageCount = 0;
+  state.globalChatNeedsBottomScroll = true;
   renderGlobalMessages({ forceBottom: true });
   updateGlobalNewMessagesButton();
 }
