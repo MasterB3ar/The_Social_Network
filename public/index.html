@@ -160,6 +160,7 @@
                 <option value="all">Alle brugere</option>
                 <option value="online">Online</option>
                 <option value="banned">Banned</option>
+                <option value="muted">Muted</option>
                 <option value="reported">Med åbne rapporter</option>
                 <option value="admins">Admins</option>
               </select>
@@ -187,7 +188,10 @@
             <span id="globalStatus" class="pill">0 beskeder</span>
           </div>
 
-          <div id="globalMessagesList" class="messages global-messages"></div>
+          <div class="global-chat-scroll-wrap">
+            <div id="globalMessagesList" class="messages global-messages"></div>
+            <button id="globalNewMessagesBtn" class="new-messages-button hidden" type="button">Nye beskeder ↓</button>
+          </div>
 
           <form id="globalMessageForm" class="message-form global-message-form">
             <input id="globalMessageInput" maxlength="600" placeholder="Skriv en global chatbesked..." autocomplete="off" />
@@ -296,13 +300,13 @@
     <div class="rules-card card">
       <div class="section-heading">
         <div>
-          <p class="eyebrow mini">TSN V1.2</p>
+          <p class="eyebrow mini">TSN V1.3.7</p>
           <h2>Regler og sikkerhed</h2>
         </div>
         <button id="closeRulesBtn" class="icon-button" type="button" aria-label="Luk regler">×</button>
       </div>
       <ul>
-        <li>Ingen spam, chikane, trusler eller hate speech.</li>
+        <li>Ingen spam, chikane, trusler eller hate speech. Spam kan give midlertidig mute.</li>
         <li>Del ikke private oplysninger om dig selv eller andre.</li>
         <li>Rapportér globale chatbeskeder, private beskeder eller brugere, hvis noget er forkert.</li>
         <li>Admins kan slette indhold, smide brugere ud og banne konti for at holde TSN sikkert.</li>

@@ -37,3 +37,21 @@ services:
         value: true
       - key: TSN_BLOCKED_WORDS
         sync: false
+      - key: TSN_ANTI_SPAM_ENABLED
+        value: true
+      - key: TSN_MESSAGE_COOLDOWN_MS
+        value: 1500
+      - key: TSN_DUPLICATE_MESSAGE_WINDOW_MS
+        value: 120000
+      - key: TSN_MAX_DUPLICATES_PER_WINDOW
+        value: 3
+      - key: TSN_SPAM_WINDOW_MS
+        value: 60000
+      - key: TSN_MAX_MESSAGES_PER_SPAM_WINDOW
+        value: 20
+      - key: TSN_AUTO_MUTE_AFTER_WARNINGS
+        value: 5
+      - key: TSN_AUTO_MUTE_MINUTES
+        value: 10
+      - key: TSN_DEFAULT_ADMIN_MUTE_MINUTES
+        value: 10

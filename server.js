@@ -38,6 +38,16 @@ const PUBLIC_DIR = path.join(__dirname, 'public');
 const ADMIN_SETUP_PASSWORD = process.env.TSN_ADMIN_SETUP_PASSWORD || 'TSN-Admin!ChangeMe-2026';
 const ADMIN_SETUP_PASSWORD_HASH = process.env.TSN_ADMIN_SETUP_PASSWORD_HASH || '';
 const PRIVATE_MESSAGE_DELETE_FOR_EVERYONE_MS = 15 * 60 * 1000;
+const ANTI_SPAM_ENABLED = String(process.env.TSN_ANTI_SPAM_ENABLED || 'true').toLowerCase() !== 'false';
+const MESSAGE_COOLDOWN_MS = clampInteger(process.env.TSN_MESSAGE_COOLDOWN_MS || 1500, 250, 30000);
+const DUPLICATE_MESSAGE_WINDOW_MS = clampInteger(process.env.TSN_DUPLICATE_MESSAGE_WINDOW_MS || 120000, 10000, 15 * 60 * 1000);
+const MAX_DUPLICATE_MESSAGES_PER_WINDOW = clampInteger(process.env.TSN_MAX_DUPLICATES_PER_WINDOW || 3, 1, 20);
+const SPAM_WINDOW_MS = clampInteger(process.env.TSN_SPAM_WINDOW_MS || 60000, 10000, 15 * 60 * 1000);
+const MAX_MESSAGES_PER_SPAM_WINDOW = clampInteger(process.env.TSN_MAX_MESSAGES_PER_SPAM_WINDOW || 20, 5, 120);
+const AUTO_MUTE_AFTER_WARNINGS = clampInteger(process.env.TSN_AUTO_MUTE_AFTER_WARNINGS || 5, 2, 50);
+const AUTO_MUTE_MINUTES = clampInteger(process.env.TSN_AUTO_MUTE_MINUTES || 10, 1, 1440);
+const DEFAULT_ADMIN_MUTE_MINUTES = clampInteger(process.env.TSN_DEFAULT_ADMIN_MUTE_MINUTES || 10, 1, 1440);
+
 const ROOMS = Array.from({ length: 7 }, (_, index) => {
   const id = index + 1;
   return {
@@ -48,6 +58,7 @@ const ROOMS = Array.from({ length: 7 }, (_, index) => {
 });
 const app = express();
 const pendingUsernameRegistrations = new Set();
+const chatSpamMemory = new Map();
 app.set('trust proxy', 1);
 
 const server = http.createServer(app);
@@ -815,6 +826,99 @@ function isBanned(user) {
   return Boolean(user && user.bannedAt);
 }
 
+
+function muteExpiresAtMs(user) {
+  const value = user?.mutedUntil ? new Date(user.mutedUntil).getTime() : 0;
+  return Number.isFinite(value) ? value : 0;
+}
+
+function isMuted(user) {
+  return Boolean(user && muteExpiresAtMs(user) > Date.now());
+}
+
+function normalizeSpamText(value) {
+  return String(value || '')
+    .toLowerCase()
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/https?:\/\/\S+/g, 'link')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function clearExpiredMute(user) {
+  if (!user || !user.mutedUntil) return false;
+  if (muteExpiresAtMs(user) > Date.now()) return false;
+  delete user.mutedUntil;
+  delete user.mutedBy;
+  delete user.muteReason;
+  return true;
+}
+
+function userChatRestrictionMessage(user) {
+  if (!user) return 'Brugeren blev ikke fundet.';
+  if (isMuted(user)) {
+    const until = new Date(user.mutedUntil).toLocaleString('da-DK', { dateStyle: 'short', timeStyle: 'short' });
+    return `Du er midlertidigt muted indtil ${until}. ${user.muteReason ? `Grund: ${user.muteReason}` : ''}`.trim();
+  }
+  clearExpiredMute(user);
+  return '';
+}
+
+function registerSpamWarning(user, reason) {
+  if (!user) return 'Spam blev blokeret.';
+  user.spamWarnings = Math.max(0, Number(user.spamWarnings) || 0) + 1;
+  user.lastSpamWarningAt = new Date().toISOString();
+  user.lastSpamWarningReason = reason;
+
+  if (user.spamWarnings >= AUTO_MUTE_AFTER_WARNINGS) {
+    const mutedUntil = new Date(Date.now() + AUTO_MUTE_MINUTES * 60 * 1000).toISOString();
+    user.mutedUntil = mutedUntil;
+    user.muteReason = `Automatisk mute: ${reason}`.slice(0, 220);
+    user.spamWarnings = 0;
+    const until = new Date(mutedUntil).toLocaleString('da-DK', { dateStyle: 'short', timeStyle: 'short' });
+    return `Spam-filteret har muted dig indtil ${until}.`;
+  }
+
+  const remaining = Math.max(0, AUTO_MUTE_AFTER_WARNINGS - user.spamWarnings);
+  return `${reason} Vent lidt før du sender igen. ${remaining} advarsel/advarsler før automatisk mute.`;
+}
+
+function applyChatAntiSpam(db, user, text, scope = 'chat') {
+  if (!ANTI_SPAM_ENABLED) return null;
+  const restriction = userChatRestrictionMessage(user);
+  if (restriction) return restriction;
+
+  const normalized = normalizeSpamText(text);
+  if (!normalized) return null;
+
+  const now = Date.now();
+  const key = `${user.id}:${scope}`;
+  const previous = (chatSpamMemory.get(key) || []).filter((entry) => now - entry.at <= Math.max(DUPLICATE_MESSAGE_WINDOW_MS, SPAM_WINDOW_MS));
+  const last = previous[previous.length - 1] || null;
+
+  if (last && now - last.at < MESSAGE_COOLDOWN_MS) {
+    chatSpamMemory.set(key, previous);
+    return registerSpamWarning(user, 'Du sender beskeder for hurtigt.');
+  }
+
+  const duplicateCount = previous.filter((entry) => entry.text === normalized && now - entry.at <= DUPLICATE_MESSAGE_WINDOW_MS).length;
+  if (duplicateCount >= MAX_DUPLICATE_MESSAGES_PER_WINDOW) {
+    chatSpamMemory.set(key, previous);
+    return registerSpamWarning(user, 'Gentagne ens beskeder bliver blokeret.');
+  }
+
+  const recentCount = previous.filter((entry) => now - entry.at <= SPAM_WINDOW_MS).length;
+  if (recentCount >= MAX_MESSAGES_PER_SPAM_WINDOW) {
+    chatSpamMemory.set(key, previous);
+    return registerSpamWarning(user, 'Du sender for mange beskeder på kort tid.');
+  }
+
+  previous.push({ at: now, text: normalized });
+  chatSpamMemory.set(key, previous.slice(-80));
+  return null;
+}
+
 function getSessionVersion(user) {
   const version = Number(user && user.sessionVersion);
   return Number.isFinite(version) && version >= 0 ? version : 0;
@@ -832,6 +936,8 @@ function publicUser(user) {
     isAdmin: role === 'admin',
     banned: isBanned(user),
     bannedAt: user.bannedAt || null,
+    muted: isMuted(user),
+    mutedUntil: isMuted(user) ? user.mutedUntil : null,
     createdAt: user.createdAt
   };
 }
@@ -891,6 +997,12 @@ function publicModerationUser(user, db = null) {
     online: onlineUsers.has(user.id),
     banReason: user.banReason || '',
     bannedBy: user.bannedBy || null,
+    muted: isMuted(user),
+    mutedUntil: isMuted(user) ? user.mutedUntil : null,
+    muteReason: user.muteReason || '',
+    spamWarnings: Math.max(0, Number(user.spamWarnings) || 0),
+    lastSpamWarningAt: user.lastSpamWarningAt || null,
+    lastSpamWarningReason: user.lastSpamWarningReason || '',
     kickedAt: user.kickedAt || null,
     sessionVersion: getSessionVersion(user),
     stats: db ? getUserModerationStats(db, user.id) : null
@@ -921,6 +1033,8 @@ function buildAdminStats(db) {
     adminsTotal: users.filter((user) => user.role === 'admin').length,
     onlineUsers: users.filter((user) => onlineUsers.has(user.id)).length,
     bannedUsers: users.filter(isBanned).length,
+    mutedUsers: users.filter(isMuted).length,
+    spamWarnings: users.reduce((total, user) => total + Math.max(0, Number(user.spamWarnings) || 0), 0),
     globalPosts: globalMessages.length,
     globalChatMessages: globalMessages.length,
     globalComments: commentsCount,
@@ -1653,8 +1767,8 @@ app.get('/api/health', (req, res) => {
     const storage = getStorageStatus();
     res.json({
       ok: true,
-      app: 'TSN V1.2.9',
-      shortName: 'TSN V1.2.4',
+      app: 'TSN V1.3.7',
+      shortName: 'TSN V1.3.7',
       environment: process.env.NODE_ENV || 'development',
       storage: {
         ok: storage.ok,
@@ -1683,8 +1797,8 @@ app.get('/api/health', (req, res) => {
   } catch (error) {
     res.status(503).json({
       ok: false,
-      app: 'TSN V1.2.9',
-      shortName: 'TSN V1.2.4',
+      app: 'TSN V1.3.7',
+      shortName: 'TSN V1.3.7',
       error: 'Lageret er ikke klar.',
       detail: error.message
     });
@@ -1694,7 +1808,7 @@ app.get('/api/health', (req, res) => {
 app.get('/api/ping', (req, res) => {
   res.json({
     ok: true,
-    app: 'TSN V1.2',
+    app: 'TSN V1.3.7',
     message: 'pong',
     now: new Date().toISOString()
   });
@@ -1843,6 +1957,7 @@ app.get('/api/admin/users', requireAuth, requireAdmin, (req, res) => {
 
   if (status === 'online') users = users.filter((user) => user.online);
   if (status === 'banned') users = users.filter((user) => user.banned);
+  if (status === 'muted') users = users.filter((user) => user.muted);
   if (status === 'admins') users = users.filter((user) => user.isAdmin);
   if (status === 'reported') users = users.filter((user) => Number(user.stats?.openReportsAgainstCount || 0) > 0);
 
@@ -1979,6 +2094,42 @@ app.delete('/api/admin/reports/:reportId/target', requireAuth, requireAdmin, asy
   res.json({ ok: true, report: publicReport(db, report) });
 });
 
+
+app.post('/api/admin/users/:userId/mute', requireAuth, requireAdmin, async (req, res) => {
+  const db = req.db;
+  const target = db.users.find((candidate) => candidate.id === req.params.userId);
+  if (!target) return res.status(404).json({ error: 'Brugeren blev ikke fundet.' });
+  if (target.id === req.user.id) return res.status(400).json({ error: 'Du kan ikke mute dig selv.' });
+  if (target.role === 'admin') return res.status(403).json({ error: 'Du kan ikke mute en anden admin-konto.' });
+
+  const durationMinutes = clampInteger(req.body.durationMinutes || DEFAULT_ADMIN_MUTE_MINUTES, 1, 1440);
+  const reason = cleanText(req.body.reason || 'Muted af admin', 220);
+  if (reason && rejectBlockedContent(res, reason, 'Mute-grund')) return;
+
+  target.mutedUntil = new Date(Date.now() + durationMinutes * 60 * 1000).toISOString();
+  target.mutedBy = req.user.id;
+  target.muteReason = reason;
+  await writeDb(db);
+
+  io.to(target.id).emit('profile-updated', { user: publicUser(target) });
+  res.json({ ok: true, user: publicModerationUser(target, db), stats: buildAdminStats(db) });
+});
+
+app.post('/api/admin/users/:userId/unmute', requireAuth, requireAdmin, async (req, res) => {
+  const db = req.db;
+  const target = db.users.find((candidate) => candidate.id === req.params.userId);
+  if (!target) return res.status(404).json({ error: 'Brugeren blev ikke fundet.' });
+
+  delete target.mutedUntil;
+  delete target.mutedBy;
+  delete target.muteReason;
+  target.spamWarnings = 0;
+  await writeDb(db);
+
+  io.to(target.id).emit('profile-updated', { user: publicUser(target) });
+  res.json({ ok: true, user: publicModerationUser(target, db), stats: buildAdminStats(db) });
+});
+
 app.delete('/api/admin/users/:userId', requireAuth, requireAdmin, async (req, res) => {
   const db = req.db;
   const target = db.users.find((candidate) => candidate.id === req.params.userId);
@@ -2096,6 +2247,12 @@ app.post('/api/global/messages', requireAuth, async (req, res) => {
   if (rejectBlockedContent(res, text, 'Global chatbesked')) return;
 
   const db = req.db;
+  const spamError = applyChatAntiSpam(db, req.user, text, 'global-chat');
+  if (spamError) {
+    await writeDb(db);
+    return res.status(429).json({ error: spamError, mutedUntil: req.user.mutedUntil || null });
+  }
+
   const message = {
     id: id('globalmsg'),
     authorId: req.user.id,
@@ -2144,6 +2301,11 @@ app.post('/api/global/messages/:messageId/comments', requireAuth, async (req, re
   if (rejectBlockedContent(res, text, 'Kommentar')) return;
 
   const db = req.db;
+  const spamError = applyChatAntiSpam(db, req.user, text, 'global-comment');
+  if (spamError) {
+    await writeDb(db);
+    return res.status(429).json({ error: spamError, mutedUntil: req.user.mutedUntil || null });
+  }
   db.globalMessages = Array.isArray(db.globalMessages) ? db.globalMessages : [];
   const message = db.globalMessages.find((candidate) => candidate.id === req.params.messageId);
   if (!message) return res.status(404).json({ error: 'Global chatbesked blev ikke fundet.' });
@@ -2261,7 +2423,7 @@ app.post('/api/reports', requireAuth, async (req, res) => {
 });
 
 app.all(['/api/posts', '/api/posts/*', '/api/rooms', '/api/rooms/*'], requireAuth, (req, res) => {
-  res.status(410).json({ error: 'TSN V1.2.6 understøtter globale chatbeskeder, privat chat, læsekvitteringer og tidsbegrænset slet-for-alle.' });
+  res.status(410).json({ error: 'TSN V1.3.7 understøtter globale chatbeskeder, privat chat, læsekvitteringer og tidsbegrænset slet-for-alle.' });
 });
 
 app.get('/api/messages/:userId', requireAuth, async (req, res) => {
@@ -2381,6 +2543,11 @@ io.on('connection', (socket) => {
       const db = readDb();
       const sender = db.users.find((candidate) => candidate.id === user.id);
       if (!sender || isBanned(sender)) throw new Error('Din konto har ikke tilladelse til at sende beskeder.');
+      const spamError = applyChatAntiSpam(db, sender, text, 'private-chat');
+      if (spamError) {
+        await writeDb(db);
+        throw new Error(spamError);
+      }
       const recipient = db.users.find((candidate) => candidate.id === to);
       if (!recipient || isBanned(recipient)) throw new Error('Modtageren blev ikke fundet.');
 
@@ -2450,7 +2617,7 @@ async function startServer() {
       console.log(`Backup directory: ${DB_BACKUP_DIR}`);
       const warning = storagePersistenceWarning();
       if (warning) console.warn(`Persistence warning: ${warning}`);
-      console.log('TSN V1.3.4 mode: shop/currency removed; admins can see private-message counts but not private-message content.');
+      console.log('TSN V1.3.7 mode: chat upgrades, anti-spam/mute tools, shop/currency removed, and private-message content hidden from admins.');
       console.log('Admin rights can be claimed inside the app with TSN_ADMIN_SETUP_PASSWORD or TSN_ADMIN_SETUP_PASSWORD_HASH.');
 
       if (process.env.NODE_ENV === 'production' && JWT_SECRET === DEFAULT_JWT_SECRET) {

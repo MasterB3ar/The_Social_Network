@@ -1,4 +1,4 @@
-# TSN V1.3.6 — Global chat scroll fix
+# TSN V1.3.7 — Chat upgrades
 
 This version removes the TSN shop/currency system from normal TSN.
 
@@ -55,4 +55,31 @@ Recommended deployment step after replacing the old version:
 
 ```txt
 Manual Deploy → Clear build cache & deploy
+```
+
+## TSN V1.3.7 — Chat upgrades
+
+This version adds chat-focused upgrades:
+
+- Global chat opens at the bottom.
+- If you scroll up, new messages no longer force you to the bottom.
+- A "new messages" button appears when new global messages arrive while you are reading older chat.
+- Server-side anti-spam protects global chat and private chat.
+- Repeated duplicate messages and fast message bursts are blocked.
+- Repeated spam warnings can automatically mute a user for a short time.
+- Admins can mute/unmute users from the admin dashboard.
+- Admins still cannot read private-message content; they can only see private-message counts.
+
+Optional anti-spam env vars:
+
+```txt
+TSN_ANTI_SPAM_ENABLED=true
+TSN_MESSAGE_COOLDOWN_MS=1500
+TSN_DUPLICATE_MESSAGE_WINDOW_MS=120000
+TSN_MAX_DUPLICATES_PER_WINDOW=3
+TSN_SPAM_WINDOW_MS=60000
+TSN_MAX_MESSAGES_PER_SPAM_WINDOW=20
+TSN_AUTO_MUTE_AFTER_WARNINGS=5
+TSN_AUTO_MUTE_MINUTES=10
+TSN_DEFAULT_ADMIN_MUTE_MINUTES=10
 ```

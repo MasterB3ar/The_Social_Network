@@ -14,7 +14,8 @@ const state = {
   adminMessagesHasMore: false,
   adminPrivateMessagesCount: 0,
   adminReports: [],
-  adminStats: null
+  adminStats: null,
+  globalNewMessageCount: 0
 };
 
 const PRIVATE_MESSAGE_DELETE_FOR_EVERYONE_MS = 15 * 60 * 1000;
@@ -29,6 +30,7 @@ const usersList = $('#usersList');
 const chatPanel = $('#chatPanel');
 const messagesList = $('#messagesList');
 const globalMessagesList = $('#globalMessagesList');
+const globalNewMessagesBtn = $('#globalNewMessagesBtn');
 const toast = $('#toast');
 const adminUsersList = $('#adminUsersList');
 const adminMessageViewer = $('#adminMessageViewer');
@@ -164,11 +166,13 @@ function displayRole(role) {
 
 function displayAdminStatus(user) {
   if (user.banned) return 'Banned';
+  if (user.muted) return 'Muted';
   return user.online ? 'Online' : 'Offline';
 }
 
 function adminStatusClass(user) {
   if (user.banned) return 'danger';
+  if (user.muted) return 'warning';
   if (user.online) return 'success';
   return 'muted';
 }
@@ -250,6 +254,40 @@ function restoreMessageScroll(element, snapshot, { forceBottom = false } = {}) {
 
   apply();
   requestAnimationFrame(apply);
+}
+
+function isElementNearBottom(element, threshold = 96) {
+  if (!element) return true;
+  return element.scrollHeight - element.scrollTop - element.clientHeight <= threshold;
+}
+
+function updateGlobalNewMessagesButton() {
+  if (!globalNewMessagesBtn) return;
+  const count = Number(state.globalNewMessageCount || 0);
+  globalNewMessagesBtn.classList.toggle('hidden', count <= 0);
+  globalNewMessagesBtn.textContent = count > 1 ? `${count} nye beskeder ↓` : '1 ny besked ↓';
+}
+
+function clearGlobalNewMessages({ scroll = false } = {}) {
+  state.globalNewMessageCount = 0;
+  updateGlobalNewMessagesButton();
+  if (scroll) scrollElementToBottom(globalMessagesList);
+}
+
+function handleIncomingGlobalMessage(message) {
+  const wasKnown = state.globalMessages.some((candidate) => candidate.id === message?.id);
+  const scrollSnapshot = getScrollSnapshot(globalMessagesList);
+  const activeGlobal = appScreen.dataset.view === 'global';
+  const mine = message?.authorId === state.me?.id;
+  const nearBottom = !scrollSnapshot || scrollSnapshot.wasNearBottom;
+  upsertGlobalMessage(message);
+
+  if (!wasKnown && !mine && activeGlobal && !nearBottom) {
+    state.globalNewMessageCount = Math.min(99, Number(state.globalNewMessageCount || 0) + 1);
+  }
+
+  renderGlobalMessages({ forceBottom: mine || (activeGlobal && nearBottom) });
+  updateGlobalNewMessagesButton();
 }
 
 function blurActiveElement() {
@@ -364,7 +402,7 @@ function switchAppView(view) {
   }
 
   if (activeView === 'global') {
-    requestAnimationFrame(() => scrollElementToBottom(globalMessagesList));
+    requestAnimationFrame(() => clearGlobalNewMessages({ scroll: true }));
   }
 
 
@@ -763,6 +801,8 @@ if (adminUsersList) {
     const kickButton = event.target.closest('[data-admin-kick]');
     const banButton = event.target.closest('[data-admin-ban]');
     const unbanButton = event.target.closest('[data-admin-unban]');
+    const muteButton = event.target.closest('[data-admin-mute]');
+    const unmuteButton = event.target.closest('[data-admin-unmute]');
     const deleteButton = event.target.closest('[data-admin-delete-user]');
 
     try {
@@ -804,6 +844,38 @@ if (adminUsersList) {
         await loadAdminStats();
         await loadUsers($('#userSearch').value);
         showToast('Ban fjernet');
+      }
+
+      if (muteButton) {
+        const userId = muteButton.dataset.adminMute;
+        const user = state.adminUsers.find((candidate) => candidate.id === userId);
+        const minutesRaw = prompt(`Mute ${user?.name || 'denne bruger'} i hvor mange minutter?`, '10');
+        if (minutesRaw === null) return;
+        const durationMinutes = Math.max(1, Math.min(1440, Number(minutesRaw) || 10));
+        const reason = prompt('Valgfri mute-grund:', 'Spam') || 'Spam';
+        const data = await api(`/api/admin/users/${userId}/mute`, {
+          method: 'POST',
+          body: JSON.stringify({ durationMinutes, reason })
+        });
+        upsertAdminUser(data.user);
+        if (data.stats) state.adminStats = data.stats;
+        renderAdminUsers();
+        renderAdminStats();
+        await loadUsers($('#userSearch').value);
+        showToast('Bruger muted');
+      }
+
+      if (unmuteButton) {
+        const userId = unmuteButton.dataset.adminUnmute;
+        const user = state.adminUsers.find((candidate) => candidate.id === userId);
+        if (!confirm(`Fjern mute fra ${user?.name || 'denne bruger'}?`)) return;
+        const data = await api(`/api/admin/users/${userId}/unmute`, { method: 'POST' });
+        upsertAdminUser(data.user);
+        if (data.stats) state.adminStats = data.stats;
+        renderAdminUsers();
+        renderAdminStats();
+        await loadUsers($('#userSearch').value);
+        showToast('Mute fjernet');
       }
 
       if (deleteButton) {
@@ -867,6 +939,16 @@ if (globalMessagesList) {
       showToast(error.message);
     }
   });
+}
+
+if (globalMessagesList) {
+  globalMessagesList.addEventListener('scroll', () => {
+    if (isElementNearBottom(globalMessagesList)) clearGlobalNewMessages();
+  });
+}
+
+if (globalNewMessagesBtn) {
+  globalNewMessagesBtn.addEventListener('click', () => clearGlobalNewMessages({ scroll: true }));
 }
 
 let userSearchTimer = null;
@@ -1211,6 +1293,7 @@ function renderAdminStats() {
   const cards = [
     { label: 'Brugere', value: stats.usersTotal, sub: `${formatNumber(stats.onlineUsers)} online · ${formatNumber(stats.bannedUsers)} banned` },
     { label: 'Åbne rapporter', value: stats.openReports, sub: `${formatNumber(stats.reportsTotal)} rapporter i alt` },
+    { label: 'Muted', value: stats.mutedUsers, sub: `${formatNumber(stats.spamWarnings)} aktive spam-advarsler` },
     { label: 'Global chat', value: stats.globalChatMessages ?? stats.globalPosts, sub: stats.latestGlobalPostAt ? `Seneste ${formatTime(stats.latestGlobalPostAt)}` : 'Ingen globale chatbeskeder endnu' },
     { label: 'Private beskeder', value: stats.directMessages, sub: stats.latestDirectMessageAt ? `Seneste ${formatTime(stats.latestDirectMessageAt)}` : 'Ingen private beskeder endnu' }
   ];
@@ -1241,7 +1324,7 @@ function renderAdminUsers() {
     const lastActivity = stats.lastActivityAt ? formatTime(stats.lastActivityAt) : 'Ingen aktivitet';
     const openReports = Number(stats.openReportsAgainstCount || 0);
     return `
-      <article class="admin-user-row ${user.banned ? 'banned' : ''} ${openReports ? 'reported' : ''}">
+      <article class="admin-user-row ${user.banned ? 'banned' : ''} ${user.muted ? 'muted-row' : ''} ${openReports ? 'reported' : ''}">
         <div class="admin-user-main">
           ${avatarHtml(user, 'small-avatar')}
           <div>
@@ -1249,16 +1332,22 @@ function renderAdminUsers() {
             <span>@${escapeHtml(user.username)} · ${escapeHtml(displayRole(user.role))} · <em class="admin-status ${escapeHtml(adminStatusClass(user))}">${escapeHtml(status)}</em></span>
             <small>Oprettet: ${escapeHtml(created)} · Seneste aktivitet: ${escapeHtml(lastActivity)}</small>
             ${user.banReason ? `<small class="admin-warning-line">Ban-grund: ${escapeHtml(user.banReason)}</small>` : ''}
+            ${user.muted ? `<small class="admin-warning-line">Muted indtil ${escapeHtml(formatExactDate(user.mutedUntil))}${user.muteReason ? ` · ${escapeHtml(user.muteReason)}` : ''}</small>` : ''}
+            ${user.lastSpamWarningReason ? `<small class="admin-warning-line">Seneste spam: ${escapeHtml(user.lastSpamWarningReason)}</small>` : ''}
           </div>
         </div>
         <div class="admin-user-metrics" aria-label="Brugerstatistik">
           <span>${formatNumber(stats.globalPostsCount)} global chat</span>
           <span>${formatNumber(stats.commentsCount)} hist. kommentarer</span>
           <span>${formatNumber(stats.privateMessagesCount)} DM</span>
+          <span class="${Number(user.spamWarnings || 0) ? 'hot' : ''}">${formatNumber(user.spamWarnings || 0)} spam-advarsler</span>
           <span class="${openReports ? 'hot' : ''}">${formatNumber(openReports)} åbne rapporter</span>
         </div>
         <div class="admin-user-actions">
           <button class="ghost tiny" type="button" data-admin-kick="${escapeHtml(user.id)}" ${isMe || user.banned ? 'disabled' : ''}>Log ud</button>
+          ${user.muted
+            ? `<button class="secondary tiny" type="button" data-admin-unmute="${escapeHtml(user.id)}" ${isMe || isProtectedAdmin ? 'disabled' : ''}>Fjern mute</button>`
+            : `<button class="ghost tiny" type="button" data-admin-mute="${escapeHtml(user.id)}" ${isMe || isProtectedAdmin || user.banned ? 'disabled' : ''}>Mute</button>`}
           ${user.banned
             ? `<button class="secondary tiny" type="button" data-admin-unban="${escapeHtml(user.id)}">Fjern ban</button>`
             : `<button class="ghost danger tiny" type="button" data-admin-ban="${escapeHtml(user.id)}" ${isMe || isProtectedAdmin ? 'disabled' : ''}>Ban</button>`}
@@ -1500,7 +1589,9 @@ async function loadUsers(q = '') {
 async function loadGlobalMessages() {
   const data = await api('/api/global/messages');
   state.globalMessages = data.messages || [];
+  state.globalNewMessageCount = 0;
   renderGlobalMessages({ forceBottom: true });
+  updateGlobalNewMessagesButton();
 }
 
 async function loadEverything() {
@@ -1542,16 +1633,13 @@ function connectSocket() {
   });
 
   state.socket.on('global-message', (message) => {
-    upsertGlobalMessage(message);
-    renderGlobalMessages({ forceBottom: message.authorId === state.me?.id });
+    handleIncomingGlobalMessage(message);
     queueAdminMessagesRefresh();
     if (state.me?.isAdmin && state.adminReports.length) loadAdminReports().catch(() => {});
   });
 
   state.socket.on('global-message-updated', (message) => {
-    const beforeCount = state.globalMessages.length;
-    upsertGlobalMessage(message);
-    renderGlobalMessages({ forceBottom: message.authorId === state.me?.id });
+    handleIncomingGlobalMessage(message);
     queueAdminMessagesRefresh();
     if (state.me?.isAdmin && state.adminReports.length) loadAdminReports().catch(() => {});
   });
@@ -1630,6 +1718,14 @@ function connectSocket() {
 
   state.socket.on('force-logout', ({ reason }) => {
     forceLocalLogout(reason || 'Du er blevet logget ud af en admin.');
+  });
+
+  state.socket.on('profile-updated', ({ user }) => {
+    mergeUpdatedPublicUser(user);
+    rerenderAfterProfileUpdate();
+    if (user?.id === state.me?.id && user.muted) {
+      showToast(user.mutedUntil ? `Du er muted indtil ${formatExactDate(user.mutedUntil)}.` : 'Du er muted.');
+    }
   });
 
 
