@@ -55,7 +55,7 @@
 
       <p id="authError" class="error"></p>
       <p class="save-note">TSN holder dig logget ind på denne enhed i 7 dage.</p>
-      <p class="privacy-note">Til moderation kan TSN-admins gennemgå globale beskeder og se antal private beskeder, men ikke læse private beskeder.</p>
+      <p class="privacy-note">Til moderation kan TSN-admins gennemgå globale beskeder og rapporterede private beskeder. Admins kan ikke browse alle private samtaler.</p>
     </div>
   </section>
 
@@ -216,7 +216,7 @@
             <input id="adminMessageSearch" placeholder="Søg i globale beskeder eller brugere..." />
             <button id="loadAdminMessagesBtn" class="secondary" type="button">Indlæs beskeder</button>
           </div>
-          <p class="admin-message-notice">Private beskeder vises ikke for admins. Admins kan kun se private besked-antal.</p>
+          <p class="admin-message-notice">Private samtaler kan ikke browses af admins. Rapporterede private beskeder vises i rapporter som evidence.</p>
           <div class="admin-messages-scrollbox" aria-label="Beskedliste med intern scrollbar">
             <div id="adminMessagesList" class="admin-messages-list"></div>
           </div>

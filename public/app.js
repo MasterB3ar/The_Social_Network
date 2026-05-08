@@ -1517,6 +1517,7 @@ function renderAdminReportViewer() {
           <p class="admin-parent-excerpt"><strong>Rapporteret indhold:</strong><br>${escapeHtml(target.body || '')}</p>
         </div>
         ${target.parentBody ? `<p class="admin-parent-excerpt">Svar på: ${escapeHtml(target.parentBody)}</p>` : ''}
+        ${target.contextBody ? `<p class="admin-parent-excerpt"><strong>Rapporteret privat besked:</strong><br>${escapeHtml(target.contextBody)}</p>` : ''}
       </article>
     `;
   }).join('');

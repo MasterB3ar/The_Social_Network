@@ -1,6 +1,6 @@
 
 
-## V1.3.9 report evidence save
+## V1.3.10 reported private evidence visible
 
 Reports now keep a saved snapshot of the reported target at the moment the report is created. If a reported global chat message is deleted later, the admin report still keeps the saved evidence. Private message reports keep evidence internally, and user reports from private chat can save the latest chat message as hidden internal evidence, but private message bodies remain hidden from admins.
 
@@ -78,7 +78,7 @@ This version adds chat-focused upgrades:
 - Repeated duplicate messages and fast message bursts are blocked.
 - Repeated spam warnings can automatically mute a user for a short time.
 - Admins can mute/unmute users from the admin dashboard.
-- Admins still cannot read private-message content; they can only see private-message counts.
+- Admins still cannot browse all private-message content, but they can read private messages that users explicitly report as moderation evidence.
 
 Optional anti-spam env vars:
 
@@ -93,3 +93,9 @@ TSN_AUTO_MUTE_AFTER_WARNINGS=5
 TSN_AUTO_MUTE_MINUTES=10
 TSN_DEFAULT_ADMIN_MUTE_MINUTES=10
 ```
+
+## V1.3.10 reported private evidence visible
+
+- Reported private-message evidence is now visible to admins inside the reports panel.
+- Admins still cannot browse every private conversation from the admin message archive.
+- Existing saved report evidence is reused, so messages remain visible in the report even if the original message is deleted later.

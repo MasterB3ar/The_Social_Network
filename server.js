@@ -1370,7 +1370,7 @@ function ensureReportSnapshot(db, report) {
     snapshot.conversationId = message.conversationId || conversationId(message.from, message.to);
     snapshot.createdAt = message.createdAt || null;
     snapshot.privateBodyEnc = encryptField(getEncryptedObjectField(message, 'text'));
-    snapshot.privateBodyHiddenFromAdmins = true;
+    snapshot.privateBodyVisibleToAdminsWhenReported = true;
     buildActorSnapshot(snapshot, 'author', findUser(message.from));
     buildActorSnapshot(snapshot, 'toUser', findUser(message.to));
   } else if (report.type === 'user') {
@@ -1389,7 +1389,7 @@ function ensureReportSnapshot(db, report) {
         snapshot.contextConversationId = contextMessage.conversationId || conversationId(contextMessage.from, contextMessage.to);
         snapshot.contextCreatedAt = contextMessage.createdAt || null;
         snapshot.contextPrivateBodyEnc = encryptField(getEncryptedObjectField(contextMessage, 'text'));
-        snapshot.contextPrivateBodyHiddenFromAdmins = true;
+        snapshot.contextPrivateBodyVisibleToAdminsWhenReported = true;
         buildActorSnapshot(snapshot, 'contextAuthor', findUser(contextMessage.from));
         buildActorSnapshot(snapshot, 'contextToUser', findUser(contextMessage.to));
       }
@@ -1464,9 +1464,7 @@ function findReportTarget(db, report) {
       snapshotSavedAt: snapshot?.savedAt || null,
       type: report.type,
       label: 'Privat besked',
-      body: snapshot?.privateBodyEnc
-        ? '[Privat besked gemt som rapport-evidence, men skjult for admins]'
-        : (message ? '[Privat besked skjult for admins]' : 'Beskeden findes ikke længere.'),
+      body: snapshotText(snapshot, 'privateBody') || (message ? getEncryptedObjectField(message, 'text') : 'Beskeden findes ikke længere.'),
       createdAt: message?.createdAt || snapshot?.createdAt || null,
       author: message ? adminMessageActor(fromUser) : snapshotActor(snapshot, 'author'),
       toUser: message ? adminMessageActor(toUser) : snapshotActor(snapshot, 'toUser'),
@@ -1483,6 +1481,10 @@ function findReportTarget(db, report) {
       snapshotSaved: Boolean(snapshot?.savedAt),
       snapshotSavedAt: snapshot?.savedAt || null,
       contextSaved: Boolean(snapshot?.contextPrivateBodyEnc),
+      contextBody: snapshotText(snapshot, 'contextPrivateBody'),
+      contextAuthor: snapshotActor(snapshot, 'contextAuthor'),
+      contextToUser: snapshotActor(snapshot, 'contextToUser'),
+      contextCreatedAt: snapshot?.contextCreatedAt || null,
       type: report.type,
       label: 'Bruger',
       body: snapshotBody || (targetUser ? `${getUserField(targetUser, 'name')} (@${getUserField(targetUser, 'username')})` : 'Brugeren findes ikke længere.'),
@@ -1903,7 +1905,7 @@ app.get('/api/health', (req, res) => {
         privateMessages: 'aes-256-gcm encrypted at rest',
         usernameLookup: 'hmac-sha256',
         sessions: 'versioned JWT sessions support admin kick/logout',
-        moderation: 'admins can review global messages, handle reports, kick accounts, ban accounts, unban accounts, and see private-message counts without reading private-message content',
+        moderation: 'admins can review global messages and reported private-message evidence, handle reports, kick accounts, ban accounts, unban accounts, and see private-message counts without browsing all private-message content',
         contentFilter: CONTENT_FILTER_ENABLED ? 'server-side blocked-language filter enabled' : 'disabled',
         customBlockedWords: CUSTOM_BLOCKED_WORDS.length,
         adminRights: 'claimable with server-side admin setup password'
@@ -2135,6 +2137,7 @@ app.get('/api/admin/reports', requireAuth, requireAdmin, (req, res) => {
       report.reporter?.name,
       report.reporter?.username,
       report.target?.body,
+      report.target?.contextBody,
       report.target?.author?.name,
       report.target?.author?.username,
       report.target?.toUser?.name,
@@ -2748,7 +2751,7 @@ async function startServer() {
       console.log(`Backup directory: ${DB_BACKUP_DIR}`);
       const warning = storagePersistenceWarning();
       if (warning) console.warn(`Persistence warning: ${warning}`);
-      console.log('TSN V1.3.7 mode: chat upgrades, anti-spam/mute tools, shop/currency removed, and private-message content hidden from admins.');
+      console.log('TSN V1.3.10 mode: reported private-message evidence visible to admins, all private-message browsing still hidden.');
       console.log('Admin rights can be claimed inside the app with TSN_ADMIN_SETUP_PASSWORD or TSN_ADMIN_SETUP_PASSWORD_HASH.');
 
       if (process.env.NODE_ENV === 'production' && JWT_SECRET === DEFAULT_JWT_SECRET) {
