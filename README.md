@@ -1,4 +1,9 @@
 
+
+## V1.3.9 report evidence save
+
+Reports now keep a saved snapshot of the reported target at the moment the report is created. If a reported global chat message is deleted later, the admin report still keeps the saved evidence. Private message reports keep evidence internally, and user reports from private chat can save the latest chat message as hidden internal evidence, but private message bodies remain hidden from admins.
+
 ## TSN v1.3.8 — Global chat start-at-bottom fix
 
 This release fixes a regression where Global chat could open at the top after the chat-upgrades release. The chat now requests a bottom scroll after message loading and repeats it briefly while the browser finishes layout, without forcing users down when new messages arrive while they are reading older chat.

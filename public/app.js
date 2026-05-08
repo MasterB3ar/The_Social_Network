@@ -1085,7 +1085,13 @@ if (reportChatUserBtn) {
   reportChatUserBtn.addEventListener('click', async () => {
     if (!state.activeChatUser) return;
     try {
-      await createReport('user', { userId: state.activeChatUser.id });
+      const contextMessage = [...state.activeMessages]
+        .reverse()
+        .find((message) => message.from === state.activeChatUser.id || message.to === state.activeChatUser.id);
+      await createReport('user', {
+        userId: state.activeChatUser.id,
+        contextMessageId: contextMessage?.id || ''
+      });
     } catch (error) {
       showToast(error.message);
     }
@@ -1490,11 +1496,14 @@ function renderAdminReportViewer() {
     const reporter = report.reporter?.name || 'Ukendt';
     const targetAuthor = target.author?.name || target.toUser?.name || 'Ukendt';
     const isResolved = report.status === 'resolved';
+    const evidenceNote = target.snapshotSaved
+      ? ` · gemt ved rapport${target.originalExists ? '' : ' · original slettet'}`
+      : '';
     return `
       <article class="admin-report-item ${isResolved ? 'resolved' : ''}">
         <div class="admin-message-topline">
           <span class="admin-message-label">${escapeHtml(target.label || reportTypeLabel(report.type))}</span>
-          <span>${escapeHtml(formatExactDate(report.createdAt))} · ${escapeHtml(report.statusLabel || report.status || 'åben')}</span>
+          <span>${escapeHtml(formatExactDate(report.createdAt))} · ${escapeHtml(report.statusLabel || report.status || 'åben')}${escapeHtml(evidenceNote)}</span>
         </div>
         <div class="admin-message-main admin-report-titleline">
           <strong>Rapporteret af ${escapeHtml(reporter)} · mål: ${escapeHtml(targetAuthor)}</strong>

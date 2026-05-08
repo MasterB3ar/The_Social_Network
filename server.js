@@ -1306,6 +1306,102 @@ function getReportReason(report) {
   return getEncryptedObjectField(report, 'reason');
 }
 
+function snapshotText(snapshot, field) {
+  return getEncryptedObjectField(snapshot, field);
+}
+
+function snapshotActor(snapshot, prefix = 'author') {
+  if (!snapshot) return adminMessageActor(null);
+  return {
+    id: snapshot[`${prefix}Id`] || '',
+    name: snapshotText(snapshot, `${prefix}Name`) || 'Slettet bruger',
+    username: snapshotText(snapshot, `${prefix}Username`) || 'deleted',
+    role: '',
+    isAdmin: false,
+    banned: false,
+    muted: false,
+    online: false
+  };
+}
+
+function buildActorSnapshot(target, prefix, user) {
+  if (!user) return;
+  target[`${prefix}Id`] = user.id;
+  target[`${prefix}NameEnc`] = encryptField(getUserField(user, 'name') || 'Ukendt');
+  target[`${prefix}UsernameEnc`] = encryptField(getUserField(user, 'username') || 'unknown');
+}
+
+function ensureReportSnapshot(db, report) {
+  if (!report || typeof report !== 'object' || report.targetSnapshot) return false;
+
+  const users = Array.isArray(db.users) ? db.users : [];
+  const globalMessages = Array.isArray(db.globalMessages) ? db.globalMessages : [];
+  const directMessages = Array.isArray(db.messages) ? db.messages : [];
+  const findUser = (userId) => users.find((user) => user.id === userId);
+  const savedAt = report.createdAt || new Date().toISOString();
+  const snapshot = { type: report.type || 'unknown', savedAt };
+
+  if (report.type === 'global-message') {
+    const message = globalMessages.find((candidate) => candidate.id === report.messageId);
+    if (!message) return false;
+    snapshot.label = 'Global chatbesked';
+    snapshot.messageId = message.id;
+    snapshot.createdAt = message.createdAt || null;
+    snapshot.bodyEnc = encryptField(getEncryptedObjectField(message, 'text'));
+    buildActorSnapshot(snapshot, 'author', findUser(message.authorId));
+  } else if (report.type === 'global-comment') {
+    const message = globalMessages.find((candidate) => candidate.id === report.messageId);
+    if (!message) return false;
+    normalizeGlobalMessageInteractions(message);
+    const comment = message.comments.find((candidate) => candidate.id === report.commentId);
+    if (!comment) return false;
+    snapshot.label = 'Historisk global kommentar';
+    snapshot.messageId = message.id;
+    snapshot.commentId = comment.id;
+    snapshot.createdAt = comment.createdAt || null;
+    snapshot.bodyEnc = encryptField(getEncryptedObjectField(comment, 'text'));
+    snapshot.parentBodyEnc = encryptField(getEncryptedObjectField(message, 'text'));
+    buildActorSnapshot(snapshot, 'author', findUser(comment.authorId));
+  } else if (report.type === 'direct-message') {
+    const message = directMessages.find((candidate) => candidate.id === report.messageId);
+    if (!message) return false;
+    snapshot.label = 'Privat besked';
+    snapshot.messageId = message.id;
+    snapshot.conversationId = message.conversationId || conversationId(message.from, message.to);
+    snapshot.createdAt = message.createdAt || null;
+    snapshot.privateBodyEnc = encryptField(getEncryptedObjectField(message, 'text'));
+    snapshot.privateBodyHiddenFromAdmins = true;
+    buildActorSnapshot(snapshot, 'author', findUser(message.from));
+    buildActorSnapshot(snapshot, 'toUser', findUser(message.to));
+  } else if (report.type === 'user') {
+    const targetUser = findUser(report.targetUserId);
+    if (!targetUser) return false;
+    snapshot.label = 'Bruger';
+    snapshot.userId = targetUser.id;
+    snapshot.createdAt = targetUser.createdAt || null;
+    snapshot.bodyEnc = encryptField(`${getUserField(targetUser, 'name')} (@${getUserField(targetUser, 'username')})`);
+    buildActorSnapshot(snapshot, 'author', targetUser);
+
+    if (report.contextMessageId) {
+      const contextMessage = directMessages.find((candidate) => candidate.id === report.contextMessageId);
+      if (contextMessage) {
+        snapshot.contextMessageId = contextMessage.id;
+        snapshot.contextConversationId = contextMessage.conversationId || conversationId(contextMessage.from, contextMessage.to);
+        snapshot.contextCreatedAt = contextMessage.createdAt || null;
+        snapshot.contextPrivateBodyEnc = encryptField(getEncryptedObjectField(contextMessage, 'text'));
+        snapshot.contextPrivateBodyHiddenFromAdmins = true;
+        buildActorSnapshot(snapshot, 'contextAuthor', findUser(contextMessage.from));
+        buildActorSnapshot(snapshot, 'contextToUser', findUser(contextMessage.to));
+      }
+    }
+  } else {
+    return false;
+  }
+
+  report.targetSnapshot = snapshot;
+  return true;
+}
+
 function reportStatusLabel(status) {
   return status === 'resolved' ? 'løst' : 'åben';
 }
@@ -1315,17 +1411,23 @@ function findReportTarget(db, report) {
   const globalMessages = Array.isArray(db.globalMessages) ? db.globalMessages : [];
   const directMessages = Array.isArray(db.messages) ? db.messages : [];
   const findUser = (userId) => users.find((user) => user.id === userId);
+  const snapshot = report.targetSnapshot || null;
+  const snapshotBody = snapshotText(snapshot, 'body');
+  const snapshotParentBody = snapshotText(snapshot, 'parentBody');
 
   if (report.type === 'global-message') {
     const message = globalMessages.find((candidate) => candidate.id === report.messageId);
     const author = message ? findUser(message.authorId) : null;
     return {
       exists: Boolean(message),
+      originalExists: Boolean(message),
+      snapshotSaved: Boolean(snapshot?.savedAt),
+      snapshotSavedAt: snapshot?.savedAt || null,
       type: report.type,
       label: 'Global chatbesked',
-      body: message ? getEncryptedObjectField(message, 'text') : 'Chatbeskeden findes ikke længere.',
-      createdAt: message?.createdAt || null,
-      author: adminMessageActor(author),
+      body: snapshotBody || (message ? getEncryptedObjectField(message, 'text') : 'Chatbeskeden findes ikke længere.'),
+      createdAt: message?.createdAt || snapshot?.createdAt || null,
+      author: message ? adminMessageActor(author) : snapshotActor(snapshot, 'author'),
       messageId: report.messageId
     };
   }
@@ -1337,12 +1439,15 @@ function findReportTarget(db, report) {
     const author = comment ? findUser(comment.authorId) : null;
     return {
       exists: Boolean(message && comment),
+      originalExists: Boolean(message && comment),
+      snapshotSaved: Boolean(snapshot?.savedAt),
+      snapshotSavedAt: snapshot?.savedAt || null,
       type: report.type,
       label: 'Historisk global kommentar',
-      body: comment ? getEncryptedObjectField(comment, 'text') : 'Kommentaren findes ikke længere.',
-      parentBody: message ? getEncryptedObjectField(message, 'text') : '',
-      createdAt: comment?.createdAt || null,
-      author: adminMessageActor(author),
+      body: snapshotBody || (comment ? getEncryptedObjectField(comment, 'text') : 'Kommentaren findes ikke længere.'),
+      parentBody: snapshotParentBody || (message ? getEncryptedObjectField(message, 'text') : ''),
+      createdAt: comment?.createdAt || snapshot?.createdAt || null,
+      author: comment ? adminMessageActor(author) : snapshotActor(snapshot, 'author'),
       messageId: report.messageId,
       commentId: report.commentId
     };
@@ -1354,14 +1459,19 @@ function findReportTarget(db, report) {
     const toUser = message ? findUser(message.to) : null;
     return {
       exists: Boolean(message),
+      originalExists: Boolean(message),
+      snapshotSaved: Boolean(snapshot?.savedAt),
+      snapshotSavedAt: snapshot?.savedAt || null,
       type: report.type,
       label: 'Privat besked',
-      body: message ? '[Privat besked skjult for admins]' : 'Beskeden findes ikke længere.',
-      createdAt: message?.createdAt || null,
-      author: adminMessageActor(fromUser),
-      toUser: adminMessageActor(toUser),
+      body: snapshot?.privateBodyEnc
+        ? '[Privat besked gemt som rapport-evidence, men skjult for admins]'
+        : (message ? '[Privat besked skjult for admins]' : 'Beskeden findes ikke længere.'),
+      createdAt: message?.createdAt || snapshot?.createdAt || null,
+      author: message ? adminMessageActor(fromUser) : snapshotActor(snapshot, 'author'),
+      toUser: message ? adminMessageActor(toUser) : snapshotActor(snapshot, 'toUser'),
       messageId: report.messageId,
-      conversationId: message?.conversationId || ''
+      conversationId: message?.conversationId || snapshot?.conversationId || ''
     };
   }
 
@@ -1369,16 +1479,20 @@ function findReportTarget(db, report) {
     const targetUser = findUser(report.targetUserId);
     return {
       exists: Boolean(targetUser),
+      originalExists: Boolean(targetUser),
+      snapshotSaved: Boolean(snapshot?.savedAt),
+      snapshotSavedAt: snapshot?.savedAt || null,
+      contextSaved: Boolean(snapshot?.contextPrivateBodyEnc),
       type: report.type,
       label: 'Bruger',
-      body: targetUser ? `${getUserField(targetUser, 'name')} (@${getUserField(targetUser, 'username')})` : 'Brugeren findes ikke længere.',
-      createdAt: targetUser?.createdAt || null,
-      author: adminMessageActor(targetUser),
+      body: snapshotBody || (targetUser ? `${getUserField(targetUser, 'name')} (@${getUserField(targetUser, 'username')})` : 'Brugeren findes ikke længere.'),
+      createdAt: targetUser?.createdAt || snapshot?.createdAt || null,
+      author: targetUser ? adminMessageActor(targetUser) : snapshotActor(snapshot, 'author'),
       userId: report.targetUserId
     };
   }
 
-  return { exists: false, type: report.type || 'ukendt', label: 'Ukendt rapport', body: 'Målet findes ikke.', createdAt: null };
+  return { exists: false, originalExists: false, snapshotSaved: Boolean(snapshot?.savedAt), snapshotSavedAt: snapshot?.savedAt || null, type: report.type || 'ukendt', label: 'Ukendt rapport', body: snapshotBody || 'Målet findes ikke.', createdAt: snapshot?.createdAt || null };
 }
 
 function publicReport(db, report) {
@@ -1711,6 +1825,7 @@ async function migrateDatabaseAtRest() {
       report.createdAt = new Date().toISOString();
       changed = true;
     }
+    if (ensureReportSnapshot(db, report)) changed = true;
   });
 
   db.roomMessages.forEach((message) => {
@@ -2390,6 +2505,7 @@ app.post('/api/reports', requireAuth, async (req, res) => {
     if (!message) return res.status(404).json({ error: 'Chatbeskeden blev ikke fundet.' });
     report.messageId = message.id;
     report.targetUserId = message.authorId;
+    ensureReportSnapshot(db, report);
   } else if (type === 'global-comment') {
     const message = (Array.isArray(db.globalMessages) ? db.globalMessages : []).find((candidate) => candidate.id === req.body.messageId);
     if (!message) return res.status(404).json({ error: 'Chatbeskeden blev ikke fundet.' });
@@ -2399,6 +2515,7 @@ app.post('/api/reports', requireAuth, async (req, res) => {
     report.messageId = message.id;
     report.commentId = comment.id;
     report.targetUserId = comment.authorId;
+    ensureReportSnapshot(db, report);
   } else if (type === 'direct-message') {
     const message = (Array.isArray(db.messages) ? db.messages : []).find((candidate) => candidate.id === req.body.messageId);
     if (!message) return res.status(404).json({ error: 'Beskeden blev ikke fundet.' });
@@ -2407,11 +2524,25 @@ app.post('/api/reports', requireAuth, async (req, res) => {
     }
     report.messageId = message.id;
     report.targetUserId = message.from === req.user.id ? message.to : message.from;
+    ensureReportSnapshot(db, report);
   } else if (type === 'user') {
     const target = db.users.find((candidate) => candidate.id === req.body.userId);
     if (!target) return res.status(404).json({ error: 'Brugeren blev ikke fundet.' });
     if (target.id === req.user.id) return res.status(400).json({ error: 'Du kan ikke rapportere dig selv.' });
     report.targetUserId = target.id;
+
+    const contextMessageId = cleanText(req.body.contextMessageId, 80);
+    if (contextMessageId) {
+      const contextMessage = (Array.isArray(db.messages) ? db.messages : []).find((candidate) => candidate.id === contextMessageId);
+      const validContext = contextMessage && (
+        (contextMessage.from === req.user.id && contextMessage.to === target.id) ||
+        (contextMessage.from === target.id && contextMessage.to === req.user.id) ||
+        req.user.role === 'admin'
+      );
+      if (validContext) report.contextMessageId = contextMessage.id;
+    }
+
+    ensureReportSnapshot(db, report);
   } else {
     return res.status(400).json({ error: 'Rapporttypen understøttes ikke.' });
   }
