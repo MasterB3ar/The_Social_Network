@@ -127,3 +127,17 @@ TSN_WARNINGS_LIMIT=1000
 ```
 
 Privacy note: admins still cannot browse every private conversation from the message archive. Reported private-message evidence remains visible in the reports panel for moderation.
+
+
+## TSN V1.4.1 — Notification + Reaction Popup Polish
+
+This update cleans up the chat UI without changing the backend database format.
+
+- Notifications now use a cleaner inbox-style card layout.
+- Global chat messages and private messages are now clickable/tappable.
+- Emoji reactions moved into a popup menu instead of showing an ugly reaction row under every message.
+- The popup also contains report/delete actions where the user has permission.
+- Existing reaction counts are still visible as small compact chips on messages.
+- Mobile layout was improved so the popup behaves like a bottom sheet on phones.
+
+No new environment variables are required.

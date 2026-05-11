@@ -124,6 +124,53 @@ function renderReactionBar(reactions, idValue, type) {
   }).join('')}</div>`;
 }
 
+function reactionItems(reactions) {
+  return (Array.isArray(reactions) ? reactions : [])
+    .filter((reaction) => Number(reaction?.count) > 0)
+    .slice(0, 5);
+}
+
+function renderReactionSummary(reactions) {
+  const items = reactionItems(reactions);
+  const chips = items.map((reaction) => `
+    <span class="reaction-summary-chip ${reaction.reactedByMe ? 'active' : ''}">
+      <span>${escapeHtml(reaction.emoji)}</span>
+      <strong>${escapeHtml(formatNumber(reaction.count))}</strong>
+    </span>
+  `).join('');
+
+  return `
+    <div class="reaction-summary ${items.length ? '' : 'empty'}" aria-label="Åbn beskedmenu">
+      ${chips}
+      <span class="message-menu-dot" aria-hidden="true">⋯</span>
+    </div>
+  `;
+}
+
+function notificationTypeIcon(type) {
+  const icons = {
+    private: '💬',
+    mention: '@',
+    reaction: '✨',
+    friend: '🤝',
+    warning: '⚠️',
+    admin: '🛡️'
+  };
+  return icons[String(type || '').toLowerCase()] || '🔔';
+}
+
+function notificationTypeLabel(type) {
+  const labels = {
+    private: 'Privat besked',
+    mention: 'Mention',
+    reaction: 'Reaktion',
+    friend: 'Venner',
+    warning: 'Advarsel',
+    admin: 'Admin'
+  };
+  return labels[String(type || '').toLowerCase()] || 'Info';
+}
+
 function friendStatusLabel(status) {
   if (status === 'friends') return 'Venner';
   if (status === 'pending-out') return 'Sendt';
@@ -1013,23 +1060,6 @@ if (adminUsersList) {
         showToast('Mute fjernet');
       }
 
-
-      if (warnButton) {
-        const userId = warnButton.dataset.adminWarn;
-        const user = state.adminUsers.find((candidate) => candidate.id === userId);
-        const reason = prompt(`Giv ${user?.name || 'denne bruger'} en advarsel. Grund:`, 'Brud på reglerne');
-        if (reason === null || !reason.trim()) return;
-        const data = await api(`/api/admin/users/${userId}/warn`, {
-          method: 'POST',
-          body: JSON.stringify({ reason })
-        });
-        upsertAdminUser(data.user);
-        if (data.stats) state.adminStats = data.stats;
-        renderAdminUsers();
-        renderAdminStats();
-        await loadUsers($('#userSearch').value);
-        showToast('Advarsel sendt');
-      }
       if (deleteButton) {
         const userId = deleteButton.dataset.adminDeleteUser;
         const user = state.adminUsers.find((candidate) => candidate.id === userId);
@@ -1046,6 +1076,158 @@ if (adminUsersList) {
     }
   });
 }
+
+function getMessageByPopupType(type, messageId) {
+  const source = type === 'direct' ? state.activeMessages : state.globalMessages;
+  return (Array.isArray(source) ? source : []).find((message) => message.id === messageId) || null;
+}
+
+function messagePopupAuthor(message, type) {
+  if (type === 'global') return message?.author?.name || 'Ukendt';
+  if (!state.me) return 'TSN';
+  return message?.from === state.me.id ? state.me.name : (state.activeChatUser?.name || 'Privat chat');
+}
+
+function ensureMessageActionOverlay() {
+  let overlay = document.getElementById('messageActionOverlay');
+  if (overlay) return overlay;
+
+  overlay = document.createElement('div');
+  overlay.id = 'messageActionOverlay';
+  overlay.className = 'message-action-overlay hidden';
+  overlay.setAttribute('aria-hidden', 'true');
+  document.body.appendChild(overlay);
+  overlay.addEventListener('click', handleMessageActionOverlayClick);
+  return overlay;
+}
+
+function closeMessageActionPopup() {
+  const overlay = document.getElementById('messageActionOverlay');
+  if (!overlay) return;
+  overlay.classList.add('hidden');
+  overlay.setAttribute('aria-hidden', 'true');
+  overlay.innerHTML = '';
+}
+
+function openMessageActionPopup(type, messageId) {
+  const message = getMessageByPopupType(type, messageId);
+  if (!message) return;
+  const overlay = ensureMessageActionOverlay();
+  const author = messagePopupAuthor(message, type);
+  const timestamp = formatExactDate(message.createdAt);
+  const canReport = type === 'global' || message.from !== state.me?.id;
+  const canDelete = type === 'global' ? canDeleteMessage(message.authorId) : canDeletePrivateMessageForEveryone(message);
+  const reportAttr = type === 'global' ? `data-popup-report-global="${escapeHtml(message.id)}"` : `data-popup-report-direct="${escapeHtml(message.id)}"`;
+  const deleteAttr = type === 'global' ? `data-popup-delete-global="${escapeHtml(message.id)}"` : `data-popup-delete-direct="${escapeHtml(message.id)}"`;
+
+  overlay.innerHTML = `
+    <div class="message-action-card" role="dialog" aria-modal="true" aria-label="Beskedmenu">
+      <div class="message-action-head">
+        <div>
+          <p class="eyebrow mini">Beskedmenu</p>
+          <h3>${escapeHtml(author)}</h3>
+          <span>${escapeHtml(timestamp)}</span>
+        </div>
+        <button class="icon-button" type="button" data-close-message-popup aria-label="Luk">×</button>
+      </div>
+
+      <div class="message-action-preview">
+        ${type === 'global' ? renderTextWithMentions(message.text) : directMessageBodyHtml(message)}
+      </div>
+
+      <div class="message-action-reactions" aria-label="Reaktioner">
+        ${REACTION_EMOJIS.map((emoji) => {
+          const active = reactionActive(message.reactions, emoji);
+          const count = reactionCount(message.reactions, emoji);
+          return `<button class="popup-reaction-button ${active ? 'active' : ''}" type="button" data-popup-react="${escapeHtml(type)}" data-message-id="${escapeHtml(message.id)}" data-emoji="${escapeHtml(emoji)}"><span>${escapeHtml(emoji)}</span>${count ? `<strong>${escapeHtml(formatNumber(count))}</strong>` : ''}</button>`;
+        }).join('')}
+      </div>
+
+      <div class="message-action-footer">
+        ${canReport ? `<button class="ghost" type="button" ${reportAttr}>Rapportér</button>` : ''}
+        ${canDelete ? `<button class="admin-delete" type="button" ${deleteAttr}>Slet</button>` : ''}
+      </div>
+    </div>
+  `;
+  overlay.classList.remove('hidden');
+  overlay.setAttribute('aria-hidden', 'false');
+  overlay.querySelector('[data-close-message-popup]')?.focus();
+}
+
+async function handleMessageActionOverlayClick(event) {
+  const overlay = event.currentTarget;
+  if (event.target === overlay || event.target.closest('[data-close-message-popup]')) {
+    closeMessageActionPopup();
+    return;
+  }
+
+  const reactButton = event.target.closest('[data-popup-react]');
+  const reportGlobal = event.target.closest('[data-popup-report-global]');
+  const reportDirect = event.target.closest('[data-popup-report-direct]');
+  const deleteGlobal = event.target.closest('[data-popup-delete-global]');
+  const deleteDirect = event.target.closest('[data-popup-delete-direct]');
+
+  try {
+    if (reactButton) {
+      const type = reactButton.dataset.popupReact;
+      const messageId = reactButton.dataset.messageId;
+      const endpoint = type === 'direct' ? `/api/messages/${messageId}/reactions` : `/api/global/messages/${messageId}/reactions`;
+      const data = await api(endpoint, {
+        method: 'POST',
+        body: JSON.stringify({ emoji: reactButton.dataset.emoji })
+      });
+      if (type === 'direct') {
+        const index = state.activeMessages.findIndex((message) => message.id === data.message.id);
+        if (index >= 0) state.activeMessages[index] = data.message;
+        renderChat();
+      } else {
+        upsertGlobalMessage(data.message);
+        renderGlobalMessages();
+      }
+      openMessageActionPopup(type, messageId);
+      return;
+    }
+
+    if (reportGlobal) {
+      await createReport('global-message', { messageId: reportGlobal.dataset.popupReportGlobal });
+      closeMessageActionPopup();
+      return;
+    }
+
+    if (reportDirect) {
+      await createReport('direct-message', { messageId: reportDirect.dataset.popupReportDirect });
+      closeMessageActionPopup();
+      return;
+    }
+
+    if (deleteGlobal) {
+      if (!confirm('Slet denne globale chatbesked for alle?')) return;
+      const messageId = deleteGlobal.dataset.popupDeleteGlobal;
+      await api(`/api/global/messages/${messageId}`, { method: 'DELETE' });
+      state.globalMessages = state.globalMessages.filter((message) => message.id !== messageId);
+      renderGlobalMessages();
+      closeMessageActionPopup();
+      showToast('Global chatbesked slettet');
+      return;
+    }
+
+    if (deleteDirect) {
+      if (!confirm('Slet denne private besked for alle? Det virker kun for dine egne beskeder inden for 15 minutter efter afsendelse.')) return;
+      const messageId = deleteDirect.dataset.popupDeleteDirect;
+      await api(`/api/messages/${messageId}`, { method: 'DELETE' });
+      state.activeMessages = state.activeMessages.filter((message) => message.id !== messageId);
+      renderChat();
+      closeMessageActionPopup();
+      showToast('Beskeden er slettet for alle.');
+    }
+  } catch (error) {
+    showToast(error.message);
+  }
+}
+
+document.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape') closeMessageActionPopup();
+});
 
 $('#globalMessageForm').addEventListener('submit', async (event) => {
   event.preventDefault();
@@ -1071,6 +1253,7 @@ if (globalMessagesList) {
     const deleteMessageButton = event.target.closest('[data-delete-global-message]');
     const reportMessageButton = event.target.closest('[data-report-global-message]');
     const reactButton = event.target.closest('[data-react-global-message]');
+    const messageCard = event.target.closest('[data-open-global-message-menu]');
 
     try {
       if (reactButton) {
@@ -1100,6 +1283,11 @@ if (globalMessagesList) {
         state.globalMessages = state.globalMessages.filter((message) => message.id !== messageId);
         renderGlobalMessages();
         showToast('Global chatbesked slettet');
+        return;
+      }
+
+      if (messageCard) {
+        openMessageActionPopup('global', messageCard.dataset.openGlobalMessageMenu);
       }
     } catch (error) {
       showToast(error.message);
@@ -1116,6 +1304,27 @@ if (globalMessagesList) {
 if (globalNewMessagesBtn) {
   globalNewMessagesBtn.addEventListener('click', () => clearGlobalNewMessages({ scroll: true }));
 }
+
+if (globalMessagesList) {
+  globalMessagesList.addEventListener('keydown', (event) => {
+    if (event.key !== 'Enter' && event.key !== ' ') return;
+    const messageCard = event.target.closest('[data-open-global-message-menu]');
+    if (!messageCard) return;
+    event.preventDefault();
+    openMessageActionPopup('global', messageCard.dataset.openGlobalMessageMenu);
+  });
+}
+
+if (messagesList) {
+  messagesList.addEventListener('keydown', (event) => {
+    if (event.key !== 'Enter' && event.key !== ' ') return;
+    const messageCard = event.target.closest('[data-open-direct-message-menu]');
+    if (!messageCard) return;
+    event.preventDefault();
+    openMessageActionPopup('direct', messageCard.dataset.openDirectMessageMenu);
+  });
+}
+
 
 let userSearchTimer = null;
 $('#userSearch').addEventListener('input', () => {
@@ -1174,6 +1383,7 @@ if (messagesList) {
     const reportButton = event.target.closest('[data-report-direct-message]');
     const deleteButton = event.target.closest('[data-delete-message]');
     const reactButton = event.target.closest('[data-react-direct-message]');
+    const messageCard = event.target.closest('[data-open-direct-message-menu]');
 
     try {
       if (reactButton) {
@@ -1193,23 +1403,6 @@ if (messagesList) {
         return;
       }
 
-
-      if (warnButton) {
-        const userId = warnButton.dataset.adminWarn;
-        const user = state.adminUsers.find((candidate) => candidate.id === userId);
-        const reason = prompt(`Giv ${user?.name || 'denne bruger'} en advarsel. Grund:`, 'Brud på reglerne');
-        if (reason === null || !reason.trim()) return;
-        const data = await api(`/api/admin/users/${userId}/warn`, {
-          method: 'POST',
-          body: JSON.stringify({ reason })
-        });
-        upsertAdminUser(data.user);
-        if (data.stats) state.adminStats = data.stats;
-        renderAdminUsers();
-        renderAdminStats();
-        await loadUsers($('#userSearch').value);
-        showToast('Advarsel sendt');
-      }
       if (deleteButton) {
         if (!confirm('Slet denne private besked for alle? Det virker kun for dine egne beskeder inden for 15 minutter efter afsendelse.')) return;
         const messageId = deleteButton.dataset.deleteMessage;
@@ -1217,6 +1410,11 @@ if (messagesList) {
         state.activeMessages = state.activeMessages.filter((message) => message.id !== messageId);
         renderChat();
         showToast('Beskeden er slettet for alle.');
+        return;
+      }
+
+      if (messageCard) {
+        openMessageActionPopup('direct', messageCard.dataset.openDirectMessageMenu);
       }
     } catch (error) {
       showToast(error.message);
@@ -1317,7 +1515,7 @@ function renderGlobalChatMessage(message) {
   const mine = message.authorId === state.me?.id;
   const authorName = message.author?.name || 'Ukendt';
   return `
-    <article class="global-chat-message ${mine ? 'mine' : ''}" data-global-message-id="${escapeHtml(message.id)}">
+    <article class="global-chat-message ${mine ? 'mine' : ''}" data-global-message-id="${escapeHtml(message.id)}" data-open-global-message-menu="${escapeHtml(message.id)}" tabindex="0" role="button" aria-label="Åbn beskedmenu">
       ${avatarHtml(message.author || authorName, 'chat-avatar')}
       <div class="global-chat-bubble">
         <div class="global-chat-meta">
@@ -1325,11 +1523,7 @@ function renderGlobalChatMessage(message) {
           <span>@${escapeHtml(message.author?.username || 'ukendt')} · ${escapeHtml(formatTime(message.createdAt))}</span>
         </div>
         <p>${renderTextWithMentions(message.text)}</p>
-        ${renderReactionBar(message.reactions, message.id, 'global')}
-        <div class="global-chat-actions">
-          <button class="ghost tiny report-button" type="button" data-report-global-message="${escapeHtml(message.id)}">Rapportér</button>
-          ${canDeleteMessage(message.authorId) ? `<button class="admin-delete" type="button" data-delete-global-message="${escapeHtml(message.id)}">Slet</button>` : ''}
-        </div>
+        ${renderReactionSummary(message.reactions)}
       </div>
     </article>
   `;
@@ -1454,12 +1648,10 @@ function renderChat({ forceBottom = false } = {}) {
     messagesList.innerHTML = '<div class="empty">Der er ingen private beskeder endnu. Start samtalen.</div>';
   } else {
     messagesList.innerHTML = state.activeMessages.map((message) => `
-      <div class="message ${message.from === state.me.id ? 'mine' : ''}">
+      <div class="message ${message.from === state.me.id ? 'mine' : ''}" data-open-direct-message-menu="${escapeHtml(message.id)}" tabindex="0" role="button" aria-label="Åbn beskedmenu">
         <div class="message-content">
           ${directMessageBodyHtml(message)}
-          ${renderReactionBar(message.reactions, message.id, 'direct')}
-          ${message.from !== state.me.id ? `<button class="message-report" type="button" data-report-direct-message="${escapeHtml(message.id)}">Rapportér</button>` : ''}
-          ${canDeletePrivateMessageForEveryone(message) ? `<button class="message-delete" type="button" data-delete-message="${escapeHtml(message.id)}" aria-label="${escapeHtml(deletePrivateMessageLabel(message))}" title="${escapeHtml(deletePrivateMessageLabel(message))}">×</button>` : ''}
+          ${renderReactionSummary(message.reactions)}
         </div>
         <small>${escapeHtml(formatTime(message.createdAt))}${message.from === state.me.id ? ` · <span class="message-receipt ${messageReadStatus(message) === 'Læst' ? 'read' : ''}">${escapeHtml(messageReadStatus(message))}</span>` : ''}</small>
       </div>
@@ -1818,12 +2010,16 @@ function renderNotifications() {
   }
   notificationsList.innerHTML = state.notifications.map((notification) => `
     <article class="notification-card ${notification.read ? '' : 'unread'}">
-      <div>
-        <strong>${escapeHtml(notification.title || 'TSN')}</strong>
-        <span>${escapeHtml(formatExactDate(notification.createdAt))} · ${escapeHtml(notification.type || 'info')}</span>
+      <div class="notification-icon" aria-hidden="true">${escapeHtml(notificationTypeIcon(notification.type))}</div>
+      <div class="notification-main">
+        <div class="notification-topline">
+          <strong>${escapeHtml(notification.title || 'TSN')}</strong>
+          <span>${escapeHtml(formatExactDate(notification.createdAt))}</span>
+        </div>
         <p>${escapeHtml(notification.body || '')}</p>
+        <span class="notification-type-pill">${escapeHtml(notificationTypeLabel(notification.type))}</span>
       </div>
-      ${notification.read ? '' : `<button class="ghost tiny" type="button" data-read-notification="${escapeHtml(notification.id)}">Læst</button>`}
+      ${notification.read ? '<span class="notification-read-state">Læst</span>' : `<button class="ghost tiny notification-read-btn" type="button" data-read-notification="${escapeHtml(notification.id)}">Markér læst</button>`}
     </article>
   `).join('');
 
