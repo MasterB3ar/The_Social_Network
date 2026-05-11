@@ -15,6 +15,11 @@ const state = {
   adminPrivateMessagesCount: 0,
   adminReports: [],
   adminStats: null,
+  friends: [],
+  friendIncoming: [],
+  friendOutgoing: [],
+  notifications: [],
+  unreadNotifications: 0,
   globalNewMessageCount: 0,
   globalChatHasOpened: false,
   globalChatNeedsBottomScroll: false
@@ -41,6 +46,13 @@ const adminReportViewer = $('#adminReportViewer');
 const adminReportsList = $('#adminReportsList');
 const adminStatsGrid = $('#adminStatsGrid');
 const loadMoreAdminMessagesBtn = $('#loadMoreAdminMessagesBtn');
+const friendsPanel = $('#friendsPanel');
+const friendList = $('#friendList');
+const friendIncomingList = $('#friendIncomingList');
+const friendOutgoingList = $('#friendOutgoingList');
+const notificationsPanel = $('#notificationsPanel');
+const notificationsList = $('#notificationsList');
+const notificationBadge = $('#notificationBadge');
 
 function escapeHtml(value) {
   return String(value || '')
@@ -71,7 +83,83 @@ function applyAvatarElement(element, userOrName, size = '') {
 }
 
 function directMessageBodyHtml(message) {
-  return message?.text ? `<span>${escapeHtml(message.text)}</span>` : '<span></span>';
+  return message?.text ? `<span>${renderTextWithMentions(message.text)}</span>` : '<span></span>';
+}
+
+function joinedDaysLabel(user) {
+  const days = Math.max(0, Number(user?.joinedDays) || 0);
+  if (days === 0) return 'Medlem i dag';
+  if (days === 1) return 'Medlem i 1 dag';
+  return `Medlem i ${formatNumber(days)} dage`;
+}
+
+function badgeHtml(user) {
+  const badges = Array.isArray(user?.badges) ? user.badges : [];
+  if (!badges.length) return '';
+  return `<div class="badge-row">${badges.slice(0, 5).map((badge) => `<span class="profile-badge" title="${escapeHtml(badge.title || badge.label)}">${escapeHtml(badge.label)}</span>`).join('')}</div>`;
+}
+
+function renderTextWithMentions(text) {
+  return escapeHtml(text).replace(/(^|\s)@([a-zA-Z0-9_.-]{2,32})/g, '$1<span class="mention">@$2</span>');
+}
+
+const REACTION_EMOJIS = ['👍', '😂', '🔥', '💀', '❤️'];
+
+function reactionCount(reactions, emoji) {
+  const item = (Array.isArray(reactions) ? reactions : []).find((reaction) => reaction.emoji === emoji);
+  return Number(item?.count) || 0;
+}
+
+function reactionActive(reactions, emoji) {
+  const item = (Array.isArray(reactions) ? reactions : []).find((reaction) => reaction.emoji === emoji);
+  return Boolean(item?.reactedByMe);
+}
+
+function renderReactionBar(reactions, idValue, type) {
+  const attr = type === 'direct' ? 'data-react-direct-message' : 'data-react-global-message';
+  return `<div class="reaction-bar">${REACTION_EMOJIS.map((emoji) => {
+    const count = reactionCount(reactions, emoji);
+    const active = reactionActive(reactions, emoji);
+    return `<button class="reaction-button ${active ? 'active' : ''}" type="button" ${attr}="${escapeHtml(idValue)}" data-emoji="${escapeHtml(emoji)}">${escapeHtml(emoji)}${count ? `<span>${formatNumber(count)}</span>` : ''}</button>`;
+  }).join('')}</div>`;
+}
+
+function friendStatusLabel(status) {
+  if (status === 'friends') return 'Venner';
+  if (status === 'pending-out') return 'Sendt';
+  if (status === 'pending-in') return 'Acceptér';
+  return 'Tilføj ven';
+}
+
+function friendActionForStatus(status) {
+  if (status === 'friends') return 'remove';
+  if (status === 'pending-in') return 'accept';
+  if (status === 'pending-out') return 'decline';
+  return 'request';
+}
+
+function updateNotificationBadge() {
+  if (!notificationBadge) return;
+  const count = Math.max(0, Number(state.unreadNotifications) || 0);
+  notificationBadge.classList.toggle('hidden', count <= 0);
+  notificationBadge.textContent = count > 99 ? '99+' : String(count);
+}
+
+function renderProfilePreview() {
+  const preview = $('#profilePreview');
+  if (!preview || !state.me) return;
+  preview.innerHTML = `
+    <div class="profile-banner-text">${escapeHtml(state.me.banner || 'Ingen bannertekst endnu')}</div>
+    <div class="profile-preview-main">
+      ${avatarHtml(state.me, 'large')}
+      <div>
+        <strong>${escapeHtml(state.me.name)}</strong>
+        <span>@${escapeHtml(state.me.username)} · ${escapeHtml(joinedDaysLabel(state.me))}</span>
+        <p>${escapeHtml(state.me.statusText || 'Ingen status endnu.')}</p>
+        ${badgeHtml(state.me)}
+      </div>
+    </div>
+  `;
 }
 
 
@@ -403,7 +491,7 @@ function showApp() {
 
 
 function switchAppView(view) {
-  const allowedViews = new Set(['profile', 'global', 'private', 'admin']);
+  const allowedViews = new Set(['profile', 'global', 'private', 'friends', 'notifications', 'admin']);
   const previousView = appScreen.dataset.view || '';
   const nextView = allowedViews.has(view) ? view : 'global';
 
@@ -432,6 +520,14 @@ function switchAppView(view) {
     }
   }
 
+
+  if (activeView === 'friends') {
+    loadFriends().catch((error) => showToast(error.message));
+  }
+
+  if (activeView === 'notifications') {
+    loadNotifications().catch((error) => showToast(error.message));
+  }
 
   if (activeView === 'admin' && state.me?.isAdmin) {
     loadAdminDashboard().catch((error) => showToast(error.message));
@@ -477,6 +573,11 @@ function forceLocalLogout(message = 'Du er blevet logget ud.') {
   state.adminMessages = [];
   state.adminReports = [];
   state.adminStats = null;
+  state.friends = [];
+  state.friendIncoming = [];
+  state.friendOutgoing = [];
+  state.notifications = [];
+  state.unreadNotifications = 0;
   state.globalNewMessageCount = 0;
   state.globalChatHasOpened = false;
   state.globalChatNeedsBottomScroll = false;
@@ -624,11 +725,14 @@ $('#profileForm').addEventListener('submit', async (event) => {
       method: 'PATCH',
       body: JSON.stringify({
         name: $('#profileName').value,
-        bio: $('#profileBio').value
+        bio: $('#profileBio').value,
+        statusText: $('#profileStatus')?.value || '',
+        banner: $('#profileBanner')?.value || ''
       })
     });
     state.me = data.user;
     renderMe();
+    renderProfilePreview();
     renderGlobalMessages();
     renderChat();
     showToast('Profil gemt');
@@ -834,6 +938,7 @@ if (adminUsersList) {
     const muteButton = event.target.closest('[data-admin-mute]');
     const unmuteButton = event.target.closest('[data-admin-unmute]');
     const deleteButton = event.target.closest('[data-admin-delete-user]');
+    const warnButton = event.target.closest('[data-admin-warn]');
 
     try {
       if (kickButton) {
@@ -908,6 +1013,23 @@ if (adminUsersList) {
         showToast('Mute fjernet');
       }
 
+
+      if (warnButton) {
+        const userId = warnButton.dataset.adminWarn;
+        const user = state.adminUsers.find((candidate) => candidate.id === userId);
+        const reason = prompt(`Giv ${user?.name || 'denne bruger'} en advarsel. Grund:`, 'Brud på reglerne');
+        if (reason === null || !reason.trim()) return;
+        const data = await api(`/api/admin/users/${userId}/warn`, {
+          method: 'POST',
+          body: JSON.stringify({ reason })
+        });
+        upsertAdminUser(data.user);
+        if (data.stats) state.adminStats = data.stats;
+        renderAdminUsers();
+        renderAdminStats();
+        await loadUsers($('#userSearch').value);
+        showToast('Advarsel sendt');
+      }
       if (deleteButton) {
         const userId = deleteButton.dataset.adminDeleteUser;
         const user = state.adminUsers.find((candidate) => candidate.id === userId);
@@ -948,8 +1070,22 @@ if (globalMessagesList) {
   globalMessagesList.addEventListener('click', async (event) => {
     const deleteMessageButton = event.target.closest('[data-delete-global-message]');
     const reportMessageButton = event.target.closest('[data-report-global-message]');
+    const reactButton = event.target.closest('[data-react-global-message]');
 
     try {
+      if (reactButton) {
+        event.preventDefault();
+        event.stopPropagation();
+        const messageId = reactButton.dataset.reactGlobalMessage;
+        const data = await api(`/api/global/messages/${messageId}/reactions`, {
+          method: 'POST',
+          body: JSON.stringify({ emoji: reactButton.dataset.emoji })
+        });
+        upsertGlobalMessage(data.message);
+        renderGlobalMessages();
+        return;
+      }
+
       if (reportMessageButton) {
         event.preventDefault();
         event.stopPropagation();
@@ -1037,13 +1173,43 @@ if (messagesList) {
   messagesList.addEventListener('click', async (event) => {
     const reportButton = event.target.closest('[data-report-direct-message]');
     const deleteButton = event.target.closest('[data-delete-message]');
+    const reactButton = event.target.closest('[data-react-direct-message]');
 
     try {
+      if (reactButton) {
+        const messageId = reactButton.dataset.reactDirectMessage;
+        const data = await api(`/api/messages/${messageId}/reactions`, {
+          method: 'POST',
+          body: JSON.stringify({ emoji: reactButton.dataset.emoji })
+        });
+        const index = state.activeMessages.findIndex((message) => message.id === data.message.id);
+        if (index >= 0) state.activeMessages[index] = data.message;
+        renderChat();
+        return;
+      }
+
       if (reportButton) {
         await createReport('direct-message', { messageId: reportButton.dataset.reportDirectMessage });
         return;
       }
 
+
+      if (warnButton) {
+        const userId = warnButton.dataset.adminWarn;
+        const user = state.adminUsers.find((candidate) => candidate.id === userId);
+        const reason = prompt(`Giv ${user?.name || 'denne bruger'} en advarsel. Grund:`, 'Brud på reglerne');
+        if (reason === null || !reason.trim()) return;
+        const data = await api(`/api/admin/users/${userId}/warn`, {
+          method: 'POST',
+          body: JSON.stringify({ reason })
+        });
+        upsertAdminUser(data.user);
+        if (data.stats) state.adminStats = data.stats;
+        renderAdminUsers();
+        renderAdminStats();
+        await loadUsers($('#userSearch').value);
+        showToast('Advarsel sendt');
+      }
       if (deleteButton) {
         if (!confirm('Slet denne private besked for alle? Det virker kun for dine egne beskeder inden for 15 minutter efter afsendelse.')) return;
         const messageId = deleteButton.dataset.deleteMessage;
@@ -1098,6 +1264,16 @@ if (reportChatUserBtn) {
   });
 }
 
+const chatFriendBtn = $('#chatFriendBtn');
+if (chatFriendBtn) {
+  chatFriendBtn.addEventListener('click', async () => {
+    if (!state.activeChatUser) return;
+    const status = state.activeChatUser.friendStatus || 'none';
+    const action = friendActionForStatus(status);
+    await performFriendAction(state.activeChatUser.id, action).catch((error) => showToast(error.message));
+  });
+}
+
 async function markConversationRead(userId) {
   if (!userId) return;
   setUnreadForUser(userId, 0);
@@ -1123,9 +1299,16 @@ function renderMe() {
   if (!state.me) return;
   $('#myName').textContent = state.me.name;
   $('#myUsername').textContent = `@${state.me.username}`;
+  const joined = $('#myJoined');
+  if (joined) joined.textContent = joinedDaysLabel(state.me);
+  const badges = $('#myBadges');
+  if (badges) badges.innerHTML = badgeHtml(state.me).replace(/^<div class="badge-row">|<\/div>$/g, '');
   $('#profileName').value = state.me.name;
   $('#profileBio').value = state.me.bio || '';
+  if ($('#profileStatus')) $('#profileStatus').value = state.me.statusText || '';
+  if ($('#profileBanner')) $('#profileBanner').value = state.me.banner || '';
   applyAvatarElement($('#myAvatar'), state.me, 'large');
+  renderProfilePreview();
   renderAdminTools();
 }
 
@@ -1141,7 +1324,8 @@ function renderGlobalChatMessage(message) {
           <strong>${escapeHtml(authorName)}</strong>
           <span>@${escapeHtml(message.author?.username || 'ukendt')} · ${escapeHtml(formatTime(message.createdAt))}</span>
         </div>
-        <p>${escapeHtml(message.text)}</p>
+        <p>${renderTextWithMentions(message.text)}</p>
+        ${renderReactionBar(message.reactions, message.id, 'global')}
         <div class="global-chat-actions">
           <button class="ghost tiny report-button" type="button" data-report-global-message="${escapeHtml(message.id)}">Rapportér</button>
           ${canDeleteMessage(message.authorId) ? `<button class="admin-delete" type="button" data-delete-global-message="${escapeHtml(message.id)}">Slet</button>` : ''}
@@ -1185,24 +1369,40 @@ function renderUsers() {
   usersList.innerHTML = state.users.map((user) => {
     const isActive = state.activeChatUser?.id === user.id;
     const bio = String(user.bio || '').trim() || 'Ingen bio endnu.';
+    const status = String(user.statusText || '').trim();
+    const action = friendActionForStatus(user.friendStatus || 'none');
     return `
-      <button class="user-row ${isActive ? 'active' : ''} ${Number(user.unreadCount) > 0 ? 'has-unread' : ''}" data-user-id="${escapeHtml(user.id)}">
-        ${avatarHtml(user)}
-        <div class="user-row-main">
-          <strong>${escapeHtml(user.name)}</strong>
-          <span>@${escapeHtml(user.username)}</span>
-          <span class="user-bio">${escapeHtml(bio)}</span>
+      <article class="user-row user-row-card ${isActive ? 'active' : ''} ${Number(user.unreadCount) > 0 ? 'has-unread' : ''}" data-user-card-id="${escapeHtml(user.id)}">
+        <button class="user-open-button" type="button" data-open-chat-user="${escapeHtml(user.id)}">
+          ${avatarHtml(user)}
+          <div class="user-row-main">
+            <strong>${escapeHtml(user.name)}</strong>
+            <span>@${escapeHtml(user.username)} · ${escapeHtml(joinedDaysLabel(user))}</span>
+            ${status ? `<span class="user-status-text">${escapeHtml(status)}</span>` : ''}
+            <span class="user-bio">${escapeHtml(bio)}</span>
+            ${badgeHtml(user)}
+          </div>
+          ${Number(user.unreadCount) > 0 ? `<span class="unread-badge" aria-label="${escapeHtml(user.unreadCount)} ulæste private beskeder">${escapeHtml(unreadBadgeText(user.unreadCount))}</span>` : ''}
+          <span class="status-dot ${user.online ? 'online' : ''}"></span>
+        </button>
+        <div class="user-row-actions">
+          <button class="ghost tiny" type="button" data-friend-action="${escapeHtml(action)}" data-friend-user="${escapeHtml(user.id)}">${escapeHtml(friendStatusLabel(user.friendStatus || 'none'))}</button>
         </div>
-        ${Number(user.unreadCount) > 0 ? `<span class="unread-badge" aria-label="${escapeHtml(user.unreadCount)} ulæste private beskeder">${escapeHtml(unreadBadgeText(user.unreadCount))}</span>` : ''}
-        <span class="status-dot ${user.online ? 'online' : ''}"></span>
-      </button>
+      </article>
     `;
   }).join('');
 
-  usersList.querySelectorAll('[data-user-id]').forEach((button) => {
+  usersList.querySelectorAll('[data-open-chat-user]').forEach((button) => {
     button.addEventListener('click', () => {
-      const user = state.users.find((candidate) => candidate.id === button.dataset.userId);
+      const user = state.users.find((candidate) => candidate.id === button.dataset.openChatUser);
       if (user) openChat(user);
+    });
+  });
+
+  usersList.querySelectorAll('[data-friend-action]').forEach((button) => {
+    button.addEventListener('click', async (event) => {
+      event.stopPropagation();
+      await performFriendAction(button.dataset.friendUser, button.dataset.friendAction).catch((error) => showToast(error.message));
     });
   });
 }
@@ -1245,7 +1445,9 @@ function renderChat({ forceBottom = false } = {}) {
   $('#chatName').textContent = user.name;
   $('#chatStatus').textContent = user.online ? 'Online nu' : 'Offline';
   const chatBio = $('#chatBio');
-  if (chatBio) chatBio.textContent = String(user.bio || '').trim() || 'Ingen bio endnu.';
+  if (chatBio) chatBio.textContent = [String(user.statusText || '').trim(), String(user.bio || '').trim()].filter(Boolean).join(' · ') || 'Ingen bio endnu.';
+  const friendButton = $('#chatFriendBtn');
+  if (friendButton) friendButton.textContent = friendStatusLabel(user.friendStatus || 'none');
   chatPanel.classList.remove('hidden');
 
   if (!state.activeMessages.length) {
@@ -1255,6 +1457,7 @@ function renderChat({ forceBottom = false } = {}) {
       <div class="message ${message.from === state.me.id ? 'mine' : ''}">
         <div class="message-content">
           ${directMessageBodyHtml(message)}
+          ${renderReactionBar(message.reactions, message.id, 'direct')}
           ${message.from !== state.me.id ? `<button class="message-report" type="button" data-report-direct-message="${escapeHtml(message.id)}">Rapportér</button>` : ''}
           ${canDeletePrivateMessageForEveryone(message) ? `<button class="message-delete" type="button" data-delete-message="${escapeHtml(message.id)}" aria-label="${escapeHtml(deletePrivateMessageLabel(message))}" title="${escapeHtml(deletePrivateMessageLabel(message))}">×</button>` : ''}
         </div>
@@ -1376,6 +1579,7 @@ function renderAdminUsers() {
             ${user.banReason ? `<small class="admin-warning-line">Ban-grund: ${escapeHtml(user.banReason)}</small>` : ''}
             ${user.muted ? `<small class="admin-warning-line">Muted indtil ${escapeHtml(formatExactDate(user.mutedUntil))}${user.muteReason ? ` · ${escapeHtml(user.muteReason)}` : ''}</small>` : ''}
             ${user.lastSpamWarningReason ? `<small class="admin-warning-line">Seneste spam: ${escapeHtml(user.lastSpamWarningReason)}</small>` : ''}
+            ${Number(user.warningCount) > 0 ? `<small class="admin-warning-line">Admin-advarsler: ${escapeHtml(user.warningCount)}${user.latestWarningReason ? ` · ${escapeHtml(user.latestWarningReason)}` : ''}</small>` : ''}
           </div>
         </div>
         <div class="admin-user-metrics" aria-label="Brugerstatistik">
@@ -1386,6 +1590,7 @@ function renderAdminUsers() {
           <span class="${openReports ? 'hot' : ''}">${formatNumber(openReports)} åbne rapporter</span>
         </div>
         <div class="admin-user-actions">
+          <button class="ghost tiny" type="button" data-admin-warn="${escapeHtml(user.id)}" ${isMe || isProtectedAdmin ? 'disabled' : ''}>Advar</button>
           <button class="ghost tiny" type="button" data-admin-kick="${escapeHtml(user.id)}" ${isMe || user.banned ? 'disabled' : ''}>Log ud</button>
           ${user.muted
             ? `<button class="secondary tiny" type="button" data-admin-unmute="${escapeHtml(user.id)}" ${isMe || isProtectedAdmin ? 'disabled' : ''}>Fjern mute</button>`
@@ -1523,6 +1728,123 @@ function renderAdminReportViewer() {
   }).join('');
 }
 
+
+function renderFriendMiniCard(user, kind = 'friend') {
+  if (!user) return '';
+  const primaryAction = kind === 'incoming' ? 'accept' : kind === 'outgoing' ? 'decline' : 'remove';
+  const secondary = kind === 'incoming' ? `<button class="ghost tiny" type="button" data-friend-action="decline" data-friend-user="${escapeHtml(user.id)}">Afvis</button>` : '';
+  return `
+    <article class="growth-user-card">
+      ${avatarHtml(user)}
+      <div>
+        <strong>${escapeHtml(user.name)}</strong>
+        <span>@${escapeHtml(user.username)} · ${escapeHtml(joinedDaysLabel(user))}</span>
+        ${badgeHtml(user)}
+      </div>
+      <div class="inline-actions">
+        <button class="secondary tiny" type="button" data-open-chat-user="${escapeHtml(user.id)}">Chat</button>
+        <button class="ghost tiny" type="button" data-friend-action="${escapeHtml(primaryAction)}" data-friend-user="${escapeHtml(user.id)}">${primaryAction === 'accept' ? 'Acceptér' : primaryAction === 'decline' ? 'Annullér' : 'Fjern'}</button>
+        ${secondary}
+      </div>
+    </article>
+  `;
+}
+
+function bindGrowthPanelActions(root) {
+  if (!root) return;
+  root.querySelectorAll('[data-open-chat-user]').forEach((button) => {
+    button.addEventListener('click', () => {
+      const user = [...state.users, ...state.friends, ...state.friendIncoming, ...state.friendOutgoing].find((candidate) => candidate.id === button.dataset.openChatUser);
+      if (user) {
+        switchAppView('private');
+        openChat(user);
+      }
+    });
+  });
+  root.querySelectorAll('[data-friend-action]').forEach((button) => {
+    button.addEventListener('click', async () => {
+      await performFriendAction(button.dataset.friendUser, button.dataset.friendAction).catch((error) => showToast(error.message));
+    });
+  });
+}
+
+function renderFriends() {
+  if (friendList) {
+    friendList.innerHTML = state.friends.length ? state.friends.map((user) => renderFriendMiniCard(user, 'friend')).join('') : '<div class="empty small-empty">Du har ingen venner endnu.</div>';
+    bindGrowthPanelActions(friendList);
+  }
+  if (friendIncomingList) {
+    friendIncomingList.innerHTML = state.friendIncoming.length ? state.friendIncoming.map((user) => renderFriendMiniCard(user, 'incoming')).join('') : '<div class="empty small-empty">Ingen nye anmodninger.</div>';
+    bindGrowthPanelActions(friendIncomingList);
+  }
+  if (friendOutgoingList) {
+    friendOutgoingList.innerHTML = state.friendOutgoing.length ? state.friendOutgoing.map((user) => renderFriendMiniCard(user, 'outgoing')).join('') : '<div class="empty small-empty">Ingen sendte anmodninger.</div>';
+    bindGrowthPanelActions(friendOutgoingList);
+  }
+}
+
+async function loadFriends() {
+  if (!friendsPanel) return;
+  const data = await api('/api/friends');
+  state.friends = data.friends || [];
+  state.friendIncoming = data.incoming || [];
+  state.friendOutgoing = data.outgoing || [];
+  renderFriends();
+}
+
+async function performFriendAction(userId, action) {
+  if (!userId || !action) return;
+  let path = `/api/friends/${userId}/request`;
+  let method = 'POST';
+  if (action === 'accept') path = `/api/friends/${userId}/accept`;
+  if (action === 'decline') path = `/api/friends/${userId}/decline`;
+  if (action === 'remove') {
+    path = `/api/friends/${userId}`;
+    method = 'DELETE';
+  }
+  const data = await api(path, { method });
+  if (data.user) mergeUpdatedPublicUser(data.user);
+  await Promise.all([loadUsers($('#userSearch').value), loadFriends().catch(() => {})]);
+  renderChat();
+  showToast(data.status === 'friends' ? 'I er nu venner' : action === 'remove' ? 'Ven fjernet' : action === 'decline' ? 'Anmodning afvist/annulleret' : 'Venneanmodning sendt');
+}
+
+function renderNotifications() {
+  updateNotificationBadge();
+  if (!notificationsList) return;
+  if (!state.notifications.length) {
+    notificationsList.innerHTML = '<div class="empty small-empty">Ingen notifikationer endnu.</div>';
+    return;
+  }
+  notificationsList.innerHTML = state.notifications.map((notification) => `
+    <article class="notification-card ${notification.read ? '' : 'unread'}">
+      <div>
+        <strong>${escapeHtml(notification.title || 'TSN')}</strong>
+        <span>${escapeHtml(formatExactDate(notification.createdAt))} · ${escapeHtml(notification.type || 'info')}</span>
+        <p>${escapeHtml(notification.body || '')}</p>
+      </div>
+      ${notification.read ? '' : `<button class="ghost tiny" type="button" data-read-notification="${escapeHtml(notification.id)}">Læst</button>`}
+    </article>
+  `).join('');
+
+  notificationsList.querySelectorAll('[data-read-notification]').forEach((button) => {
+    button.addEventListener('click', async () => {
+      await api(`/api/notifications/${button.dataset.readNotification}/read`, { method: 'POST' });
+      const item = state.notifications.find((notification) => notification.id === button.dataset.readNotification);
+      if (item) item.read = true;
+      state.unreadNotifications = state.notifications.filter((notification) => !notification.read).length;
+      renderNotifications();
+    });
+  });
+}
+
+async function loadNotifications() {
+  const data = await api('/api/notifications');
+  state.notifications = data.notifications || [];
+  state.unreadNotifications = Number(data.unreadCount) || state.notifications.filter((notification) => !notification.read).length;
+  renderNotifications();
+}
+
 async function loadAdminStats() {
   if (!state.me?.isAdmin || !adminStatsGrid) return;
   const data = await api('/api/admin/stats');
@@ -1642,7 +1964,7 @@ async function loadGlobalMessages() {
 }
 
 async function loadEverything() {
-  await Promise.all([loadGlobalMessages(), loadUsers($('#userSearch').value)]);
+  await Promise.all([loadGlobalMessages(), loadUsers($('#userSearch').value), loadNotifications().catch(() => {}), loadFriends().catch(() => {})]);
   if (state.me?.isAdmin) {
     await loadAdminDashboard();
     renderAdminMessageViewer();
@@ -1776,6 +2098,29 @@ function connectSocket() {
   });
 
 
+  state.socket.on('notification', (notification) => {
+    if (!notification?.id) return;
+    state.notifications = [notification, ...state.notifications.filter((item) => item.id !== notification.id)].slice(0, 80);
+    state.unreadNotifications = state.notifications.filter((item) => !item.read).length;
+    renderNotifications();
+    showToast(notification.title || 'Ny notifikation');
+  });
+
+  state.socket.on('user-profile-updated', (user) => {
+    mergeUpdatedPublicUser(user);
+    rerenderAfterProfileUpdate();
+    loadFriends().catch(() => {});
+  });
+
+  state.socket.on('private-message-updated', (message) => {
+    if (!message?.id) return;
+    const index = state.activeMessages.findIndex((candidate) => candidate.id === message.id);
+    if (index >= 0) {
+      state.activeMessages[index] = message;
+      renderChat();
+    }
+  });
+
   state.socket.on('connect_error', (error) => {
     const message = error?.message || 'Chatforbindelsen fejlede. Log ind igen.';
     if (message.toLowerCase().includes('banned') || message.toLowerCase().includes('expired')) {
@@ -1807,6 +2152,27 @@ async function initApp() {
   }
 }
 
+
+const refreshFriendsBtn = $('#refreshFriendsBtn');
+if (refreshFriendsBtn) {
+  refreshFriendsBtn.addEventListener('click', () => loadFriends().catch((error) => showToast(error.message)));
+}
+
+const refreshNotificationsBtn = $('#refreshNotificationsBtn');
+if (refreshNotificationsBtn) {
+  refreshNotificationsBtn.addEventListener('click', () => loadNotifications().catch((error) => showToast(error.message)));
+}
+
+const markNotificationsReadBtn = $('#markNotificationsReadBtn');
+if (markNotificationsReadBtn) {
+  markNotificationsReadBtn.addEventListener('click', async () => {
+    await api('/api/notifications/read-all', { method: 'POST' });
+    state.notifications.forEach((notification) => { notification.read = true; });
+    state.unreadNotifications = 0;
+    renderNotifications();
+    showToast('Notifikationer markeret som læst');
+  });
+}
 
 setInterval(() => {
   if (state.me && state.activeChatUser && state.activeMessages.some((message) => message.from === state.me.id)) {

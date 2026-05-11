@@ -47,6 +47,10 @@ const MAX_MESSAGES_PER_SPAM_WINDOW = clampInteger(process.env.TSN_MAX_MESSAGES_P
 const AUTO_MUTE_AFTER_WARNINGS = clampInteger(process.env.TSN_AUTO_MUTE_AFTER_WARNINGS || 5, 2, 50);
 const AUTO_MUTE_MINUTES = clampInteger(process.env.TSN_AUTO_MUTE_MINUTES || 10, 1, 1440);
 const DEFAULT_ADMIN_MUTE_MINUTES = clampInteger(process.env.TSN_DEFAULT_ADMIN_MUTE_MINUTES || 10, 1, 1440);
+const FOUNDER_BADGE_LIMIT = clampInteger(process.env.TSN_FOUNDER_BADGE_LIMIT || 40, 1, 10000);
+const ALLOWED_REACTIONS = new Set(['👍', '😂', '🔥', '💀', '❤️']);
+const NOTIFICATION_LIMIT = clampInteger(process.env.TSN_NOTIFICATION_LIMIT || 3000, 100, 10000);
+const WARNINGS_LIMIT = clampInteger(process.env.TSN_WARNINGS_LIMIT || 1000, 100, 10000);
 
 const ROOMS = Array.from({ length: 7 }, (_, index) => {
   const id = index + 1;
@@ -84,7 +88,7 @@ app.use(express.static(PUBLIC_DIR, {
 }));
 
 function emptyDatabase() {
-  return { users: [], posts: [], messages: [], globalMessages: [], rooms: [], roomMessages: [], reports: [], tsnStock: null };
+  return { users: [], posts: [], messages: [], globalMessages: [], rooms: [], roomMessages: [], reports: [], notifications: [], warnings: [], tsnStock: null };
 }
 
 function databaseHasUserData(db) {
@@ -97,6 +101,8 @@ function databaseHasUserData(db) {
         (Array.isArray(db.globalMessages) && db.globalMessages.length) ||
         (Array.isArray(db.roomMessages) && db.roomMessages.length) ||
         (Array.isArray(db.reports) && db.reports.length) ||
+        (Array.isArray(db.notifications) && db.notifications.length) ||
+        (Array.isArray(db.warnings) && db.warnings.length) ||
         (db.tsnStock && Array.isArray(db.tsnStock.history) && db.tsnStock.history.length) ||
         (Array.isArray(db.rooms) && db.rooms.some((room) => room.ownerId || room.nameEnc || room.passwordHash))
       )
@@ -104,7 +110,7 @@ function databaseHasUserData(db) {
 }
 
 function normalizeDatabaseShape(db) {
-  return {
+  const normalized = {
     users: Array.isArray(db?.users) ? db.users : [],
     posts: Array.isArray(db?.posts) ? db.posts : [],
     messages: Array.isArray(db?.messages) ? db.messages : [],
@@ -112,8 +118,12 @@ function normalizeDatabaseShape(db) {
     rooms: Array.isArray(db?.rooms) ? db.rooms : [],
     roomMessages: Array.isArray(db?.roomMessages) ? db.roomMessages : [],
     reports: Array.isArray(db?.reports) ? db.reports : [],
+    notifications: Array.isArray(db?.notifications) ? db.notifications : [],
+    warnings: Array.isArray(db?.warnings) ? db.warnings : [],
     tsnStock: normalizeTsnStockState(db?.tsnStock)
   };
+  ensureGrowthDatabaseShape(normalized);
+  return normalized;
 }
 
 function readJsonFile(filePath) {
@@ -919,6 +929,173 @@ function applyChatAntiSpam(db, user, text, scope = 'chat') {
   return null;
 }
 
+
+function uniqueStringArray(value) {
+  return [...new Set((Array.isArray(value) ? value : []).map(String).filter(Boolean))];
+}
+
+function ensureGrowthDatabaseShape(db) {
+  if (!db || !Array.isArray(db.users)) return db;
+  const usersByCreatedAt = [...db.users].sort((a, b) => new Date(a.createdAt || 0) - new Date(b.createdAt || 0));
+  usersByCreatedAt.forEach((user, index) => {
+    if (!user.id) user.id = id('user');
+    if (!user.createdAt) user.createdAt = new Date().toISOString();
+    user.friends = uniqueStringArray(user.friends).filter((candidateId) => candidateId !== user.id);
+    user.friendRequestsIn = uniqueStringArray(user.friendRequestsIn).filter((candidateId) => candidateId !== user.id && !user.friends.includes(candidateId));
+    user.friendRequestsOut = uniqueStringArray(user.friendRequestsOut).filter((candidateId) => candidateId !== user.id && !user.friends.includes(candidateId));
+    if (!Number.isFinite(Number(user.founderNumber))) user.founderNumber = index + 1;
+    if (!Array.isArray(user.customBadges)) user.customBadges = [];
+    user.warningCount = Math.max(0, Number(user.warningCount) || 0);
+  });
+
+  db.users.forEach((user) => {
+    user.friends = user.friends.filter((friendId) => db.users.some((candidate) => candidate.id === friendId));
+    user.friendRequestsIn = user.friendRequestsIn.filter((fromId) => db.users.some((candidate) => candidate.id === fromId));
+    user.friendRequestsOut = user.friendRequestsOut.filter((toId) => db.users.some((candidate) => candidate.id === toId));
+  });
+
+  db.notifications = (Array.isArray(db.notifications) ? db.notifications : []).filter((notification) => notification && notification.userId).slice(-NOTIFICATION_LIMIT);
+  db.warnings = (Array.isArray(db.warnings) ? db.warnings : []).filter((warning) => warning && warning.userId).slice(-WARNINGS_LIMIT);
+  return db;
+}
+
+function joinedDays(user) {
+  const createdAt = new Date(user?.createdAt || 0).getTime();
+  if (!Number.isFinite(createdAt) || createdAt <= 0) return 0;
+  return Math.max(0, Math.floor((Date.now() - createdAt) / (24 * 60 * 60 * 1000)));
+}
+
+function userBadges(user) {
+  if (!user) return [];
+  const badges = [];
+  const founderNumber = Math.max(0, Number(user.founderNumber) || 0);
+  if (founderNumber && founderNumber <= FOUNDER_BADGE_LIMIT) {
+    badges.push({ id: 'founder', label: 'Founder', title: `Founder #${founderNumber}` });
+    badges.push({ id: `founder-${founderNumber}`, label: `#${founderNumber}`, title: `Founder #${founderNumber}` });
+  }
+  if (user.role === 'admin') badges.push({ id: 'admin', label: 'Admin', title: 'TSN Admin' });
+  if (isMuted(user)) badges.push({ id: 'muted', label: 'Muted', title: 'Midlertidigt muted' });
+  uniqueStringArray(user.customBadges).slice(0, 8).forEach((label) => badges.push({ id: `custom-${label}`, label, title: label }));
+  return badges;
+}
+
+function friendStatus(viewer, target) {
+  if (!viewer || !target || viewer.id === target.id) return 'self';
+  const friends = uniqueStringArray(viewer.friends);
+  const incoming = uniqueStringArray(viewer.friendRequestsIn);
+  const outgoing = uniqueStringArray(viewer.friendRequestsOut);
+  if (friends.includes(target.id)) return 'friends';
+  if (incoming.includes(target.id)) return 'pending-in';
+  if (outgoing.includes(target.id)) return 'pending-out';
+  return 'none';
+}
+
+function publicUserForViewer(user, viewer) {
+  const safe = publicUser(user);
+  if (!safe) return null;
+  return {
+    ...safe,
+    friendStatus: friendStatus(viewer, user),
+    friendCount: uniqueStringArray(user.friends).length
+  };
+}
+
+function publicNotification(notification) {
+  return {
+    id: notification.id,
+    type: notification.type || 'info',
+    title: getEncryptedObjectField(notification, 'title'),
+    body: getEncryptedObjectField(notification, 'body'),
+    data: notification.data || {},
+    read: Boolean(notification.read),
+    createdAt: notification.createdAt
+  };
+}
+
+function createNotification(db, userId, type, title, body, data = {}) {
+  if (!db || !userId || !db.users.some((user) => user.id === userId)) return null;
+  db.notifications = Array.isArray(db.notifications) ? db.notifications : [];
+  const notification = {
+    id: id('note'),
+    userId,
+    type: String(type || 'info').slice(0, 40),
+    ...encryptedTextObject('title', cleanText(title, 120) || 'TSN'),
+    ...encryptedTextObject('body', cleanText(body, 400) || ''),
+    data: data && typeof data === 'object' ? data : {},
+    read: false,
+    createdAt: new Date().toISOString()
+  };
+  db.notifications.push(notification);
+  if (db.notifications.length > NOTIFICATION_LIMIT) db.notifications = db.notifications.slice(-NOTIFICATION_LIMIT);
+  try {
+    io.to(userId).emit('notification', publicNotification(notification));
+  } catch {
+    // Socket.io may not be ready during startup/tests.
+  }
+  return notification;
+}
+
+function extractMentionedUsers(db, text, excludedUserId = '') {
+  const matches = String(text || '').match(/(^|\s)@([a-zA-Z0-9_.-]{2,32})/g) || [];
+  const usernames = [...new Set(matches.map((match) => normalizeUsername(match.replace('@', '').trim())))];
+  return usernames
+    .map((username) => db.users.find((user) => userMatchesUsername(user, username)))
+    .filter((user) => user && user.id !== excludedUserId && !isBanned(user));
+}
+
+function notifyMentions(db, text, sender, context = {}) {
+  const mentionedUsers = extractMentionedUsers(db, text, sender?.id || '');
+  mentionedUsers.forEach((targetUser) => {
+    createNotification(
+      db,
+      targetUser.id,
+      'mention',
+      `${getUserField(sender, 'name') || 'En bruger'} nævnte dig`,
+      String(text || '').slice(0, 220),
+      context
+    );
+  });
+}
+
+function normalizeReactionsOnItem(item) {
+  let changed = false;
+  if (!item || typeof item !== 'object') return false;
+  if (!item.reactions || typeof item.reactions !== 'object' || Array.isArray(item.reactions)) {
+    item.reactions = {};
+    changed = true;
+  }
+  for (const key of Object.keys(item.reactions)) {
+    if (!ALLOWED_REACTIONS.has(key)) {
+      delete item.reactions[key];
+      changed = true;
+      continue;
+    }
+    const uniqueUsers = uniqueStringArray(item.reactions[key]);
+    if (uniqueUsers.length !== item.reactions[key].length) changed = true;
+    item.reactions[key] = uniqueUsers;
+  }
+  return changed;
+}
+
+function publicReactions(item, viewerId = '') {
+  normalizeReactionsOnItem(item);
+  return [...ALLOWED_REACTIONS].map((emoji) => {
+    const users = uniqueStringArray(item?.reactions?.[emoji]);
+    return { emoji, count: users.length, reactedByMe: viewerId ? users.includes(viewerId) : false };
+  });
+}
+
+function toggleReactionOnItem(item, userId, emoji) {
+  if (!ALLOWED_REACTIONS.has(emoji)) throw new Error('Reaktionen understøttes ikke.');
+  normalizeReactionsOnItem(item);
+  item.reactions[emoji] = uniqueStringArray(item.reactions[emoji]);
+  const existingIndex = item.reactions[emoji].indexOf(userId);
+  const reacted = existingIndex < 0;
+  if (reacted) item.reactions[emoji].push(userId);
+  else item.reactions[emoji].splice(existingIndex, 1);
+  return reacted;
+}
+
 function getSessionVersion(user) {
   const version = Number(user && user.sessionVersion);
   return Number.isFinite(version) && version >= 0 ? version : 0;
@@ -932,13 +1109,20 @@ function publicUser(user) {
     name: getUserField(user, 'name'),
     username: getUserField(user, 'username'),
     bio: getUserField(user, 'bio'),
+    statusText: getUserField(user, 'status'),
+    banner: getUserField(user, 'banner'),
     role,
     isAdmin: role === 'admin',
     banned: isBanned(user),
     bannedAt: user.bannedAt || null,
     muted: isMuted(user),
     mutedUntil: isMuted(user) ? user.mutedUntil : null,
-    createdAt: user.createdAt
+    createdAt: user.createdAt,
+    joinedDays: joinedDays(user),
+    founderNumber: Number(user.founderNumber) || null,
+    badges: userBadges(user),
+    warningCount: Math.max(0, Number(user.warningCount) || 0),
+    latestWarningAt: user.latestWarningAt || null
   };
 }
 
@@ -1003,6 +1187,9 @@ function publicModerationUser(user, db = null) {
     spamWarnings: Math.max(0, Number(user.spamWarnings) || 0),
     lastSpamWarningAt: user.lastSpamWarningAt || null,
     lastSpamWarningReason: user.lastSpamWarningReason || '',
+    warningCount: Math.max(0, Number(user.warningCount) || 0),
+    latestWarningAt: user.latestWarningAt || null,
+    latestWarningReason: user.latestWarningReason || '',
     kickedAt: user.kickedAt || null,
     sessionVersion: getSessionVersion(user),
     stats: db ? getUserModerationStats(db, user.id) : null
@@ -1035,6 +1222,7 @@ function buildAdminStats(db) {
     bannedUsers: users.filter(isBanned).length,
     mutedUsers: users.filter(isMuted).length,
     spamWarnings: users.reduce((total, user) => total + Math.max(0, Number(user.spamWarnings) || 0), 0),
+    moderationWarnings: users.reduce((total, user) => total + Math.max(0, Number(user.warningCount) || 0), 0),
     globalPosts: globalMessages.length,
     globalChatMessages: globalMessages.length,
     globalComments: commentsCount,
@@ -1238,6 +1426,7 @@ function normalizeGlobalMessageInteractions(message) {
     message.comments = [];
     changed = true;
   }
+  if (normalizeReactionsOnItem(message)) changed = true;
 
   const uniqueLikes = [...new Set(message.likes.filter(Boolean).map(String))];
   if (uniqueLikes.length !== message.likes.length || uniqueLikes.some((userId, index) => userId !== message.likes[index])) {
@@ -1274,6 +1463,7 @@ function attachGlobalMessagePeople(message, users, viewerId = '') {
     author: publicUser(author),
     likesCount: message.likes.length,
     likedByMe: viewerId ? message.likes.includes(viewerId) : false,
+    reactions: publicReactions(message, viewerId),
     commentsCount: comments.length,
     comments
   };
@@ -1288,7 +1478,7 @@ function emitGlobalMessageUpdated(db, message) {
   }
 }
 
-function publicMessage(message) {
+function publicMessage(message, viewerId = '') {
   const readBy = Array.isArray(message.readBy) ? [...new Set(message.readBy.filter(Boolean))] : [];
   return {
     id: message.id,
@@ -1297,6 +1487,7 @@ function publicMessage(message) {
     to: message.to,
     text: getEncryptedObjectField(message, 'text'),
     createdAt: message.createdAt,
+    reactions: publicReactions(message, viewerId),
     readBy,
     isReadByRecipient: Boolean(message.to && readBy.includes(message.to))
   };
@@ -1556,11 +1747,22 @@ function deleteUserDataFromDatabase(db, userId) {
       const beforeLikes = message.likes.length;
       message.comments = message.comments.filter((comment) => comment.authorId !== userId);
       message.likes = message.likes.filter((likeUserId) => likeUserId !== userId);
+      normalizeReactionsOnItem(message);
+      Object.keys(message.reactions || {}).forEach((emoji) => {
+        message.reactions[emoji] = message.reactions[emoji].filter((reactionUserId) => reactionUserId !== userId);
+      });
       commentsRemoved += beforeComments - message.comments.length;
       likesRemoved += beforeLikes - message.likes.length;
       return message;
     });
   db.messages = (Array.isArray(db.messages) ? db.messages : []).filter((message) => message.from !== userId && message.to !== userId);
+  db.users.forEach((user) => {
+    user.friends = uniqueStringArray(user.friends).filter((friendId) => friendId !== userId);
+    user.friendRequestsIn = uniqueStringArray(user.friendRequestsIn).filter((friendId) => friendId !== userId);
+    user.friendRequestsOut = uniqueStringArray(user.friendRequestsOut).filter((friendId) => friendId !== userId);
+  });
+  db.notifications = (Array.isArray(db.notifications) ? db.notifications : []).filter((notification) => notification.userId !== userId);
+  db.warnings = (Array.isArray(db.warnings) ? db.warnings : []).filter((warning) => warning.userId !== userId && warning.issuedBy !== userId);
   db.reports = (Array.isArray(db.reports) ? db.reports : []).filter((report) =>
     report.reporterId !== userId && report.targetUserId !== userId && report.reportedUserId !== userId
   );
@@ -1884,8 +2086,8 @@ app.get('/api/health', (req, res) => {
     const storage = getStorageStatus();
     res.json({
       ok: true,
-      app: 'TSN V1.3.7',
-      shortName: 'TSN V1.3.7',
+      app: 'TSN V1.4.0',
+      shortName: 'TSN V1.4.0',
       environment: process.env.NODE_ENV || 'development',
       storage: {
         ok: storage.ok,
@@ -1914,8 +2116,8 @@ app.get('/api/health', (req, res) => {
   } catch (error) {
     res.status(503).json({
       ok: false,
-      app: 'TSN V1.3.7',
-      shortName: 'TSN V1.3.7',
+      app: 'TSN V1.4.0',
+      shortName: 'TSN V1.4.0',
       error: 'Lageret er ikke klar.',
       detail: error.message
     });
@@ -1925,7 +2127,7 @@ app.get('/api/health', (req, res) => {
 app.get('/api/ping', (req, res) => {
   res.json({
     ok: true,
-    app: 'TSN V1.3.7',
+    app: 'TSN V1.4.0',
     message: 'pong',
     now: new Date().toISOString()
   });
@@ -2012,13 +2214,19 @@ app.patch('/api/me', requireAuth, async (req, res) => {
   const db = req.db;
   const user = db.users.find((candidate) => candidate.id === req.user.id);
   const name = cleanText(req.body.name, 60);
-  const bio = cleanText(req.body.bio, 160);
+  const bio = cleanText(req.body.bio, 220);
+  const status = cleanText(req.body.statusText ?? req.body.status, 80);
+  const banner = cleanText(req.body.banner, 120);
 
   if (name && rejectBlockedContent(res, name, 'Visningsnavn')) return;
   if (bio && rejectBlockedContent(res, bio, 'Bio')) return;
+  if (status && rejectBlockedContent(res, status, 'Status')) return;
+  if (banner && rejectBlockedContent(res, banner, 'Profilbanner')) return;
 
   if (name) setEncryptedUserField(user, 'name', name);
   setEncryptedUserField(user, 'bio', bio);
+  setEncryptedUserField(user, 'status', status);
+  setEncryptedUserField(user, 'banner', banner);
   await writeDb(db);
   res.json({ user: publicUser(user) });
 });
@@ -2077,6 +2285,7 @@ app.get('/api/admin/users', requireAuth, requireAdmin, (req, res) => {
   if (status === 'muted') users = users.filter((user) => user.muted);
   if (status === 'admins') users = users.filter((user) => user.isAdmin);
   if (status === 'reported') users = users.filter((user) => Number(user.stats?.openReportsAgainstCount || 0) > 0);
+  if (status === 'warned') users = users.filter((user) => Number(user.warningCount || 0) > 0);
 
   users.sort((a, b) => Number(b.online) - Number(a.online) || Number(Boolean(b.banned)) - Number(Boolean(a.banned)) || Number(b.stats?.openReportsAgainstCount || 0) - Number(a.stats?.openReportsAgainstCount || 0) || a.name.localeCompare(b.name));
 
@@ -2248,6 +2457,34 @@ app.post('/api/admin/users/:userId/unmute', requireAuth, requireAdmin, async (re
   res.json({ ok: true, user: publicModerationUser(target, db), stats: buildAdminStats(db) });
 });
 
+app.post('/api/admin/users/:userId/warn', requireAuth, requireAdmin, async (req, res) => {
+  const db = req.db;
+  const target = db.users.find((user) => user.id === req.params.userId);
+  if (!target) return res.status(404).json({ error: 'Brugeren blev ikke fundet.' });
+  if (target.role === 'admin' && target.id !== req.user.id) return res.status(403).json({ error: 'Du kan ikke advare en anden admin her.' });
+  const reason = cleanText(req.body.reason, 300) || 'Regelbrud';
+  if (rejectBlockedContent(res, reason, 'Advarselsgrund')) return;
+
+  target.warningCount = Math.max(0, Number(target.warningCount) || 0) + 1;
+  target.latestWarningAt = new Date().toISOString();
+  target.latestWarningReason = reason;
+  db.warnings = Array.isArray(db.warnings) ? db.warnings : [];
+  const warning = {
+    id: id('warn'),
+    userId: target.id,
+    issuedBy: req.user.id,
+    ...encryptedTextObject('reason', reason),
+    createdAt: target.latestWarningAt
+  };
+  db.warnings.push(warning);
+  if (db.warnings.length > WARNINGS_LIMIT) db.warnings = db.warnings.slice(-WARNINGS_LIMIT);
+  createNotification(db, target.id, 'warning', 'Du har fået en TSN-advarsel', reason, { warningId: warning.id });
+  await writeDb(db);
+  io.to(target.id).emit('user-profile-updated', publicUser(target));
+  res.json({ ok: true, user: publicModerationUser(target, db), stats: buildAdminStats(db) });
+});
+
+
 app.delete('/api/admin/users/:userId', requireAuth, requireAdmin, async (req, res) => {
   const db = req.db;
   const target = db.users.find((candidate) => candidate.id === req.params.userId);
@@ -2325,7 +2562,7 @@ app.get('/api/users', requireAuth, (req, res) => {
       return true;
     })
     .map((user) => ({
-      ...publicUser(user),
+      ...publicUserForViewer(user, req.user),
       online: onlineUsers.has(user.id),
       unreadCount: getUnreadMessageCount(req.db, req.user.id, user.id)
     }))
@@ -2333,6 +2570,124 @@ app.get('/api/users', requireAuth, (req, res) => {
     .sort((a, b) => Number(b.unreadCount > 0) - Number(a.unreadCount > 0) || Number(b.online) - Number(a.online) || a.name.localeCompare(b.name));
 
   res.json({ users });
+});
+
+
+app.get('/api/notifications', requireAuth, (req, res) => {
+  const notifications = (Array.isArray(req.db.notifications) ? req.db.notifications : [])
+    .filter((notification) => notification.userId === req.user.id)
+    .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))
+    .slice(0, 80)
+    .map(publicNotification);
+  res.json({ notifications, unreadCount: notifications.filter((notification) => !notification.read).length });
+});
+
+app.post('/api/notifications/:notificationId/read', requireAuth, async (req, res) => {
+  const db = req.db;
+  const notification = (Array.isArray(db.notifications) ? db.notifications : []).find((candidate) => candidate.id === req.params.notificationId && candidate.userId === req.user.id);
+  if (!notification) return res.status(404).json({ error: 'Notifikationen blev ikke fundet.' });
+  notification.read = true;
+  notification.readAt = new Date().toISOString();
+  await writeDb(db);
+  res.json({ ok: true, notification: publicNotification(notification) });
+});
+
+app.post('/api/notifications/read-all', requireAuth, async (req, res) => {
+  const db = req.db;
+  let changed = 0;
+  (Array.isArray(db.notifications) ? db.notifications : []).forEach((notification) => {
+    if (notification.userId === req.user.id && !notification.read) {
+      notification.read = true;
+      notification.readAt = new Date().toISOString();
+      changed += 1;
+    }
+  });
+  await writeDb(db);
+  res.json({ ok: true, changed });
+});
+
+app.get('/api/friends', requireAuth, (req, res) => {
+  const find = (userId) => req.db.users.find((user) => user.id === userId && !isBanned(user));
+  const friends = uniqueStringArray(req.user.friends).map(find).filter(Boolean).map((user) => ({ ...publicUserForViewer(user, req.user), online: onlineUsers.has(user.id), unreadCount: getUnreadMessageCount(req.db, req.user.id, user.id) }));
+  const incoming = uniqueStringArray(req.user.friendRequestsIn).map(find).filter(Boolean).map((user) => ({ ...publicUserForViewer(user, req.user), online: onlineUsers.has(user.id) }));
+  const outgoing = uniqueStringArray(req.user.friendRequestsOut).map(find).filter(Boolean).map((user) => ({ ...publicUserForViewer(user, req.user), online: onlineUsers.has(user.id) }));
+  res.json({ friends, incoming, outgoing });
+});
+
+app.post('/api/friends/:userId/request', requireAuth, async (req, res) => {
+  const db = req.db;
+  const me = db.users.find((user) => user.id === req.user.id);
+  const target = db.users.find((user) => user.id === req.params.userId && !isBanned(user));
+  if (!target) return res.status(404).json({ error: 'Brugeren blev ikke fundet.' });
+  if (target.id === me.id) return res.status(400).json({ error: 'Du kan ikke sende en venneanmodning til dig selv.' });
+  me.friends = uniqueStringArray(me.friends);
+  target.friends = uniqueStringArray(target.friends);
+  me.friendRequestsIn = uniqueStringArray(me.friendRequestsIn);
+  me.friendRequestsOut = uniqueStringArray(me.friendRequestsOut);
+  target.friendRequestsIn = uniqueStringArray(target.friendRequestsIn);
+  target.friendRequestsOut = uniqueStringArray(target.friendRequestsOut);
+  if (me.friends.includes(target.id)) return res.json({ ok: true, status: 'friends' });
+
+  if (me.friendRequestsIn.includes(target.id)) {
+    me.friendRequestsIn = me.friendRequestsIn.filter((idValue) => idValue !== target.id);
+    target.friendRequestsOut = target.friendRequestsOut.filter((idValue) => idValue !== me.id);
+    me.friends.push(target.id);
+    target.friends.push(me.id);
+    createNotification(db, target.id, 'friend-accepted', `${getUserField(me, 'name')} accepterede dig`, 'I er nu venner på TSN.', { userId: me.id });
+    await writeDb(db);
+    io.to(target.id).emit('user-profile-updated', publicUserForViewer(me, target));
+    return res.json({ ok: true, status: 'friends', user: publicUserForViewer(target, me) });
+  }
+
+  if (!me.friendRequestsOut.includes(target.id)) me.friendRequestsOut.push(target.id);
+  if (!target.friendRequestsIn.includes(me.id)) target.friendRequestsIn.push(me.id);
+  createNotification(db, target.id, 'friend-request', `${getUserField(me, 'name')} sendte en venneanmodning`, 'Åbn Venner for at acceptere eller afvise.', { userId: me.id });
+  await writeDb(db);
+  io.to(target.id).emit('user-profile-updated', publicUserForViewer(me, target));
+  res.status(201).json({ ok: true, status: 'pending-out', user: publicUserForViewer(target, me) });
+});
+
+app.post('/api/friends/:userId/accept', requireAuth, async (req, res) => {
+  const db = req.db;
+  const me = db.users.find((user) => user.id === req.user.id);
+  const other = db.users.find((user) => user.id === req.params.userId && !isBanned(user));
+  if (!other) return res.status(404).json({ error: 'Brugeren blev ikke fundet.' });
+  me.friendRequestsIn = uniqueStringArray(me.friendRequestsIn).filter((idValue) => idValue !== other.id);
+  other.friendRequestsOut = uniqueStringArray(other.friendRequestsOut).filter((idValue) => idValue !== me.id);
+  me.friends = uniqueStringArray([...me.friends, other.id]);
+  other.friends = uniqueStringArray([...other.friends, me.id]);
+  createNotification(db, other.id, 'friend-accepted', `${getUserField(me, 'name')} accepterede dig`, 'I er nu venner på TSN.', { userId: me.id });
+  await writeDb(db);
+  io.to(other.id).emit('user-profile-updated', publicUserForViewer(me, other));
+  res.json({ ok: true, status: 'friends', user: publicUserForViewer(other, me) });
+});
+
+app.post('/api/friends/:userId/decline', requireAuth, async (req, res) => {
+  const db = req.db;
+  const me = db.users.find((user) => user.id === req.user.id);
+  const other = db.users.find((user) => user.id === req.params.userId);
+  if (!other) return res.status(404).json({ error: 'Brugeren blev ikke fundet.' });
+  me.friendRequestsIn = uniqueStringArray(me.friendRequestsIn).filter((idValue) => idValue !== other.id);
+  me.friendRequestsOut = uniqueStringArray(me.friendRequestsOut).filter((idValue) => idValue !== other.id);
+  other.friendRequestsIn = uniqueStringArray(other.friendRequestsIn).filter((idValue) => idValue !== me.id);
+  other.friendRequestsOut = uniqueStringArray(other.friendRequestsOut).filter((idValue) => idValue !== me.id);
+  await writeDb(db);
+  res.json({ ok: true, status: 'none' });
+});
+
+app.delete('/api/friends/:userId', requireAuth, async (req, res) => {
+  const db = req.db;
+  const me = db.users.find((user) => user.id === req.user.id);
+  const other = db.users.find((user) => user.id === req.params.userId);
+  if (!other) return res.status(404).json({ error: 'Brugeren blev ikke fundet.' });
+  me.friends = uniqueStringArray(me.friends).filter((idValue) => idValue !== other.id);
+  other.friends = uniqueStringArray(other.friends).filter((idValue) => idValue !== me.id);
+  me.friendRequestsIn = uniqueStringArray(me.friendRequestsIn).filter((idValue) => idValue !== other.id);
+  me.friendRequestsOut = uniqueStringArray(me.friendRequestsOut).filter((idValue) => idValue !== other.id);
+  other.friendRequestsIn = uniqueStringArray(other.friendRequestsIn).filter((idValue) => idValue !== me.id);
+  other.friendRequestsOut = uniqueStringArray(other.friendRequestsOut).filter((idValue) => idValue !== me.id);
+  await writeDb(db);
+  res.json({ ok: true, status: 'none' });
 });
 
 
@@ -2382,6 +2737,7 @@ app.post('/api/global/messages', requireAuth, async (req, res) => {
 
   db.globalMessages = Array.isArray(db.globalMessages) ? db.globalMessages : [];
   db.globalMessages.push(message);
+  notifyMentions(db, text, req.user, { type: 'global-message', messageId: message.id });
   if (db.globalMessages.length > 1000) {
     db.globalMessages = db.globalMessages.slice(-1000);
   }
@@ -2413,6 +2769,29 @@ app.post('/api/global/messages/:messageId/like', requireAuth, async (req, res) =
   res.json({ ok: true, liked, message: attachGlobalMessagePeople(message, db.users, req.user.id) });
 });
 
+app.post('/api/global/messages/:messageId/reactions', requireAuth, async (req, res) => {
+  const emoji = String(req.body.emoji || '').trim();
+  const db = req.db;
+  db.globalMessages = Array.isArray(db.globalMessages) ? db.globalMessages : [];
+  const message = db.globalMessages.find((candidate) => candidate.id === req.params.messageId);
+  if (!message) return res.status(404).json({ error: 'Global chatbesked blev ikke fundet.' });
+
+  let reacted;
+  try {
+    reacted = toggleReactionOnItem(message, req.user.id, emoji);
+  } catch (error) {
+    return res.status(400).json({ error: error.message });
+  }
+
+  if (reacted && message.authorId && message.authorId !== req.user.id) {
+    createNotification(db, message.authorId, 'reaction', `${getUserField(req.user, 'name')} reagerede på din besked`, `${emoji} på din globale chatbesked`, { type: 'global-message', messageId: message.id });
+  }
+
+  await writeDb(db);
+  emitGlobalMessageUpdated(db, message);
+  res.json({ ok: true, reacted, message: attachGlobalMessagePeople(message, db.users, req.user.id) });
+});
+
 app.post('/api/global/messages/:messageId/comments', requireAuth, async (req, res) => {
   const text = cleanText(req.body.text || req.body.body, 400);
   if (!text) return res.status(400).json({ error: 'Kommentar må ikke være tom.' });
@@ -2437,6 +2816,7 @@ app.post('/api/global/messages/:messageId/comments', requireAuth, async (req, re
   };
 
   message.comments.push(comment);
+  notifyMentions(db, text, req.user, { type: 'global-comment', messageId: message.id, commentId: comment.id });
   if (message.comments.length > 200) {
     message.comments = message.comments.slice(-200);
   }
@@ -2557,7 +2937,7 @@ app.post('/api/reports', requireAuth, async (req, res) => {
 });
 
 app.all(['/api/posts', '/api/posts/*', '/api/rooms', '/api/rooms/*'], requireAuth, (req, res) => {
-  res.status(410).json({ error: 'TSN V1.3.7 understøtter globale chatbeskeder, privat chat, læsekvitteringer og tidsbegrænset slet-for-alle.' });
+  res.status(410).json({ error: 'TSN V1.4.0 understøtter globale chatbeskeder, privat chat, læsekvitteringer og tidsbegrænset slet-for-alle.' });
 });
 
 app.get('/api/messages/:userId', requireAuth, async (req, res) => {
@@ -2570,7 +2950,7 @@ app.get('/api/messages/:userId', requireAuth, async (req, res) => {
   const messages = req.db.messages
     .filter((message) => message.conversationId === key && !isMessageHiddenFor(message, req.user.id))
     .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt))
-    .map(publicMessage);
+    .map((message) => publicMessage(message, req.user.id));
 
   res.json({ user: { ...publicUser(other), unreadCount: 0 }, messages });
 });
@@ -2605,6 +2985,31 @@ app.post('/api/messages/:userId/read', requireAuth, async (req, res) => {
   await markConversationRead(req.db, req.user.id, other.id);
   res.json({ ok: true, userId: other.id, unreadCount: 0 });
 });
+
+app.post('/api/messages/:messageId/reactions', requireAuth, async (req, res) => {
+  const emoji = String(req.body.emoji || '').trim();
+  const db = req.db;
+  const message = (Array.isArray(db.messages) ? db.messages : []).find((candidate) => candidate.id === req.params.messageId);
+  if (!message) return res.status(404).json({ error: 'Beskeden blev ikke fundet.' });
+  if (message.from !== req.user.id && message.to !== req.user.id) return res.status(403).json({ error: 'Du kan kun reagere på beskeder i dine egne samtaler.' });
+
+  let reacted;
+  try {
+    reacted = toggleReactionOnItem(message, req.user.id, emoji);
+  } catch (error) {
+    return res.status(400).json({ error: error.message });
+  }
+
+  const otherUserId = message.from === req.user.id ? message.to : message.from;
+  if (reacted && otherUserId) {
+    createNotification(db, otherUserId, 'reaction', `${getUserField(req.user, 'name')} reagerede på en privat besked`, `${emoji} i privat chat`, { type: 'direct-message', messageId: message.id });
+  }
+  await writeDb(db);
+  io.to(message.from).emit('private-message-updated', publicMessage(message, message.from));
+  io.to(message.to).emit('private-message-updated', publicMessage(message, message.to));
+  res.json({ ok: true, reacted, message: publicMessage(message, req.user.id) });
+});
+
 
 app.delete('/api/messages/:messageId', requireAuth, async (req, res) => {
   const db = req.db;
@@ -2694,13 +3099,14 @@ io.on('connection', (socket) => {
         ...encryptedTextObject('text', text),
         createdAt: new Date().toISOString()
       };
-      const safeMessage = publicMessage(message);
-
       db.messages.push(message);
+      createNotification(db, recipient.id, 'private-message', `Ny privat besked fra ${getUserField(sender, 'name')}`, text.slice(0, 180), { type: 'direct-message', userId: sender.id, messageId: message.id });
+      notifyMentions(db, text, sender, { type: 'direct-message', userId: sender.id, messageId: message.id });
       await writeDb(db);
       broadcastTsnStock(readDb(), 'private-message').catch((error) => console.warn(`TSN Stock update failed: ${error.message}`));
-      io.to(user.id).to(recipient.id).emit('private-message', safeMessage);
-      if (typeof callback === 'function') callback({ ok: true, message: safeMessage });
+      io.to(user.id).emit('private-message', publicMessage(message, user.id));
+      io.to(recipient.id).emit('private-message', publicMessage(message, recipient.id));
+      if (typeof callback === 'function') callback({ ok: true, message: publicMessage(message, user.id) });
     } catch (error) {
       if (typeof callback === 'function') callback({ ok: false, error: error.message });
     }
@@ -2751,7 +3157,7 @@ async function startServer() {
       console.log(`Backup directory: ${DB_BACKUP_DIR}`);
       const warning = storagePersistenceWarning();
       if (warning) console.warn(`Persistence warning: ${warning}`);
-      console.log('TSN V1.3.10 mode: reported private-message evidence visible to admins, all private-message browsing still hidden.');
+      console.log('TSN V1.4.0 mode: growth update with friends, notifications, mentions, reactions, founder badges, and admin warnings.');
       console.log('Admin rights can be claimed inside the app with TSN_ADMIN_SETUP_PASSWORD or TSN_ADMIN_SETUP_PASSWORD_HASH.');
 
       if (process.env.NODE_ENV === 'production' && JWT_SECRET === DEFAULT_JWT_SECRET) {

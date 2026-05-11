@@ -89,6 +89,15 @@
           <span class="nav-icon">💬</span>
           <span>Privat chat</span>
         </button>
+        <button class="app-nav-button" type="button" data-app-nav="friends">
+          <span class="nav-icon">🤝</span>
+          <span>Venner</span>
+        </button>
+        <button class="app-nav-button nav-button-with-badge" type="button" data-app-nav="notifications">
+          <span class="nav-icon">🔔</span>
+          <span>Notifikationer</span>
+          <span id="notificationBadge" class="nav-badge hidden">0</span>
+        </button>
         <button id="adminNavButton" class="app-nav-button hidden" type="button" data-app-nav="admin">
           <span class="nav-icon">🛡️</span>
           <span>Admin</span>
@@ -101,6 +110,8 @@
           <div>
             <h2 id="myName">Indlæser...</h2>
             <p id="myUsername">@username</p>
+            <p id="myJoined" class="profile-joined">Medlem i 0 dage</p>
+            <div id="myBadges" class="badge-row"></div>
           </div>
         </div>
 
@@ -110,11 +121,20 @@
             <input id="profileName" name="name" maxlength="60" />
           </label>
           <label>
+            Status
+            <input id="profileStatus" name="status" maxlength="80" placeholder="Fx Online, bygger TSN, klar til chat..." />
+          </label>
+          <label>
+            Bannertekst
+            <input id="profileBanner" name="banner" maxlength="120" placeholder="Kort profil-banner" />
+          </label>
+          <label>
             Bio
-            <textarea id="profileBio" name="bio" maxlength="160" rows="3"></textarea>
+            <textarea id="profileBio" name="bio" maxlength="220" rows="3"></textarea>
           </label>
           <button class="secondary" type="submit">Gem profil</button>
         </form>
+        <div id="profilePreview" class="profile-preview-card"></div>
 
         <section class="danger-zone">
           <strong>Slet konto</strong>
@@ -162,6 +182,7 @@
                 <option value="banned">Banned</option>
                 <option value="muted">Muted</option>
                 <option value="reported">Med åbne rapporter</option>
+                <option value="warned">Med advarsler</option>
                 <option value="admins">Admins</option>
               </select>
               <button id="refreshAdminUsersBtn" class="ghost tiny" type="button">Genindlæs</button>
@@ -199,6 +220,46 @@
           </form>
         </section>
 
+        <section id="friendsPanel" class="growth-panel card hidden">
+          <div class="section-heading compact-heading">
+            <div>
+              <p class="eyebrow mini">Venner</p>
+              <h2>Venner og anmodninger</h2>
+              <p>Send venneanmodninger, accepter nye venner og hold styr på dine private kontakter.</p>
+            </div>
+            <button id="refreshFriendsBtn" class="secondary tiny" type="button">Opdater</button>
+          </div>
+          <div class="growth-grid">
+            <section>
+              <h3>Indgående anmodninger</h3>
+              <div id="friendIncomingList" class="growth-list"></div>
+            </section>
+            <section>
+              <h3>Dine venner</h3>
+              <div id="friendList" class="growth-list"></div>
+            </section>
+            <section>
+              <h3>Sendte anmodninger</h3>
+              <div id="friendOutgoingList" class="growth-list"></div>
+            </section>
+          </div>
+        </section>
+
+        <section id="notificationsPanel" class="growth-panel card hidden">
+          <div class="section-heading compact-heading">
+            <div>
+              <p class="eyebrow mini">Notifikationer</p>
+              <h2>Notifikationer</h2>
+              <p>Mentions, private beskeder, venneanmodninger, reaktioner og admin-advarsler samles her.</p>
+            </div>
+            <div class="inline-actions">
+              <button id="markNotificationsReadBtn" class="ghost tiny" type="button">Markér alle læst</button>
+              <button id="refreshNotificationsBtn" class="secondary tiny" type="button">Opdater</button>
+            </div>
+          </div>
+          <div id="notificationsList" class="notifications-list"></div>
+        </section>
+
         <section id="adminMessageViewer" class="admin-message-viewer card hidden">
           <div class="admin-message-head">
             <div>
@@ -231,7 +292,7 @@
             <div>
               <p class="eyebrow mini">Kun admin</p>
               <h2>Rapporter</h2>
-              <p>Gennemgå rapporterede globale chatbeskeder og brugere. Private besked-rapporter skjuler selve indholdet.</p>
+              <p>Gennemgå rapporterede globale chatbeskeder og brugere. Rapporterede private beskeder viser gemt evidence til admins.</p>
             </div>
             <span id="adminReportCount" class="pill">0 rapporter</span>
           </div>
@@ -284,6 +345,7 @@
       </div>
       <div class="chat-header-actions">
         <button id="deleteConversationBtn" class="ghost tiny danger" type="button">Slet chat</button>
+        <button id="chatFriendBtn" class="ghost tiny" type="button">Ven</button>
         <button id="reportChatUserBtn" class="ghost tiny" type="button">Rapportér</button>
         <button id="closeChatBtn" class="icon-button" type="button" aria-label="Luk chat">×</button>
       </div>
@@ -300,16 +362,17 @@
     <div class="rules-card card">
       <div class="section-heading">
         <div>
-          <p class="eyebrow mini">TSN V1.3.7</p>
+          <p class="eyebrow mini">TSN V1.4.0</p>
           <h2>Regler og sikkerhed</h2>
         </div>
         <button id="closeRulesBtn" class="icon-button" type="button" aria-label="Luk regler">×</button>
       </div>
       <ul>
         <li>Ingen spam, chikane, trusler eller hate speech. Spam kan give midlertidig mute.</li>
+        <li>Brug mentions ansvarligt. Lad være med at ping-spamme folk med @brugernavn.</li>
         <li>Del ikke private oplysninger om dig selv eller andre.</li>
         <li>Rapportér globale chatbeskeder, private beskeder eller brugere, hvis noget er forkert.</li>
-        <li>Admins kan slette indhold, smide brugere ud og banne konti for at holde TSN sikkert.</li>
+        <li>Admins kan give advarsler, mute, slette indhold, smide brugere ud og banne konti.</li>
       </ul>
       <p>TSN er stadig en beta. Inviter kun personer, du stoler på, indtil moderation og sikkerhed er testet.</p>
     </div>

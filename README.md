@@ -1,8 +1,12 @@
+# TSN V1.4.0 — Growth Update
 
+TSN is now a chat-first social network with founder badges, better profiles, friend requests, notifications, @mentions, emoji reactions, admin warnings, and mobile polish.
+
+Privacy stays the same: admins cannot browse every private conversation. They can only see private-message content when a user reports it as moderation evidence.
 
 ## V1.3.10 reported private evidence visible
 
-Reports now keep a saved snapshot of the reported target at the moment the report is created. If a reported global chat message is deleted later, the admin report still keeps the saved evidence. Private message reports keep evidence internally, and user reports from private chat can save the latest chat message as hidden internal evidence, but private message bodies remain hidden from admins.
+Reports now keep a saved snapshot of the reported target at the moment the report is created. If a reported global chat message is deleted later, the admin report still keeps the saved evidence. Private message reports keep evidence internally, and reported private-message evidence is visible to admins inside the reports panel.
 
 ## TSN v1.3.8 — Global chat start-at-bottom fix
 
@@ -99,3 +103,27 @@ TSN_DEFAULT_ADMIN_MUTE_MINUTES=10
 - Reported private-message evidence is now visible to admins inside the reports panel.
 - Admins still cannot browse every private conversation from the admin message archive.
 - Existing saved report evidence is reused, so messages remain visible in the report even if the original message is deleted later.
+
+## TSN V1.4.0 — Growth Update
+
+This version adds the next community-growth features:
+
+- Founder badges for early accounts.
+- Better profiles with status text, banner text, badges, and joined-days display.
+- Friend requests, friend lists, accept/decline/remove actions.
+- Notification inbox for mentions, private messages, friend requests, reactions, and admin warnings.
+- @username mentions in global and private chat.
+- Emoji reactions on global chat messages and private messages.
+- Admin warning system with warning notifications and admin dashboard counts.
+- Rules panel updated with warning/mute/moderation language.
+- Mobile polish for navigation, chat, friends, notifications, and reactions.
+
+Optional V1.4.0 env vars:
+
+```txt
+TSN_FOUNDER_BADGE_LIMIT=40
+TSN_NOTIFICATION_LIMIT=3000
+TSN_WARNINGS_LIMIT=1000
+```
+
+Privacy note: admins still cannot browse every private conversation from the message archive. Reported private-message evidence remains visible in the reports panel for moderation.

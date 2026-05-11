@@ -3301,3 +3301,286 @@ button:disabled {
   border-color: rgba(255, 204, 102, 0.28);
   background: rgba(255, 204, 102, 0.055);
 }
+
+/* TSN V1.4.0 Growth Update: profiles, friends, notifications, reactions, warnings, mobile polish */
+.nav-button-with-badge {
+  position: relative;
+}
+
+.nav-badge {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: #ff4d6d;
+  color: white;
+  font-size: 0.72rem;
+  font-weight: 800;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 8px 18px rgba(255, 77, 109, 0.28);
+}
+
+.profile-joined,
+.user-status-text {
+  display: block;
+  color: var(--muted);
+  font-size: 0.82rem;
+  margin: 3px 0 0;
+}
+
+.badge-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 6px;
+}
+
+.profile-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(124, 92, 255, 0.38);
+  background: rgba(124, 92, 255, 0.14);
+  color: var(--text);
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+.profile-preview-card {
+  margin-top: 14px;
+  padding: 14px;
+  border-radius: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  background: linear-gradient(135deg, rgba(124, 92, 255, 0.16), rgba(36, 214, 255, 0.08));
+}
+
+.profile-banner-text {
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+  padding: 12px;
+  border-radius: 16px;
+  background: rgba(0, 0, 0, 0.22);
+  color: var(--text);
+  font-weight: 800;
+  margin-bottom: 12px;
+}
+
+.profile-preview-main {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.profile-preview-main span,
+.profile-preview-main p {
+  display: block;
+  color: var(--muted);
+  margin: 2px 0;
+}
+
+.mention {
+  display: inline-block;
+  padding: 0 5px;
+  border-radius: 8px;
+  background: rgba(36, 214, 255, 0.14);
+  color: var(--accent-2, #24d6ff);
+  font-weight: 800;
+}
+
+.reaction-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 8px;
+}
+
+.reaction-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text);
+  border-radius: 999px;
+  padding: 4px 8px;
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+
+.reaction-button.active {
+  border-color: rgba(124, 92, 255, 0.55);
+  background: rgba(124, 92, 255, 0.22);
+}
+
+.user-row-card {
+  display: grid !important;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+  align-items: center;
+  width: 100%;
+  padding: 9px;
+  border-radius: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.user-open-button {
+  all: unset;
+  cursor: pointer;
+  display: grid;
+  grid-template-columns: auto 1fr auto auto;
+  gap: 10px;
+  align-items: center;
+  min-width: 0;
+}
+
+.user-row-actions {
+  display: flex;
+  justify-content: end;
+  gap: 6px;
+}
+
+.growth-panel {
+  display: none;
+  min-height: calc(100vh - 148px);
+}
+
+.growth-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.growth-list,
+.notifications-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.growth-user-card,
+.notification-card {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 10px;
+  align-items: center;
+  padding: 12px;
+  border-radius: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.045);
+}
+
+.growth-user-card span,
+.notification-card span,
+.notification-card p {
+  display: block;
+  color: var(--muted);
+  margin: 2px 0 0;
+}
+
+.notification-card.unread {
+  border-color: rgba(36, 214, 255, 0.35);
+  background: rgba(36, 214, 255, 0.08);
+}
+
+.inline-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 7px;
+}
+
+.app[data-view="friends"] .clean-discord-layout > .chat-main,
+.app[data-view="notifications"] .clean-discord-layout > .chat-main {
+  display: grid !important;
+  max-width: 980px;
+  margin: 0 auto;
+}
+
+.app[data-view="friends"] .global-chat,
+.app[data-view="notifications"] .global-chat,
+.app[data-view="friends"] #adminMessageViewer,
+.app[data-view="friends"] #adminReportViewer,
+.app[data-view="notifications"] #adminMessageViewer,
+.app[data-view="notifications"] #adminReportViewer {
+  display: none !important;
+}
+
+.app[data-view="friends"] #friendsPanel,
+.app[data-view="notifications"] #notificationsPanel {
+  display: block !important;
+}
+
+@media (max-width: 900px) {
+  .growth-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .growth-user-card,
+  .notification-card,
+  .user-row-card {
+    grid-template-columns: 1fr;
+  }
+
+  .user-open-button {
+    grid-template-columns: auto 1fr auto;
+  }
+
+  .user-row-actions,
+  .inline-actions {
+    justify-content: stretch;
+  }
+
+  .user-row-actions .tiny,
+  .inline-actions .tiny {
+    flex: 1;
+  }
+}
+
+@media (max-width: 560px) {
+  .topbar {
+    gap: 8px;
+  }
+
+  .topbar-actions {
+    gap: 6px;
+  }
+
+  .topbar-actions .ghost {
+    padding: 8px 10px;
+  }
+
+  .global-message-form,
+  .message-form {
+    gap: 6px;
+  }
+
+  .global-message-form input,
+  .message-form input {
+    min-height: 44px;
+  }
+
+  .chat-panel {
+    inset: auto 8px 8px 8px;
+    width: auto;
+    max-height: 82dvh;
+  }
+
+  .reaction-bar {
+    gap: 4px;
+  }
+
+  .reaction-button {
+    padding: 4px 7px;
+  }
+}
