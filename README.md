@@ -146,3 +146,16 @@ No new environment variables are required.
 ## TSN V1.4.2 — Notification + Reaction Visual Rewrite
 
 This version rebuilds the notification inbox and message reaction popup UI. Notifications now use a cleaner inbox layout with an unread summary, better spacing, unread indicators, and improved mobile layout. Message reactions are no longer shown as ugly always-visible controls; users click or tap a global/private message to open a cleaner reaction/action popup. Reaction chips only appear on the message when there are actual reactions.
+
+
+## TSN V1.4.3 — Sidebar Notification Button Fix
+
+This update fixes the sidebar navigation item for `🔔 Notifikationer`.
+
+Changed:
+
+- The notification sidebar button now uses the same label layout as the other sidebar buttons.
+- The unread badge no longer breaks the text sizing or alignment.
+- The desktop sidebar and mobile horizontal nav both keep the notification item aligned correctly.
+
+No new environment variables were added.

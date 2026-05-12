@@ -2997,10 +2997,14 @@ button:disabled {
   line-height: 1;
 }
 
-.app-nav-button span:last-child {
+.app-nav-button .nav-label {
+  width: 100%;
+  max-width: 100%;
+  display: block;
   font-size: 0.72rem;
   line-height: 1.05;
   text-align: center;
+  overflow-wrap: anywhere;
 }
 
 .clean-discord-layout > .route-view {
@@ -3144,9 +3148,12 @@ button:disabled {
     justify-content: start;
   }
 
-  .app-nav-button span:last-child {
+  .app-nav-button .nav-label {
     font-size: 0.76rem;
+    line-height: 1.05;
     text-align: left;
+    overflow-wrap: normal;
+    white-space: nowrap;
   }
 
   .clean-discord-layout > .route-view,
@@ -3323,6 +3330,22 @@ button:disabled {
   align-items: center;
   justify-content: center;
   box-shadow: 0 8px 18px rgba(255, 77, 109, 0.28);
+}
+
+.nav-button-with-badge .nav-label {
+  font-size: 0.68rem;
+  letter-spacing: -0.02em;
+}
+
+.nav-button-with-badge .nav-badge {
+  pointer-events: none;
+}
+
+@media (max-width: 900px) {
+  .nav-button-with-badge .nav-label {
+    font-size: 0.76rem;
+    letter-spacing: 0;
+  }
 }
 
 .profile-joined,

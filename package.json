@@ -1,7 +1,7 @@
 {
   "name": "the-social-network-tsn",
-  "version": "1.4.2",
-  "description": "TSN full visual rewrite for cleaner notifications and better popup message reactions.",
+  "version": "1.4.3",
+  "description": "TSN sidebar notification navigation layout fix.",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
