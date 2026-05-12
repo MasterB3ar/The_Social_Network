@@ -141,3 +141,8 @@ This update cleans up the chat UI without changing the backend database format.
 - Mobile layout was improved so the popup behaves like a bottom sheet on phones.
 
 No new environment variables are required.
+
+
+## TSN V1.4.2 — Notification + Reaction Visual Rewrite
+
+This version rebuilds the notification inbox and message reaction popup UI. Notifications now use a cleaner inbox layout with an unread summary, better spacing, unread indicators, and improved mobile layout. Message reactions are no longer shown as ugly always-visible controls; users click or tap a global/private message to open a cleaner reaction/action popup. Reaction chips only appear on the message when there are actual reactions.

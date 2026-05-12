@@ -132,19 +132,16 @@ function reactionItems(reactions) {
 
 function renderReactionSummary(reactions) {
   const items = reactionItems(reactions);
+  if (!items.length) return '';
+
   const chips = items.map((reaction) => `
-    <span class="reaction-summary-chip ${reaction.reactedByMe ? 'active' : ''}">
-      <span>${escapeHtml(reaction.emoji)}</span>
+    <span class="reaction-summary-chip ${reaction.reactedByMe ? 'active' : ''}" title="${escapeHtml(reaction.count)} reaktioner">
+      <span class="reaction-summary-emoji">${escapeHtml(reaction.emoji)}</span>
       <strong>${escapeHtml(formatNumber(reaction.count))}</strong>
     </span>
   `).join('');
 
-  return `
-    <div class="reaction-summary ${items.length ? '' : 'empty'}" aria-label="Åbn beskedmenu">
-      ${chips}
-      <span class="message-menu-dot" aria-hidden="true">⋯</span>
-    </div>
-  `;
+  return `<div class="reaction-summary" aria-label="Reaktioner på beskeden">${chips}</div>`;
 }
 
 function notificationTypeIcon(type) {
@@ -1124,17 +1121,18 @@ function openMessageActionPopup(type, messageId) {
     <div class="message-action-card" role="dialog" aria-modal="true" aria-label="Beskedmenu">
       <div class="message-action-head">
         <div>
-          <p class="eyebrow mini">Beskedmenu</p>
+          <p class="eyebrow mini">Besked</p>
           <h3>${escapeHtml(author)}</h3>
           <span>${escapeHtml(timestamp)}</span>
         </div>
-        <button class="icon-button" type="button" data-close-message-popup aria-label="Luk">×</button>
+        <button class="icon-button action-close-button" type="button" data-close-message-popup aria-label="Luk">×</button>
       </div>
 
       <div class="message-action-preview">
         ${type === 'global' ? renderTextWithMentions(message.text) : directMessageBodyHtml(message)}
       </div>
 
+      <div class="message-action-section-title">Vælg en reaktion</div>
       <div class="message-action-reactions" aria-label="Reaktioner">
         ${REACTION_EMOJIS.map((emoji) => {
           const active = reactionActive(message.reactions, emoji);
@@ -1144,8 +1142,8 @@ function openMessageActionPopup(type, messageId) {
       </div>
 
       <div class="message-action-footer">
-        ${canReport ? `<button class="ghost" type="button" ${reportAttr}>Rapportér</button>` : ''}
-        ${canDelete ? `<button class="admin-delete" type="button" ${deleteAttr}>Slet</button>` : ''}
+        ${canReport ? `<button class="message-secondary-action" type="button" ${reportAttr}>Rapportér</button>` : ''}
+        ${canDelete ? `<button class="message-danger-action" type="button" ${deleteAttr}>Slet</button>` : ''}
       </div>
     </div>
   `;
@@ -2004,24 +2002,54 @@ async function performFriendAction(userId, action) {
 function renderNotifications() {
   updateNotificationBadge();
   if (!notificationsList) return;
+  const unreadCount = state.notifications.filter((notification) => !notification.read).length;
   if (!state.notifications.length) {
-    notificationsList.innerHTML = '<div class="empty small-empty">Ingen notifikationer endnu.</div>';
+    notificationsList.innerHTML = `
+      <div class="notification-inbox-shell">
+        <div class="notification-summary-card empty-summary">
+          <div>
+            <span class="notification-summary-icon">🔔</span>
+          </div>
+          <div>
+            <strong>Ingen notifikationer endnu</strong>
+            <p>Når nogen nævner dig, reagerer, sender en venneanmodning eller skriver privat, vises det her.</p>
+          </div>
+        </div>
+      </div>
+    `;
     return;
   }
-  notificationsList.innerHTML = state.notifications.map((notification) => `
-    <article class="notification-card ${notification.read ? '' : 'unread'}">
-      <div class="notification-icon" aria-hidden="true">${escapeHtml(notificationTypeIcon(notification.type))}</div>
-      <div class="notification-main">
-        <div class="notification-topline">
-          <strong>${escapeHtml(notification.title || 'TSN')}</strong>
-          <span>${escapeHtml(formatExactDate(notification.createdAt))}</span>
+
+  notificationsList.innerHTML = `
+    <div class="notification-inbox-shell">
+      <div class="notification-summary-card">
+        <div class="notification-summary-icon">🔔</div>
+        <div class="notification-summary-copy">
+          <strong>${escapeHtml(formatNumber(unreadCount))} ulæste</strong>
+          <p>${escapeHtml(formatNumber(state.notifications.length))} notifikationer i alt</p>
         </div>
-        <p>${escapeHtml(notification.body || '')}</p>
-        <span class="notification-type-pill">${escapeHtml(notificationTypeLabel(notification.type))}</span>
       </div>
-      ${notification.read ? '<span class="notification-read-state">Læst</span>' : `<button class="ghost tiny notification-read-btn" type="button" data-read-notification="${escapeHtml(notification.id)}">Markér læst</button>`}
-    </article>
-  `).join('');
+      <div class="notification-feed">
+        ${state.notifications.map((notification) => `
+          <article class="notification-card ${notification.read ? 'is-read' : 'unread'}">
+            <div class="notification-status-dot" aria-hidden="true"></div>
+            <div class="notification-icon" aria-hidden="true">${escapeHtml(notificationTypeIcon(notification.type))}</div>
+            <div class="notification-main">
+              <div class="notification-topline">
+                <strong>${escapeHtml(notification.title || 'TSN')}</strong>
+                <time>${escapeHtml(formatExactDate(notification.createdAt))}</time>
+              </div>
+              <p>${escapeHtml(notification.body || '')}</p>
+              <div class="notification-meta-row">
+                <span class="notification-type-pill">${escapeHtml(notificationTypeLabel(notification.type))}</span>
+                ${notification.read ? '<span class="notification-read-state">Læst</span>' : `<button class="notification-read-btn" type="button" data-read-notification="${escapeHtml(notification.id)}">Markér læst</button>`}
+              </div>
+            </div>
+          </article>
+        `).join('')}
+      </div>
+    </div>
+  `;
 
   notificationsList.querySelectorAll('[data-read-notification]').forEach((button) => {
     button.addEventListener('click', async () => {

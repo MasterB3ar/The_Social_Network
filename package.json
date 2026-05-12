@@ -1,7 +1,7 @@
 {
   "name": "the-social-network-tsn",
-  "version": "1.4.1",
-  "description": "TSN chat polish update with cleaner notifications and click/tap popup reactions for global and private messages.",
+  "version": "1.4.2",
+  "description": "TSN full visual rewrite for cleaner notifications and better popup message reactions.",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
