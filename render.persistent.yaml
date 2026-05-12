@@ -53,8 +53,8 @@ services:
         value: 10
       - key: TSN_DEFAULT_ADMIN_MUTE_MINUTES
         value: 10
-      - key: TSN_FOUNDER_BADGE_LIMIT
-        value: 40
+      - key: TSN_MAX_CUSTOM_BADGES_PER_USER
+        value: 6
       - key: TSN_NOTIFICATION_LIMIT
         value: 3000
       - key: TSN_WARNINGS_LIMIT

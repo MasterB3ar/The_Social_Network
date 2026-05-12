@@ -1,7 +1,7 @@
 {
   "name": "the-social-network-tsn",
-  "version": "1.4.3",
-  "description": "TSN sidebar notification navigation layout fix.",
+  "version": "1.4.4",
+  "description": "TSN manual badge controls with default Member badge.",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",

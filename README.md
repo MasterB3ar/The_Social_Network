@@ -1,6 +1,6 @@
-# TSN V1.4.0 — Growth Update
+# TSN V1.4.4 — Manual Badges Update
 
-TSN is now a chat-first social network with founder badges, better profiles, friend requests, notifications, @mentions, emoji reactions, admin warnings, and mobile polish.
+TSN is now a chat-first social network with manual admin badges, a default Member badge, better profiles, friend requests, notifications, @mentions, emoji reactions, admin warnings, and mobile polish.
 
 Privacy stays the same: admins cannot browse every private conversation. They can only see private-message content when a user reports it as moderation evidence.
 
@@ -108,8 +108,8 @@ TSN_DEFAULT_ADMIN_MUTE_MINUTES=10
 
 This version adds the next community-growth features:
 
-- Founder badges for early accounts.
-- Better profiles with status text, banner text, badges, and joined-days display.
+- Everyone has the default Member badge; admins can manually give/remove special badges.
+- Better profiles with status text, banner text, admin-controlled badges, and joined-days display.
 - Friend requests, friend lists, accept/decline/remove actions.
 - Notification inbox for mentions, private messages, friend requests, reactions, and admin warnings.
 - @username mentions in global and private chat.
@@ -118,10 +118,10 @@ This version adds the next community-growth features:
 - Rules panel updated with warning/mute/moderation language.
 - Mobile polish for navigation, chat, friends, notifications, and reactions.
 
-Optional V1.4.0 env vars:
+Optional V1.4.x env vars:
 
 ```txt
-TSN_FOUNDER_BADGE_LIMIT=40
+TSN_MAX_CUSTOM_BADGES_PER_USER=6
 TSN_NOTIFICATION_LIMIT=3000
 TSN_WARNINGS_LIMIT=1000
 ```
@@ -159,3 +159,10 @@ Changed:
 - The desktop sidebar and mobile horizontal nav both keep the notification item aligned correctly.
 
 No new environment variables were added.
+
+### V1.4.4 badge behavior
+
+- No automatic Founder/Admin profile badges are shown anymore.
+- Every user gets the default `Member` badge.
+- Admins can give users special custom badges from the Admin user list using the **Badges** button.
+- Leaving the badge prompt empty removes all special badges and leaves only `Member`.

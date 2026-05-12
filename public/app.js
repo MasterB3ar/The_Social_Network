@@ -983,6 +983,7 @@ if (adminUsersList) {
     const unmuteButton = event.target.closest('[data-admin-unmute]');
     const deleteButton = event.target.closest('[data-admin-delete-user]');
     const warnButton = event.target.closest('[data-admin-warn]');
+    const badgesButton = event.target.closest('[data-admin-badges]');
 
     try {
       if (kickButton) {
@@ -1055,6 +1056,49 @@ if (adminUsersList) {
         renderAdminStats();
         await loadUsers($('#userSearch').value);
         showToast('Mute fjernet');
+      }
+
+      if (warnButton) {
+        const userId = warnButton.dataset.adminWarn;
+        const user = state.adminUsers.find((candidate) => candidate.id === userId);
+        const reason = prompt(`Advar ${user?.name || 'denne bruger'}? Skriv grund:`, 'Regelbrud');
+        if (reason === null) return;
+        const data = await api(`/api/admin/users/${userId}/warn`, {
+          method: 'POST',
+          body: JSON.stringify({ reason })
+        });
+        upsertAdminUser(data.user);
+        if (data.stats) state.adminStats = data.stats;
+        renderAdminUsers();
+        renderAdminStats();
+        await loadUsers($('#userSearch').value);
+        showToast('Advarsel sendt');
+      }
+
+      if (badgesButton) {
+        const userId = badgesButton.dataset.adminBadges;
+        const user = state.adminUsers.find((candidate) => candidate.id === userId);
+        const customBadges = (Array.isArray(user?.badges) ? user.badges : [])
+          .map((badge) => badge.label)
+          .filter((label) => label && label.toLowerCase() !== 'member');
+        const value = prompt(
+          `Særlige badges til ${user?.name || 'denne bruger'} (komma-separeret). Lad feltet være tomt for kun Member:`,
+          customBadges.join(', ')
+        );
+        if (value === null) return;
+        const badges = value.split(',').map((badge) => badge.trim()).filter(Boolean);
+        const data = await api(`/api/admin/users/${userId}/badges`, {
+          method: 'PUT',
+          body: JSON.stringify({ badges })
+        });
+        upsertAdminUser(data.user);
+        if (data.stats) state.adminStats = data.stats;
+        renderAdminUsers();
+        renderAdminStats();
+        await loadUsers($('#userSearch').value);
+        if (data.user?.id === state.me?.id) state.me = { ...state.me, ...data.user };
+        renderMe();
+        showToast('Badges opdateret');
       }
 
       if (deleteButton) {
@@ -1399,6 +1443,49 @@ if (messagesList) {
       if (reportButton) {
         await createReport('direct-message', { messageId: reportButton.dataset.reportDirectMessage });
         return;
+      }
+
+      if (warnButton) {
+        const userId = warnButton.dataset.adminWarn;
+        const user = state.adminUsers.find((candidate) => candidate.id === userId);
+        const reason = prompt(`Advar ${user?.name || 'denne bruger'}? Skriv grund:`, 'Regelbrud');
+        if (reason === null) return;
+        const data = await api(`/api/admin/users/${userId}/warn`, {
+          method: 'POST',
+          body: JSON.stringify({ reason })
+        });
+        upsertAdminUser(data.user);
+        if (data.stats) state.adminStats = data.stats;
+        renderAdminUsers();
+        renderAdminStats();
+        await loadUsers($('#userSearch').value);
+        showToast('Advarsel sendt');
+      }
+
+      if (badgesButton) {
+        const userId = badgesButton.dataset.adminBadges;
+        const user = state.adminUsers.find((candidate) => candidate.id === userId);
+        const customBadges = (Array.isArray(user?.badges) ? user.badges : [])
+          .map((badge) => badge.label)
+          .filter((label) => label && label.toLowerCase() !== 'member');
+        const value = prompt(
+          `Særlige badges til ${user?.name || 'denne bruger'} (komma-separeret). Lad feltet være tomt for kun Member:`,
+          customBadges.join(', ')
+        );
+        if (value === null) return;
+        const badges = value.split(',').map((badge) => badge.trim()).filter(Boolean);
+        const data = await api(`/api/admin/users/${userId}/badges`, {
+          method: 'PUT',
+          body: JSON.stringify({ badges })
+        });
+        upsertAdminUser(data.user);
+        if (data.stats) state.adminStats = data.stats;
+        renderAdminUsers();
+        renderAdminStats();
+        await loadUsers($('#userSearch').value);
+        if (data.user?.id === state.me?.id) state.me = { ...state.me, ...data.user };
+        renderMe();
+        showToast('Badges opdateret');
       }
 
       if (deleteButton) {
@@ -1768,6 +1855,7 @@ function renderAdminUsers() {
             <small>Oprettet: ${escapeHtml(created)} · Seneste aktivitet: ${escapeHtml(lastActivity)}</small>
             ${user.banReason ? `<small class="admin-warning-line">Ban-grund: ${escapeHtml(user.banReason)}</small>` : ''}
             ${user.muted ? `<small class="admin-warning-line">Muted indtil ${escapeHtml(formatExactDate(user.mutedUntil))}${user.muteReason ? ` · ${escapeHtml(user.muteReason)}` : ''}</small>` : ''}
+            ${badgeHtml(user)}
             ${user.lastSpamWarningReason ? `<small class="admin-warning-line">Seneste spam: ${escapeHtml(user.lastSpamWarningReason)}</small>` : ''}
             ${Number(user.warningCount) > 0 ? `<small class="admin-warning-line">Admin-advarsler: ${escapeHtml(user.warningCount)}${user.latestWarningReason ? ` · ${escapeHtml(user.latestWarningReason)}` : ''}</small>` : ''}
           </div>
@@ -1781,6 +1869,7 @@ function renderAdminUsers() {
         </div>
         <div class="admin-user-actions">
           <button class="ghost tiny" type="button" data-admin-warn="${escapeHtml(user.id)}" ${isMe || isProtectedAdmin ? 'disabled' : ''}>Advar</button>
+          <button class="ghost tiny" type="button" data-admin-badges="${escapeHtml(user.id)}">Badges</button>
           <button class="ghost tiny" type="button" data-admin-kick="${escapeHtml(user.id)}" ${isMe || user.banned ? 'disabled' : ''}>Log ud</button>
           ${user.muted
             ? `<button class="secondary tiny" type="button" data-admin-unmute="${escapeHtml(user.id)}" ${isMe || isProtectedAdmin ? 'disabled' : ''}>Fjern mute</button>`

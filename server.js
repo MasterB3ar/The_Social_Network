@@ -47,7 +47,8 @@ const MAX_MESSAGES_PER_SPAM_WINDOW = clampInteger(process.env.TSN_MAX_MESSAGES_P
 const AUTO_MUTE_AFTER_WARNINGS = clampInteger(process.env.TSN_AUTO_MUTE_AFTER_WARNINGS || 5, 2, 50);
 const AUTO_MUTE_MINUTES = clampInteger(process.env.TSN_AUTO_MUTE_MINUTES || 10, 1, 1440);
 const DEFAULT_ADMIN_MUTE_MINUTES = clampInteger(process.env.TSN_DEFAULT_ADMIN_MUTE_MINUTES || 10, 1, 1440);
-const FOUNDER_BADGE_LIMIT = clampInteger(process.env.TSN_FOUNDER_BADGE_LIMIT || 40, 1, 10000);
+const DEFAULT_PROFILE_BADGE = 'Member';
+const MAX_CUSTOM_BADGES_PER_USER = clampInteger(process.env.TSN_MAX_CUSTOM_BADGES_PER_USER || 6, 0, 20);
 const ALLOWED_REACTIONS = new Set(['👍', '😂', '🔥', '💀', '❤️']);
 const NOTIFICATION_LIMIT = clampInteger(process.env.TSN_NOTIFICATION_LIMIT || 3000, 100, 10000);
 const WARNINGS_LIMIT = clampInteger(process.env.TSN_WARNINGS_LIMIT || 1000, 100, 10000);
@@ -440,7 +441,7 @@ function clampInteger(value, min, max) {
 
 function emitUserProfileUpdated(user) {
   if (!user) return;
-  io.emit('user-profile-updated', { user: publicUser(user) });
+  io.emit('user-profile-updated', publicUser(user));
 }
 
 const CONTENT_FILTER_ENABLED = String(process.env.TSN_CONTENT_FILTER_ENABLED || 'true').toLowerCase() !== 'false';
@@ -944,7 +945,7 @@ function ensureGrowthDatabaseShape(db) {
     user.friendRequestsIn = uniqueStringArray(user.friendRequestsIn).filter((candidateId) => candidateId !== user.id && !user.friends.includes(candidateId));
     user.friendRequestsOut = uniqueStringArray(user.friendRequestsOut).filter((candidateId) => candidateId !== user.id && !user.friends.includes(candidateId));
     if (!Number.isFinite(Number(user.founderNumber))) user.founderNumber = index + 1;
-    if (!Array.isArray(user.customBadges)) user.customBadges = [];
+    user.customBadges = normalizeCustomBadges(user.customBadges);
     user.warningCount = Math.max(0, Number(user.warningCount) || 0);
   });
 
@@ -965,17 +966,28 @@ function joinedDays(user) {
   return Math.max(0, Math.floor((Date.now() - createdAt) / (24 * 60 * 60 * 1000)));
 }
 
+function normalizeCustomBadges(value) {
+  const blockedDefaultLabels = new Set([DEFAULT_PROFILE_BADGE.toLowerCase()]);
+  const labels = uniqueStringArray(value)
+    .map((label) => cleanText(label, 24))
+    .filter(Boolean)
+    .filter((label) => !blockedDefaultLabels.has(label.toLowerCase()));
+  return [...new Set(labels)].slice(0, MAX_CUSTOM_BADGES_PER_USER);
+}
+
+function badgeId(label) {
+  return String(label || 'badge')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '') || 'badge';
+}
+
 function userBadges(user) {
   if (!user) return [];
-  const badges = [];
-  const founderNumber = Math.max(0, Number(user.founderNumber) || 0);
-  if (founderNumber && founderNumber <= FOUNDER_BADGE_LIMIT) {
-    badges.push({ id: 'founder', label: 'Founder', title: `Founder #${founderNumber}` });
-    badges.push({ id: `founder-${founderNumber}`, label: `#${founderNumber}`, title: `Founder #${founderNumber}` });
-  }
-  if (user.role === 'admin') badges.push({ id: 'admin', label: 'Admin', title: 'TSN Admin' });
-  if (isMuted(user)) badges.push({ id: 'muted', label: 'Muted', title: 'Midlertidigt muted' });
-  uniqueStringArray(user.customBadges).slice(0, 8).forEach((label) => badges.push({ id: `custom-${label}`, label, title: label }));
+  const badges = [{ id: 'member', label: DEFAULT_PROFILE_BADGE, title: 'Standard TSN-medlem' }];
+  normalizeCustomBadges(user.customBadges).forEach((label) => {
+    badges.push({ id: `custom-${badgeId(label)}`, label, title: label });
+  });
   return badges;
 }
 
@@ -2457,6 +2469,26 @@ app.post('/api/admin/users/:userId/unmute', requireAuth, requireAdmin, async (re
   res.json({ ok: true, user: publicModerationUser(target, db), stats: buildAdminStats(db) });
 });
 
+app.put('/api/admin/users/:userId/badges', requireAuth, requireAdmin, async (req, res) => {
+  const db = req.db;
+  const target = db.users.find((user) => user.id === req.params.userId);
+  if (!target) return res.status(404).json({ error: 'Brugeren blev ikke fundet.' });
+
+  const rawBadges = Array.isArray(req.body.badges)
+    ? req.body.badges
+    : String(req.body.badges || '').split(',');
+  const customBadges = normalizeCustomBadges(rawBadges);
+  const blockedBadge = customBadges.find((label) => contentFilterError(label, 'Badge'));
+  if (blockedBadge) return res.status(400).json({ error: contentFilterError(blockedBadge, 'Badge') });
+
+  target.customBadges = customBadges;
+  await writeDb(db);
+
+  emitUserProfileUpdated(target);
+  io.to(target.id).emit('profile-updated', { user: publicUser(target) });
+  res.json({ ok: true, user: publicModerationUser(target, db), stats: buildAdminStats(db) });
+});
+
 app.post('/api/admin/users/:userId/warn', requireAuth, requireAdmin, async (req, res) => {
   const db = req.db;
   const target = db.users.find((user) => user.id === req.params.userId);
@@ -3157,7 +3189,7 @@ async function startServer() {
       console.log(`Backup directory: ${DB_BACKUP_DIR}`);
       const warning = storagePersistenceWarning();
       if (warning) console.warn(`Persistence warning: ${warning}`);
-      console.log('TSN V1.4.0 mode: growth update with friends, notifications, mentions, reactions, founder badges, and admin warnings.');
+      console.log('TSN V1.4.4 mode: manual badges with default Member badge, friends, notifications, mentions, reactions, and admin warnings.');
       console.log('Admin rights can be claimed inside the app with TSN_ADMIN_SETUP_PASSWORD or TSN_ADMIN_SETUP_PASSWORD_HASH.');
 
       if (process.env.NODE_ENV === 'production' && JWT_SECRET === DEFAULT_JWT_SECRET) {
