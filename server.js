@@ -53,6 +53,18 @@ const ALLOWED_REACTIONS = new Set(['👍', '😂', '🔥', '💀', '❤️']);
 const NOTIFICATION_LIMIT = clampInteger(process.env.TSN_NOTIFICATION_LIMIT || 3000, 100, 10000);
 const WARNINGS_LIMIT = clampInteger(process.env.TSN_WARNINGS_LIMIT || 1000, 100, 10000);
 
+const ACTIVITY_FEED_LIMIT = clampInteger(process.env.TSN_ACTIVITY_FEED_LIMIT || 150, 20, 1000);
+const EVENTS_LIMIT = clampInteger(process.env.TSN_EVENTS_LIMIT || 80, 10, 300);
+const POLLS_LIMIT = clampInteger(process.env.TSN_POLLS_LIMIT || 60, 10, 300);
+const LEADERBOARD_LIMIT = clampInteger(process.env.TSN_LEADERBOARD_LIMIT || 20, 5, 100);
+const XP_DAILY_LOGIN = clampInteger(process.env.TSN_XP_DAILY_LOGIN || 20, 0, 1000);
+const XP_GLOBAL_MESSAGE = clampInteger(process.env.TSN_XP_GLOBAL_MESSAGE || 3, 0, 200);
+const XP_PRIVATE_MESSAGE = clampInteger(process.env.TSN_XP_PRIVATE_MESSAGE || 2, 0, 200);
+const XP_REACTION_RECEIVED = clampInteger(process.env.TSN_XP_REACTION_RECEIVED || 1, 0, 100);
+const XP_FRIEND_ACCEPTED = clampInteger(process.env.TSN_XP_FRIEND_ACCEPTED || 10, 0, 1000);
+const XP_EVENT_JOIN = clampInteger(process.env.TSN_XP_EVENT_JOIN || 8, 0, 1000);
+const XP_POLL_VOTE = clampInteger(process.env.TSN_XP_POLL_VOTE || 4, 0, 1000);
+
 const ROOMS = Array.from({ length: 7 }, (_, index) => {
   const id = index + 1;
   return {
@@ -89,7 +101,7 @@ app.use(express.static(PUBLIC_DIR, {
 }));
 
 function emptyDatabase() {
-  return { users: [], posts: [], messages: [], globalMessages: [], rooms: [], roomMessages: [], reports: [], notifications: [], warnings: [], tsnStock: null };
+  return { users: [], posts: [], messages: [], globalMessages: [], rooms: [], roomMessages: [], reports: [], notifications: [], warnings: [], activityFeed: [], events: [], polls: [], tsnStock: null };
 }
 
 function databaseHasUserData(db) {
@@ -104,6 +116,9 @@ function databaseHasUserData(db) {
         (Array.isArray(db.reports) && db.reports.length) ||
         (Array.isArray(db.notifications) && db.notifications.length) ||
         (Array.isArray(db.warnings) && db.warnings.length) ||
+        (Array.isArray(db.activityFeed) && db.activityFeed.length) ||
+        (Array.isArray(db.events) && db.events.length) ||
+        (Array.isArray(db.polls) && db.polls.length) ||
         (db.tsnStock && Array.isArray(db.tsnStock.history) && db.tsnStock.history.length) ||
         (Array.isArray(db.rooms) && db.rooms.some((room) => room.ownerId || room.nameEnc || room.passwordHash))
       )
@@ -121,6 +136,9 @@ function normalizeDatabaseShape(db) {
     reports: Array.isArray(db?.reports) ? db.reports : [],
     notifications: Array.isArray(db?.notifications) ? db.notifications : [],
     warnings: Array.isArray(db?.warnings) ? db.warnings : [],
+    activityFeed: Array.isArray(db?.activityFeed) ? db.activityFeed : [],
+    events: Array.isArray(db?.events) ? db.events : [],
+    polls: Array.isArray(db?.polls) ? db.polls : [],
     tsnStock: normalizeTsnStockState(db?.tsnStock)
   };
   ensureGrowthDatabaseShape(normalized);
@@ -931,6 +949,104 @@ function applyChatAntiSpam(db, user, text, scope = 'chat') {
 }
 
 
+
+function localDateKey(date = new Date()) {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Copenhagen', year: 'numeric', month: '2-digit', day: '2-digit' }).format(date);
+}
+
+function daysBetweenDateKeys(a, b) {
+  if (!a || !b) return 999;
+  const start = new Date(`${a}T00:00:00Z`).getTime();
+  const end = new Date(`${b}T00:00:00Z`).getTime();
+  if (!Number.isFinite(start) || !Number.isFinite(end)) return 999;
+  return Math.round((end - start) / (24 * 60 * 60 * 1000));
+}
+
+function levelFromXp(xp) {
+  const amount = Math.max(0, Math.floor(Number(xp) || 0));
+  return Math.max(1, Math.floor(Math.sqrt(amount / 75)) + 1);
+}
+
+function xpForNextLevel(level) {
+  const next = Math.max(2, Number(level) + 1);
+  return Math.pow(next - 1, 2) * 75;
+}
+
+function addActivity(db, type, title, body = '', actorId = '', data = {}) {
+  if (!db) return null;
+  db.activityFeed = Array.isArray(db.activityFeed) ? db.activityFeed : [];
+  const item = { id: id('act'), type: cleanText(type || 'activity', 40), title: cleanText(title || 'TSN aktivitet', 120), body: cleanText(body || '', 260), actorId: actorId || '', data: data && typeof data === 'object' ? data : {}, createdAt: new Date().toISOString() };
+  db.activityFeed.push(item);
+  if (db.activityFeed.length > ACTIVITY_FEED_LIMIT) db.activityFeed = db.activityFeed.slice(-ACTIVITY_FEED_LIMIT);
+  return item;
+}
+
+function awardXp(db, userId, amount, reason = 'activity', data = {}) {
+  const points = Math.max(0, Math.floor(Number(amount) || 0));
+  if (!db || !userId || !points) return null;
+  const user = (Array.isArray(db.users) ? db.users : []).find((candidate) => candidate.id === userId);
+  if (!user || isBanned(user)) return null;
+  const beforeLevel = levelFromXp(user.xp);
+  user.xp = Math.max(0, Math.floor(Number(user.xp) || 0)) + points;
+  user.level = levelFromXp(user.xp);
+  user.lastXpAt = new Date().toISOString();
+  if (user.level > beforeLevel) {
+    createNotification(db, user.id, 'level', `Du er nu level ${user.level}`, `Du fik ${points} XP for ${reason}.`, { xp: points, level: user.level, reason, ...data });
+    addActivity(db, 'level-up', `${getUserField(user, 'name')} nåede level ${user.level}`, `${points} XP · ${reason}`, user.id, { level: user.level });
+  }
+  return { user, points, levelUp: user.level > beforeLevel };
+}
+
+function updateLoginStreak(db, user) {
+  if (!db || !user) return user;
+  const today = localDateKey();
+  const previous = user.lastLoginDay || '';
+  if (previous === today) { user.lastSeenAt = new Date().toISOString(); return user; }
+  const diff = daysBetweenDateKeys(previous, today);
+  user.loginStreak = diff === 1 ? Math.max(1, Number(user.loginStreak) || 0) + 1 : 1;
+  user.bestLoginStreak = Math.max(Number(user.bestLoginStreak) || 0, user.loginStreak);
+  user.lastLoginDay = today;
+  user.lastSeenAt = new Date().toISOString();
+  awardXp(db, user.id, XP_DAILY_LOGIN, 'dagligt login', { streak: user.loginStreak });
+  if (user.loginStreak > 1) createNotification(db, user.id, 'streak', `${user.loginStreak} dages streak`, `Du har logget ind ${user.loginStreak} dage i træk.`, { streak: user.loginStreak });
+  return user;
+}
+
+function activityItemPublic(item, users = []) {
+  const actor = users.find((user) => user.id === item.actorId);
+  return { id: item.id, type: item.type || 'activity', title: item.title || 'TSN aktivitet', body: item.body || '', actor: actor ? publicUser(actor) : null, data: item.data || {}, createdAt: item.createdAt };
+}
+
+function publicEvent(event, viewerId = '') {
+  const participants = uniqueStringArray(event.participants);
+  return { id: event.id, title: getEncryptedObjectField(event, 'title') || event.title || 'TSN event', description: getEncryptedObjectField(event, 'description') || event.description || '', startsAt: event.startsAt || null, endsAt: event.endsAt || null, status: event.status || 'open', createdAt: event.createdAt, participantCount: participants.length, joinedByMe: viewerId ? participants.includes(viewerId) : false };
+}
+
+function publicPoll(poll, viewerId = '') {
+  const options = Array.isArray(poll.options) ? poll.options : [];
+  const votes = poll.votes && typeof poll.votes === 'object' ? poll.votes : {};
+  const viewerVote = viewerId ? String(votes[viewerId] || '') : '';
+  const resultOptions = options.map((option) => {
+    const idValue = String(option.id || '');
+    const count = Object.values(votes).filter((vote) => String(vote) === idValue).length;
+    return { id: idValue, text: getEncryptedObjectField(option, 'text') || option.text || '', count };
+  });
+  return { id: poll.id, question: getEncryptedObjectField(poll, 'question') || poll.question || 'Afstemning', options: resultOptions, totalVotes: resultOptions.reduce((total, option) => total + option.count, 0), votedByMe: Boolean(viewerVote), myVote: viewerVote, status: poll.status || 'open', createdAt: poll.createdAt };
+}
+
+function buildLeaderboard(db) {
+  const users = (Array.isArray(db.users) ? db.users : []).filter((user) => !isBanned(user));
+  const globalCounts = new Map();
+  const privateCounts = new Map();
+  const reactionCounts = new Map();
+  (Array.isArray(db.globalMessages) ? db.globalMessages : []).forEach((message) => {
+    globalCounts.set(message.authorId, (globalCounts.get(message.authorId) || 0) + 1);
+    Object.values(message.reactions || {}).forEach((list) => { reactionCounts.set(message.authorId, (reactionCounts.get(message.authorId) || 0) + (Array.isArray(list) ? list.length : 0)); });
+  });
+  (Array.isArray(db.messages) ? db.messages : []).forEach((message) => { privateCounts.set(message.from, (privateCounts.get(message.from) || 0) + 1); });
+  return users.map((user) => ({ user: publicUser(user), xp: Math.max(0, Number(user.xp) || 0), level: levelFromXp(user.xp), streak: Math.max(0, Number(user.loginStreak) || 0), globalMessages: globalCounts.get(user.id) || 0, privateMessagesSent: privateCounts.get(user.id) || 0, reactionsReceived: reactionCounts.get(user.id) || 0, score: Math.max(0, Number(user.xp) || 0) + (globalCounts.get(user.id) || 0) * 2 + (reactionCounts.get(user.id) || 0) * 3 })).sort((a, b) => b.score - a.score || b.level - a.level || b.xp - a.xp).slice(0, LEADERBOARD_LIMIT);
+}
+
 function uniqueStringArray(value) {
   return [...new Set((Array.isArray(value) ? value : []).map(String).filter(Boolean))];
 }
@@ -947,6 +1063,12 @@ function ensureGrowthDatabaseShape(db) {
     if (!Number.isFinite(Number(user.founderNumber))) user.founderNumber = index + 1;
     user.customBadges = normalizeCustomBadges(user.customBadges);
     user.warningCount = Math.max(0, Number(user.warningCount) || 0);
+    user.xp = Math.max(0, Math.floor(Number(user.xp) || 0));
+    user.level = levelFromXp(user.xp);
+    user.loginStreak = Math.max(0, Math.floor(Number(user.loginStreak) || 0));
+    user.bestLoginStreak = Math.max(user.loginStreak, Math.floor(Number(user.bestLoginStreak) || 0));
+    user.lastLoginDay = cleanText(user.lastLoginDay || '', 20);
+    user.lastSeenAt = user.lastSeenAt || user.createdAt;
   });
 
   db.users.forEach((user) => {
@@ -957,6 +1079,9 @@ function ensureGrowthDatabaseShape(db) {
 
   db.notifications = (Array.isArray(db.notifications) ? db.notifications : []).filter((notification) => notification && notification.userId).slice(-NOTIFICATION_LIMIT);
   db.warnings = (Array.isArray(db.warnings) ? db.warnings : []).filter((warning) => warning && warning.userId).slice(-WARNINGS_LIMIT);
+  db.activityFeed = (Array.isArray(db.activityFeed) ? db.activityFeed : []).filter((item) => item && item.type).slice(-ACTIVITY_FEED_LIMIT);
+  db.events = (Array.isArray(db.events) ? db.events : []).filter((event) => event && event.id).slice(-EVENTS_LIMIT);
+  db.polls = (Array.isArray(db.polls) ? db.polls : []).filter((poll) => poll && poll.id).slice(-POLLS_LIMIT);
   return db;
 }
 
@@ -1134,7 +1259,12 @@ function publicUser(user) {
     founderNumber: Number(user.founderNumber) || null,
     badges: userBadges(user),
     warningCount: Math.max(0, Number(user.warningCount) || 0),
-    latestWarningAt: user.latestWarningAt || null
+    latestWarningAt: user.latestWarningAt || null,
+    xp: Math.max(0, Math.floor(Number(user.xp) || 0)),
+    level: levelFromXp(user.xp),
+    nextLevelXp: xpForNextLevel(levelFromXp(user.xp)),
+    loginStreak: Math.max(0, Math.floor(Number(user.loginStreak) || 0)),
+    bestLoginStreak: Math.max(0, Math.floor(Number(user.bestLoginStreak) || 0))
   };
 }
 
@@ -2184,6 +2314,11 @@ app.post('/api/auth/register', async (req, res) => {
       }),
       passwordHash,
       sessionVersion: 0,
+      xp: 0,
+      level: 1,
+      loginStreak: 0,
+      bestLoginStreak: 0,
+      lastLoginDay: '',
       createdAt: new Date().toISOString()
     };
 
@@ -2213,13 +2348,18 @@ app.post('/api/auth/login', async (req, res) => {
   const ok = await bcrypt.compare(password, user.passwordHash);
   if (!ok) return res.status(401).json({ error: 'Forkert brugernavn eller adgangskode.' });
 
-  if (repairUserLookupHashIfNeeded(user, login)) await writeDb(db);
+  repairUserLookupHashIfNeeded(user, login);
+  updateLoginStreak(db, user);
+  await writeDb(db);
 
   res.json({ token: signToken(user), user: publicUser(user) });
 });
 
-app.get('/api/me', requireAuth, (req, res) => {
-  res.json({ user: publicUser(req.user) });
+app.get('/api/me', requireAuth, async (req, res) => {
+  const user = req.db.users.find((candidate) => candidate.id === req.user.id);
+  updateLoginStreak(req.db, user);
+  await writeDb(req.db);
+  res.json({ user: publicUser(user || req.user) });
 });
 
 app.patch('/api/me', requireAuth, async (req, res) => {
@@ -2666,6 +2806,9 @@ app.post('/api/friends/:userId/request', requireAuth, async (req, res) => {
     me.friends.push(target.id);
     target.friends.push(me.id);
     createNotification(db, target.id, 'friend-accepted', `${getUserField(me, 'name')} accepterede dig`, 'I er nu venner på TSN.', { userId: me.id });
+    awardXp(db, me.id, XP_FRIEND_ACCEPTED, 'ny ven', { friendId: target.id });
+    awardXp(db, target.id, XP_FRIEND_ACCEPTED, 'ny ven', { friendId: me.id });
+    addActivity(db, 'friend', `${getUserField(me, 'name')} og ${getUserField(target, 'name')} blev venner`, '', me.id, { friendId: target.id });
     await writeDb(db);
     io.to(target.id).emit('user-profile-updated', publicUserForViewer(me, target));
     return res.json({ ok: true, status: 'friends', user: publicUserForViewer(target, me) });
@@ -2689,6 +2832,9 @@ app.post('/api/friends/:userId/accept', requireAuth, async (req, res) => {
   me.friends = uniqueStringArray([...me.friends, other.id]);
   other.friends = uniqueStringArray([...other.friends, me.id]);
   createNotification(db, other.id, 'friend-accepted', `${getUserField(me, 'name')} accepterede dig`, 'I er nu venner på TSN.', { userId: me.id });
+  awardXp(db, me.id, XP_FRIEND_ACCEPTED, 'ny ven', { friendId: other.id });
+  awardXp(db, other.id, XP_FRIEND_ACCEPTED, 'ny ven', { friendId: me.id });
+  addActivity(db, 'friend', `${getUserField(me, 'name')} og ${getUserField(other, 'name')} blev venner`, '', me.id, { friendId: other.id });
   await writeDb(db);
   io.to(other.id).emit('user-profile-updated', publicUserForViewer(me, other));
   res.json({ ok: true, status: 'friends', user: publicUserForViewer(other, me) });
@@ -2728,6 +2874,85 @@ app.get('/api/public/stock', (req, res) => {
   const snapshot = getTsnStockSnapshot(db, { persist: false, reason: 'public-view' });
   res.setHeader('Cache-Control', 'no-store');
   res.json({ stock: snapshot });
+});
+
+
+app.get('/api/home', requireAuth, (req, res) => {
+  const stock = getTsnStockSnapshot(req.db, { persist: false, reason: 'home-widget' });
+  const activeEvent = [...(Array.isArray(req.db.events) ? req.db.events : [])].filter((event) => (event.status || 'open') === 'open').sort((a, b) => new Date(a.startsAt || a.createdAt || 0) - new Date(b.startsAt || b.createdAt || 0))[0] || null;
+  const activePoll = [...(Array.isArray(req.db.polls) ? req.db.polls : [])].filter((poll) => (poll.status || 'open') === 'open').sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))[0] || null;
+  res.json({ user: publicUser(req.user), stock, activeEvent: activeEvent ? publicEvent(activeEvent, req.user.id) : null, activePoll: activePoll ? publicPoll(activePoll, req.user.id) : null, activity: [...(Array.isArray(req.db.activityFeed) ? req.db.activityFeed : [])].sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0)).slice(0, 20).map((item) => activityItemPublic(item, req.db.users)), leaderboard: buildLeaderboard(req.db).slice(0, 5) });
+});
+
+app.get('/api/leaderboard', requireAuth, (req, res) => res.json({ leaderboard: buildLeaderboard(req.db) }));
+
+app.get('/api/events', requireAuth, (req, res) => {
+  const events = [...(Array.isArray(req.db.events) ? req.db.events : [])].sort((a, b) => new Date(a.startsAt || a.createdAt || 0) - new Date(b.startsAt || b.createdAt || 0)).map((event) => publicEvent(event, req.user.id));
+  res.json({ events });
+});
+
+app.post('/api/events', requireAuth, requireAdmin, async (req, res) => {
+  const title = cleanText(req.body.title, 90); const description = cleanText(req.body.description, 260); const startsAt = cleanText(req.body.startsAt, 40);
+  if (!title) return res.status(400).json({ error: 'Eventtitel er påkrævet.' });
+  if (rejectBlockedContent(res, title, 'Eventtitel')) return;
+  if (description && rejectBlockedContent(res, description, 'Eventbeskrivelse')) return;
+  const db = req.db; db.events = Array.isArray(db.events) ? db.events : [];
+  const event = { id: id('event'), ...encryptedTextObject('title', title), ...encryptedTextObject('description', description), startsAt: startsAt || null, status: 'open', participants: [], createdBy: req.user.id, createdAt: new Date().toISOString() };
+  db.events.push(event); if (db.events.length > EVENTS_LIMIT) db.events = db.events.slice(-EVENTS_LIMIT);
+  addActivity(db, 'event', `Nyt TSN-event: ${title}`, description, req.user.id, { eventId: event.id });
+  await writeDb(db); io.emit('growth-updated', { type: 'event' }); res.status(201).json({ event: publicEvent(event, req.user.id) });
+});
+
+app.post('/api/events/:eventId/join', requireAuth, async (req, res) => {
+  const db = req.db; const event = (Array.isArray(db.events) ? db.events : []).find((candidate) => candidate.id === req.params.eventId);
+  if (!event) return res.status(404).json({ error: 'Eventet blev ikke fundet.' });
+  if ((event.status || 'open') !== 'open') return res.status(400).json({ error: 'Eventet er lukket.' });
+  event.participants = uniqueStringArray(event.participants); const joined = !event.participants.includes(req.user.id);
+  if (joined) { event.participants.push(req.user.id); awardXp(db, req.user.id, XP_EVENT_JOIN, 'event deltagelse', { eventId: event.id }); }
+  await writeDb(db); io.emit('growth-updated', { type: 'event-join' }); res.json({ ok: true, joined, event: publicEvent(event, req.user.id) });
+});
+
+app.patch('/api/events/:eventId', requireAuth, requireAdmin, async (req, res) => {
+  const db = req.db; const event = (Array.isArray(db.events) ? db.events : []).find((candidate) => candidate.id === req.params.eventId);
+  if (!event) return res.status(404).json({ error: 'Eventet blev ikke fundet.' });
+  const status = cleanText(req.body.status, 20); if (status && ['open', 'closed'].includes(status)) event.status = status;
+  await writeDb(db); res.json({ event: publicEvent(event, req.user.id) });
+});
+
+app.get('/api/polls', requireAuth, (req, res) => {
+  const polls = [...(Array.isArray(req.db.polls) ? req.db.polls : [])].sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0)).map((poll) => publicPoll(poll, req.user.id));
+  res.json({ polls });
+});
+
+app.post('/api/polls', requireAuth, requireAdmin, async (req, res) => {
+  const question = cleanText(req.body.question, 140); const options = (Array.isArray(req.body.options) ? req.body.options : []).map((option) => cleanText(option, 70)).filter(Boolean).slice(0, 6);
+  if (!question) return res.status(400).json({ error: 'Afstemningsspørgsmål er påkrævet.' });
+  if (options.length < 2) return res.status(400).json({ error: 'Lav mindst 2 svarmuligheder.' });
+  if (rejectBlockedContent(res, question, 'Afstemningsspørgsmål')) return;
+  for (const option of options) { const error = contentFilterError(option, 'Afstemningssvar'); if (error) return res.status(400).json({ error }); }
+  const db = req.db; db.polls = Array.isArray(db.polls) ? db.polls : [];
+  const poll = { id: id('poll'), ...encryptedTextObject('question', question), options: options.map((option, index) => ({ id: `o${index + 1}`, ...encryptedTextObject('text', option) })), votes: {}, status: 'open', createdBy: req.user.id, createdAt: new Date().toISOString() };
+  db.polls.push(poll); if (db.polls.length > POLLS_LIMIT) db.polls = db.polls.slice(-POLLS_LIMIT);
+  addActivity(db, 'poll', `Ny afstemning: ${question}`, options.join(' · '), req.user.id, { pollId: poll.id });
+  await writeDb(db); io.emit('growth-updated', { type: 'poll' }); res.status(201).json({ poll: publicPoll(poll, req.user.id) });
+});
+
+app.post('/api/polls/:pollId/vote', requireAuth, async (req, res) => {
+  const optionId = cleanText(req.body.optionId, 20); const db = req.db; const poll = (Array.isArray(db.polls) ? db.polls : []).find((candidate) => candidate.id === req.params.pollId);
+  if (!poll) return res.status(404).json({ error: 'Afstemningen blev ikke fundet.' });
+  if ((poll.status || 'open') !== 'open') return res.status(400).json({ error: 'Afstemningen er lukket.' });
+  const optionExists = (Array.isArray(poll.options) ? poll.options : []).some((option) => String(option.id) === optionId);
+  if (!optionExists) return res.status(400).json({ error: 'Svarmuligheden blev ikke fundet.' });
+  poll.votes = poll.votes && typeof poll.votes === 'object' ? poll.votes : {}; const firstVote = !poll.votes[req.user.id]; poll.votes[req.user.id] = optionId;
+  if (firstVote) awardXp(db, req.user.id, XP_POLL_VOTE, 'afstemning', { pollId: poll.id });
+  await writeDb(db); io.emit('growth-updated', { type: 'poll-vote' }); res.json({ ok: true, poll: publicPoll(poll, req.user.id) });
+});
+
+app.patch('/api/polls/:pollId', requireAuth, requireAdmin, async (req, res) => {
+  const db = req.db; const poll = (Array.isArray(db.polls) ? db.polls : []).find((candidate) => candidate.id === req.params.pollId);
+  if (!poll) return res.status(404).json({ error: 'Afstemningen blev ikke fundet.' });
+  const status = cleanText(req.body.status, 20); if (status && ['open', 'closed'].includes(status)) poll.status = status;
+  await writeDb(db); res.json({ poll: publicPoll(poll, req.user.id) });
 });
 
 app.get('/api/stock', requireAuth, (req, res) => {
@@ -2770,6 +2995,8 @@ app.post('/api/global/messages', requireAuth, async (req, res) => {
   db.globalMessages = Array.isArray(db.globalMessages) ? db.globalMessages : [];
   db.globalMessages.push(message);
   notifyMentions(db, text, req.user, { type: 'global-message', messageId: message.id });
+  awardXp(db, req.user.id, XP_GLOBAL_MESSAGE, 'global chat', { messageId: message.id });
+  addActivity(db, 'global-chat', `${getUserField(req.user, 'name')} skrev i global chat`, text.slice(0, 140), req.user.id, { messageId: message.id });
   if (db.globalMessages.length > 1000) {
     db.globalMessages = db.globalMessages.slice(-1000);
   }
@@ -2817,6 +3044,7 @@ app.post('/api/global/messages/:messageId/reactions', requireAuth, async (req, r
 
   if (reacted && message.authorId && message.authorId !== req.user.id) {
     createNotification(db, message.authorId, 'reaction', `${getUserField(req.user, 'name')} reagerede på din besked`, `${emoji} på din globale chatbesked`, { type: 'global-message', messageId: message.id });
+    awardXp(db, message.authorId, XP_REACTION_RECEIVED, 'reaktion modtaget', { messageId: message.id, emoji });
   }
 
   await writeDb(db);
@@ -2849,6 +3077,7 @@ app.post('/api/global/messages/:messageId/comments', requireAuth, async (req, re
 
   message.comments.push(comment);
   notifyMentions(db, text, req.user, { type: 'global-comment', messageId: message.id, commentId: comment.id });
+  awardXp(db, req.user.id, Math.max(1, Math.floor(XP_GLOBAL_MESSAGE / 2)), 'global kommentar', { messageId: message.id, commentId: comment.id });
   if (message.comments.length > 200) {
     message.comments = message.comments.slice(-200);
   }
@@ -3134,6 +3363,8 @@ io.on('connection', (socket) => {
       db.messages.push(message);
       createNotification(db, recipient.id, 'private-message', `Ny privat besked fra ${getUserField(sender, 'name')}`, text.slice(0, 180), { type: 'direct-message', userId: sender.id, messageId: message.id });
       notifyMentions(db, text, sender, { type: 'direct-message', userId: sender.id, messageId: message.id });
+      awardXp(db, sender.id, XP_PRIVATE_MESSAGE, 'privat besked', { messageId: message.id });
+      addActivity(db, 'private-chat', `${getUserField(sender, 'name')} sendte en privat besked`, 'Privat aktivitet tæller til TSN-aktivitet uden at vise indholdet.', sender.id, { messageId: message.id });
       await writeDb(db);
       broadcastTsnStock(readDb(), 'private-message').catch((error) => console.warn(`TSN Stock update failed: ${error.message}`));
       io.to(user.id).emit('private-message', publicMessage(message, user.id));
@@ -3189,7 +3420,7 @@ async function startServer() {
       console.log(`Backup directory: ${DB_BACKUP_DIR}`);
       const warning = storagePersistenceWarning();
       if (warning) console.warn(`Persistence warning: ${warning}`);
-      console.log('TSN V1.4.4 mode: manual badges with default Member badge, friends, notifications, mentions, reactions, and admin warnings.');
+      console.log('TSN V1.5.0 mode: activity hub, XP, streaks, leaderboard, events, polls, TSN-S widget, manual badges, friends, notifications, mentions, reactions and warnings.');
       console.log('Admin rights can be claimed inside the app with TSN_ADMIN_SETUP_PASSWORD or TSN_ADMIN_SETUP_PASSWORD_HASH.');
 
       if (process.env.NODE_ENV === 'production' && JWT_SECRET === DEFAULT_JWT_SECRET) {

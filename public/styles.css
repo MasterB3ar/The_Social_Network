@@ -4385,3 +4385,67 @@ button:disabled {
     font-size: 1.32rem;
   }
 }
+
+
+/* TSN V1.5.0 Activity + Events */
+.home-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-items: start; }
+.home-grid .wide { grid-column: 1 / -1; }
+.home-profile-card, .leaderboard-row, .activity-feed-item, .event-card, .poll-card { display: flex; gap: 12px; align-items: center; padding: 12px; border: 1px solid rgba(255,255,255,.08); border-radius: 18px; background: rgba(255,255,255,.04); }
+.home-profile-card > div:last-child, .leaderboard-row > div, .activity-feed-item > div, .event-card > div:first-child, .poll-card { flex: 1; min-width: 0; }
+.xp-mini, .profile-xp-line { color: var(--muted); font-size: .84rem; margin-top: 4px; }
+.xp-bar { width: 100%; height: 8px; border-radius: 999px; overflow: hidden; background: rgba(255,255,255,.08); margin-top: 6px; }
+.xp-bar span { display:block; height:100%; width:2%; border-radius:inherit; background: linear-gradient(90deg, #7c3aed, #22d3ee); transition: width .25s ease; }
+.tsns-price-line { display:flex; align-items: baseline; justify-content: space-between; gap: 12px; margin: 8px 0; }
+.tsns-price-line strong { font-size: clamp(2rem, 6vw, 3.4rem); line-height: 1; }
+.trend-up { color: #63f28d; } .trend-down { color:#ff7a7a; } .trend-flat { color: var(--muted); }
+.mini-metrics { display:flex; flex-wrap:wrap; gap:8px; margin-top:10px; }
+.mini-metrics span, .event-meta span { padding:6px 9px; border-radius:999px; background:rgba(255,255,255,.06); color:var(--muted); font-size:.82rem; }
+.leaderboard-list, .activity-feed-list, .event-list, .poll-list { display:grid; gap:10px; }
+.leaderboard-rank { width: 42px; height: 42px; display:grid; place-items:center; border-radius:14px; background:rgba(124,58,237,.18); font-weight:900; }
+.leaderboard-row em { margin-left:auto; font-style:normal; color:#e0f2fe; font-weight:800; }
+.activity-feed-item span:first-child { width:38px; height:38px; display:grid; place-items:center; border-radius:14px; background:rgba(255,255,255,.07); flex: 0 0 auto; }
+.activity-feed-item strong, .leaderboard-row strong, .event-card strong, .poll-card strong { display:block; }
+.activity-feed-item p, .event-card p { margin:4px 0; color:var(--muted); }
+.event-card { align-items: stretch; flex-direction: column; }
+.event-meta { display:flex; gap:8px; flex-wrap:wrap; }
+.poll-card { display:block; }
+.poll-options { display:grid; gap:8px; margin:10px 0; }
+.poll-option { position:relative; overflow:hidden; display:flex; justify-content:space-between; gap:12px; align-items:center; border:1px solid rgba(255,255,255,.08); background:rgba(255,255,255,.04); color:var(--text); border-radius:14px; padding:10px 12px; cursor:pointer; }
+.poll-option i { position:absolute; inset:0 auto 0 0; background:rgba(34,211,238,.16); z-index:0; }
+.poll-option span, .poll-option b { position:relative; z-index:1; }
+.poll-option.selected { border-color: rgba(34,211,238,.55); }
+.growth-admin-tools { display:none; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 12px; margin-top: 16px; }
+body.is-admin .growth-admin-tools { display:grid; }
+.mini-admin-form { display:grid; gap:8px; padding:12px; border-radius:18px; border:1px solid rgba(255,255,255,.08); background:rgba(255,255,255,.035); }
+.mini-admin-form input, .mini-admin-form textarea { width:100%; }
+.event-growth-grid { grid-template-columns: 1fr 1fr 1fr; }
+@media (max-width: 900px) { .home-grid, .event-growth-grid, .growth-admin-tools { grid-template-columns: 1fr; } .home-grid .wide { grid-column: auto; } .leaderboard-row, .activity-feed-item { align-items: flex-start; } .tsns-price-line { flex-direction: column; align-items: flex-start; } }
+
+/* TSN V1.5.0 route visibility fixes */
+.app[data-view="home"] .clean-discord-layout > #homePanel {
+  display: grid !important;
+  max-width: 980px;
+  margin: 0 auto;
+}
+.app[data-view="events"] .clean-discord-layout > .chat-main {
+  display: grid !important;
+  max-width: 980px;
+  margin: 0 auto;
+}
+.app[data-view="events"] .global-chat,
+.app[data-view="events"] #adminMessageViewer,
+.app[data-view="events"] #adminReportViewer,
+.app[data-view="events"] #friendsPanel,
+.app[data-view="events"] #notificationsPanel {
+  display: none !important;
+}
+.app[data-view="events"] #eventsPanel {
+  display: block !important;
+}
+.app[data-view="home"] .clean-discord-layout > .sidebar,
+.app[data-view="home"] .clean-discord-layout > .people-rail {
+  display: none !important;
+}
+.app:not([data-view="home"]) .clean-discord-layout > #homePanel {
+  display: none !important;
+}

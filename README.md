@@ -166,3 +166,10 @@ No new environment variables were added.
 - Every user gets the default `Member` badge.
 - Admins can give users special custom badges from the Admin user list using the **Badges** button.
 - Leaving the badge prompt empty removes all special badges and leaves only `Member`.
+
+
+## TSN V1.5.0 - Activity + Events Update
+
+Adds an activity homepage, TSN-S mini widget, XP/levels, daily login streaks, activity leaderboard, events, polls, activity feed, and admin event/poll creation tools.
+
+TSNM is still removed from normal TSN. Admins still cannot browse all private messages; reported private-message evidence remains visible only inside reports.

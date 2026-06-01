@@ -24,6 +24,11 @@ const state = {
   globalChatHasOpened: false,
   globalChatNeedsBottomScroll: false
 };
+state.home = null;
+state.leaderboard = [];
+state.events = [];
+state.polls = [];
+
 
 const PRIVATE_MESSAGE_DELETE_FOR_EVERYONE_MS = 15 * 60 * 1000;
 
@@ -53,6 +58,15 @@ const friendOutgoingList = $('#friendOutgoingList');
 const notificationsPanel = $('#notificationsPanel');
 const notificationsList = $('#notificationsList');
 const notificationBadge = $('#notificationBadge');
+const homePanel = $('#homePanel');
+const leaderboardList = $('#leaderboardList');
+const activityFeedList = $('#activityFeedList');
+const tsnsWidget = $('#tsnsWidget');
+const homeEventBox = $('#homeEventBox');
+const homePollBox = $('#homePollBox');
+const eventsPanel = $('#eventsPanel');
+const eventsList = $('#eventsList');
+const pollsList = $('#pollsList');
 
 function escapeHtml(value) {
   return String(value || '')
@@ -201,6 +215,7 @@ function renderProfilePreview() {
         <span>@${escapeHtml(state.me.username)} · ${escapeHtml(joinedDaysLabel(state.me))}</span>
         <p>${escapeHtml(state.me.statusText || 'Ingen status endnu.')}</p>
         ${badgeHtml(state.me)}
+        <div class="xp-mini">Level ${escapeHtml(state.me.level || 1)} · ${escapeHtml(formatNumber(state.me.xp || 0))} XP · ${escapeHtml(state.me.loginStreak || 0)} dages streak</div>
       </div>
     </div>
   `;
@@ -535,7 +550,7 @@ function showApp() {
 
 
 function switchAppView(view) {
-  const allowedViews = new Set(['profile', 'global', 'private', 'friends', 'notifications', 'admin']);
+  const allowedViews = new Set(['home', 'profile', 'global', 'private', 'friends', 'events', 'notifications', 'admin']);
   const previousView = appScreen.dataset.view || '';
   const nextView = allowedViews.has(view) ? view : 'global';
 
@@ -565,6 +580,14 @@ function switchAppView(view) {
   }
 
 
+  if (activeView === 'home') {
+    loadHome().catch((error) => showToast(error.message));
+  }
+
+  if (activeView === 'events') {
+    Promise.all([loadEvents(), loadPolls(), loadLeaderboard()]).catch((error) => showToast(error.message));
+  }
+
   if (activeView === 'friends') {
     loadFriends().catch((error) => showToast(error.message));
   }
@@ -587,7 +610,7 @@ function updateAppNavigation() {
     switchAppView('global');
     return;
   }
-  switchAppView(appScreen.dataset.view || 'global');
+  switchAppView(appScreen.dataset.view || 'home');
 }
 
 document.querySelectorAll('[data-app-nav]').forEach((button) => {
@@ -1586,6 +1609,15 @@ function renderMe() {
   if (joined) joined.textContent = joinedDaysLabel(state.me);
   const badges = $('#myBadges');
   if (badges) badges.innerHTML = badgeHtml(state.me).replace(/^<div class="badge-row">|<\/div>$/g, '');
+  const xpLine = $('#myXpLine');
+  if (xpLine) xpLine.textContent = `Level ${state.me.level || 1} · ${formatNumber(state.me.xp || 0)} XP · ${state.me.loginStreak || 0} dages streak`;
+  const xpFill = $('#myXpFill');
+  if (xpFill) {
+    const current = Number(state.me.xp || 0);
+    const next = Math.max(current + 1, Number(state.me.nextLevelXp || 75));
+    const prev = Math.pow(Math.max(0, Number(state.me.level || 1) - 1), 2) * 75;
+    xpFill.style.width = `${Math.max(2, Math.min(100, ((current - prev) / Math.max(1, next - prev)) * 100))}%`;
+  }
   $('#profileName').value = state.me.name;
   $('#profileBio').value = state.me.bio || '';
   if ($('#profileStatus')) $('#profileStatus').value = state.me.statusText || '';
@@ -1789,6 +1821,7 @@ function renderAdminTools() {
   adminActive.classList.toggle('hidden', !state.me?.isAdmin);
   adminClaimForm.classList.toggle('hidden', Boolean(state.me?.isAdmin));
   if (adminModerationPanel) adminModerationPanel.classList.toggle('hidden', !state.me?.isAdmin);
+  document.body.classList.toggle('is-admin', Boolean(state.me?.isAdmin));
   const adminNavButton = $('#adminNavButton');
   if (adminNavButton) adminNavButton.classList.toggle('hidden', !state.me?.isAdmin);
   if (appScreen.dataset.view === 'admin' && !state.me?.isAdmin) appScreen.dataset.view = 'global';
@@ -2253,6 +2286,58 @@ async function deleteAdminMessageItem(item) {
   throw new Error('Beskedtypen understøttes ikke.');
 }
 
+
+function renderHome() {
+  if (!homePanel) return;
+  const home = state.home || {};
+  const stock = home.stock || {};
+  const me = home.user || state.me || {};
+  if (tsnsWidget) {
+    const change = Number(stock.changePercent || 0);
+    tsnsWidget.innerHTML = `<div class="tsns-price-line"><strong>${escapeHtml(formatNumber(stock.price || 100))}</strong><span class="trend-${change > 0 ? 'up' : change < 0 ? 'down' : 'flat'}">${change > 0 ? '+' : ''}${escapeHtml(change.toFixed ? change.toFixed(2) : change)}%</span></div><p>${escapeHtml(stock.disclaimer || 'TSN-S aktivitet baseret på TSN.')}</p><div class="mini-metrics"><span>${escapeHtml(stock.metrics?.onlineUsers || 0)} online</span><span>${escapeHtml(stock.metrics?.globalChatMessagesPerHour || 0)} global/t</span><span>${escapeHtml(stock.metrics?.privateMessagesPerHour || 0)} privat/t</span></div>`;
+  }
+  const homeProfile = $('#homeProfileCard');
+  if (homeProfile) homeProfile.innerHTML = `${avatarHtml(me, 'large')}<div><strong>${escapeHtml(me.name || 'TSN')}</strong><span>@${escapeHtml(me.username || 'user')}</span><div class="xp-mini">Level ${escapeHtml(me.level || 1)} · ${escapeHtml(formatNumber(me.xp || 0))} XP · ${escapeHtml(me.loginStreak || 0)} dages streak</div>${badgeHtml(me)}</div>`;
+  if (homeEventBox) homeEventBox.innerHTML = home.activeEvent ? renderEventCard(home.activeEvent) : '<div class="empty small-empty">Ingen aktive events endnu.</div>';
+  if (homePollBox) homePollBox.innerHTML = home.activePoll ? renderPollCard(home.activePoll) : '<div class="empty small-empty">Ingen aktive afstemninger endnu.</div>';
+  if (activityFeedList) {
+    const items = Array.isArray(home.activity) ? home.activity : [];
+    activityFeedList.innerHTML = items.length ? items.map((item) => `<article class="activity-feed-item"><span>${escapeHtml(activityIcon(item.type))}</span><div><strong>${escapeHtml(item.title)}</strong><p>${escapeHtml(item.body || '')}</p><small>${escapeHtml(formatTime(item.createdAt))}</small></div></article>`).join('') : '<div class="empty small-empty">Ingen aktivitet endnu.</div>';
+  }
+  renderLeaderboard(home.leaderboard || state.leaderboard || []);
+}
+
+function activityIcon(type) { return ({ 'global-chat': '🌐', 'private-chat': '💬', friend: '🤝', event: '⭐', poll: '📊', 'level-up': '🏆' })[String(type || '')] || '✨'; }
+
+function renderLeaderboard(list = state.leaderboard) {
+  if (!leaderboardList) return;
+  const rows = Array.isArray(list) ? list : [];
+  leaderboardList.innerHTML = rows.length ? rows.map((row, index) => `<article class="leaderboard-row"><span class="leaderboard-rank">#${index + 1}</span>${avatarHtml(row.user || 'TSN')}<div><strong>${escapeHtml(row.user?.name || 'Ukendt')}</strong><span>@${escapeHtml(row.user?.username || 'user')} · Level ${escapeHtml(row.level || 1)} · ${escapeHtml(formatNumber(row.xp || 0))} XP</span></div><em>${escapeHtml(formatNumber(row.score || row.xp || 0))}</em></article>`).join('') : '<div class="empty small-empty">Ingen leaderboard-data endnu.</div>';
+}
+
+function renderEventCard(event) {
+  return `<article class="event-card ${event.joinedByMe ? 'joined' : ''}"><div><strong>${escapeHtml(event.title)}</strong><p>${escapeHtml(event.description || 'Ingen beskrivelse.')}</p></div><div class="event-meta"><span>${escapeHtml(event.startsAt ? formatExactDate(event.startsAt) : 'Ingen tid sat')}</span><span>${escapeHtml(event.participantCount || 0)} deltager${Number(event.participantCount) === 1 ? '' : 'e'}</span></div><button class="secondary tiny" type="button" data-join-event="${escapeHtml(event.id)}" ${event.joinedByMe ? 'disabled' : ''}>${event.joinedByMe ? 'Deltager' : 'Deltag'}</button></article>`;
+}
+
+function renderPollCard(poll) {
+  const total = Math.max(1, Number(poll.totalVotes || 0));
+  return `<article class="poll-card"><strong>${escapeHtml(poll.question)}</strong><div class="poll-options">${(poll.options || []).map((option) => { const pct = Math.round((Number(option.count || 0) / total) * 100); return `<button type="button" class="poll-option ${poll.myVote === option.id ? 'selected' : ''}" data-vote-poll="${escapeHtml(poll.id)}" data-option-id="${escapeHtml(option.id)}"><span>${escapeHtml(option.text)}</span><b>${escapeHtml(option.count || 0)}</b><i style="width:${pct}%"></i></button>`; }).join('')}</div><small>${escapeHtml(poll.totalVotes || 0)} stemmer${poll.votedByMe ? ' · du har stemt' : ''}</small></article>`;
+}
+
+function renderEventsAndPolls() {
+  if (eventsList) eventsList.innerHTML = state.events.length ? state.events.map((event) => renderEventCard(event)).join('') : '<div class="empty small-empty">Ingen events endnu.</div>';
+  if (pollsList) pollsList.innerHTML = state.polls.length ? state.polls.map((poll) => renderPollCard(poll)).join('') : '<div class="empty small-empty">Ingen afstemninger endnu.</div>';
+}
+
+async function loadHome() { const data = await api('/api/home'); state.home = data; if (data.user) state.me = { ...state.me, ...data.user }; renderHome(); renderMe(); }
+async function loadLeaderboard() { const data = await api('/api/leaderboard'); state.leaderboard = data.leaderboard || []; renderLeaderboard(); }
+async function loadEvents() { const data = await api('/api/events'); state.events = data.events || []; renderEventsAndPolls(); }
+async function loadPolls() { const data = await api('/api/polls'); state.polls = data.polls || []; renderEventsAndPolls(); }
+async function joinEvent(eventId) { const data = await api(`/api/events/${eventId}/join`, { method: 'POST' }); const event = data.event; state.events = state.events.map((item) => item.id === event.id ? event : item); if (state.home?.activeEvent?.id === event.id) state.home.activeEvent = event; renderEventsAndPolls(); renderHome(); showToast('Du deltager i eventet'); }
+async function votePoll(pollId, optionId) { const data = await api(`/api/polls/${pollId}/vote`, { method: 'POST', body: JSON.stringify({ optionId }) }); const poll = data.poll; state.polls = state.polls.map((item) => item.id === poll.id ? poll : item); if (state.home?.activePoll?.id === poll.id) state.home.activePoll = poll; renderEventsAndPolls(); renderHome(); showToast('Stemme gemt'); }
+async function createEventFromForm(form) { const data = await api('/api/events', { method: 'POST', body: JSON.stringify({ title: form.elements.title.value, description: form.elements.description.value, startsAt: form.elements.startsAt.value }) }); state.events = [data.event, ...state.events.filter((event) => event.id !== data.event.id)]; form.reset(); renderEventsAndPolls(); showToast('Event oprettet'); }
+async function createPollFromForm(form) { const options = form.elements.options.value.split('\n').map((line) => line.trim()).filter(Boolean); const data = await api('/api/polls', { method: 'POST', body: JSON.stringify({ question: form.elements.question.value, options }) }); state.polls = [data.poll, ...state.polls.filter((poll) => poll.id !== data.poll.id)]; form.reset(); renderEventsAndPolls(); showToast('Afstemning oprettet'); }
+
 async function loadUsers(q = '') {
   const query = q ? `?q=${encodeURIComponent(q)}` : '';
   const data = await api(`/api/users${query}`);
@@ -2277,7 +2362,7 @@ async function loadGlobalMessages() {
 }
 
 async function loadEverything() {
-  await Promise.all([loadGlobalMessages(), loadUsers($('#userSearch').value), loadNotifications().catch(() => {}), loadFriends().catch(() => {})]);
+  await Promise.all([loadGlobalMessages(), loadUsers($('#userSearch').value), loadNotifications().catch(() => {}), loadFriends().catch(() => {}), loadHome().catch(() => {}), loadLeaderboard().catch(() => {}), loadEvents().catch(() => {}), loadPolls().catch(() => {})]);
   if (state.me?.isAdmin) {
     await loadAdminDashboard();
     renderAdminMessageViewer();
@@ -2434,6 +2519,16 @@ function connectSocket() {
     }
   });
 
+
+  state.socket.on('growth-updated', () => {
+    loadHome().catch(() => {});
+    if (appScreen.dataset.view === 'events') {
+      loadEvents().catch(() => {});
+      loadPolls().catch(() => {});
+      loadLeaderboard().catch(() => {});
+    }
+  });
+
   state.socket.on('connect_error', (error) => {
     const message = error?.message || 'Chatforbindelsen fejlede. Log ind igen.';
     if (message.toLowerCase().includes('banned') || message.toLowerCase().includes('expired')) {
@@ -2465,6 +2560,31 @@ async function initApp() {
   }
 }
 
+
+
+document.addEventListener('click', async (event) => {
+  const joinButton = event.target.closest('[data-join-event]');
+  if (joinButton) {
+    joinButton.disabled = true;
+    try { await joinEvent(joinButton.dataset.joinEvent); }
+    catch (error) { showToast(error.message); joinButton.disabled = false; }
+    return;
+  }
+  const voteButton = event.target.closest('[data-vote-poll]');
+  if (voteButton) {
+    try { await votePoll(voteButton.dataset.votePoll, voteButton.dataset.optionId); }
+    catch (error) { showToast(error.message); }
+  }
+});
+
+const refreshHomeBtn = $('#refreshHomeBtn');
+if (refreshHomeBtn) refreshHomeBtn.addEventListener('click', () => Promise.all([loadHome(), loadLeaderboard(), loadEvents(), loadPolls()]).catch((error) => showToast(error.message)));
+const refreshGrowthBtn = $('#refreshGrowthBtn');
+if (refreshGrowthBtn) refreshGrowthBtn.addEventListener('click', () => Promise.all([loadEvents(), loadPolls(), loadLeaderboard()]).catch((error) => showToast(error.message)));
+const createEventForm = $('#createEventForm');
+if (createEventForm) createEventForm.addEventListener('submit', async (event) => { event.preventDefault(); try { await createEventFromForm(createEventForm); } catch (error) { showToast(error.message); } });
+const createPollForm = $('#createPollForm');
+if (createPollForm) createPollForm.addEventListener('submit', async (event) => { event.preventDefault(); try { await createPollFromForm(createPollForm); } catch (error) { showToast(error.message); } });
 
 const refreshFriendsBtn = $('#refreshFriendsBtn');
 if (refreshFriendsBtn) {
