@@ -26,6 +26,8 @@ const state = {
   globalNewMessageCount: 0,
   globalChatHasOpened: false,
   globalChatNeedsBottomScroll: false,
+  privateChatNeedsBottomScroll: false,
+  activePrivateConversationId: '',
   mediaLibrary: [],
   mediaSearchResults: [],
   mediaSearchWarnings: [],
@@ -703,6 +705,42 @@ function requestGlobalChatBottomOnOpen() {
   state.globalChatNeedsBottomScroll = true;
   clearGlobalNewMessages();
   scheduleGlobalChatBottomScroll();
+}
+
+
+function schedulePrivateChatBottomScroll() {
+  if (!messagesList) return;
+
+  const apply = () => scrollElementToBottom(messagesList);
+  apply();
+  requestAnimationFrame(apply);
+  setTimeout(apply, 0);
+  setTimeout(apply, 80);
+  setTimeout(apply, 180);
+  setTimeout(apply, 360);
+  setTimeout(apply, 700);
+}
+
+function requestPrivateChatBottomOnOpen() {
+  state.privateChatNeedsBottomScroll = true;
+  schedulePrivateChatBottomScroll();
+}
+
+function stabilizePrivateChatMediaScroll({ forceBottom = false, snapshot = null } = {}) {
+  if (!messagesList) return;
+  const media = messagesList.querySelectorAll('img, video');
+  if (!media.length) return;
+
+  media.forEach((element) => {
+    const eventName = element.tagName === 'VIDEO' ? 'loadedmetadata' : 'load';
+    element.addEventListener(eventName, () => {
+      if (forceBottom || !snapshot || snapshot.wasNearBottom) {
+        scrollElementToBottom(messagesList);
+      } else {
+        restoreMessageScroll(messagesList, snapshot);
+      }
+    }, { once: true });
+  });
 }
 
 function forceGlobalDetailTop() {
@@ -1955,7 +1993,14 @@ function markMessagesReadLocally({ conversationId, readByUserId, readMessageIds 
 function renderChat({ forceBottom = false } = {}) {
   const user = state.activeChatUser;
   if (!user) return;
+  const conversationId = user.id || '';
+  const changedConversation = state.activePrivateConversationId !== conversationId;
+  if (changedConversation) {
+    state.activePrivateConversationId = conversationId;
+    state.privateChatNeedsBottomScroll = true;
+  }
   const scrollSnapshot = getScrollSnapshot(messagesList);
+  const shouldForceBottom = Boolean(forceBottom || state.privateChatNeedsBottomScroll || changedConversation);
 
   applyAvatarElement($('#chatAvatar'), user);
   $('#chatName').textContent = user.name;
@@ -1991,12 +2036,18 @@ function renderChat({ forceBottom = false } = {}) {
     }
   }
 
-  restoreMessageScroll(messagesList, scrollSnapshot, { forceBottom });
+  restoreMessageScroll(messagesList, scrollSnapshot, { forceBottom: shouldForceBottom });
+  stabilizePrivateChatMediaScroll({ forceBottom: shouldForceBottom, snapshot: scrollSnapshot });
+  if (shouldForceBottom) {
+    state.privateChatNeedsBottomScroll = false;
+    schedulePrivateChatBottomScroll();
+  }
 }
 
 async function openChat(user) {
   state.activeChatUser = user;
   state.activeMessages = [];
+  requestPrivateChatBottomOnOpen();
   renderUsers();
   renderChat({ forceBottom: true });
 
@@ -2123,7 +2174,7 @@ function renderAdminUsers() {
 }
 
 function adminMessageParticipants(item) {
-  if (item.kind === 'direct-message') return `${item.fromUser?.name || 'Ukendt'} → ${item.toUser?.name || 'Ukendt'}`;
+  if (item.kind === 'direct-message') return `${item.fromUser?.name || 'Ukendt'} → ${item.toUser?.name || 'Ukendt'} · Verified AI`;
   if (item.kind === 'global-message') return `${item.author?.name || 'Ukendt'} i global chat`;
   if (item.kind === 'global-comment') return `${item.author?.name || 'Ukendt'} skrev en historisk kommentar`;
   return item.author?.name || 'Ukendt';
@@ -2131,7 +2182,7 @@ function adminMessageParticipants(item) {
 
 function adminMessageMeta(item) {
   const parts = [item.source || item.label, formatTime(item.createdAt)];
-  if (item.kind === 'direct-message') parts.push('privat');
+  if (item.kind === 'direct-message') parts.push(item.verifiedAiEvidence ? 'privat · Verified AI' : 'privat');
   if (item.kind === 'global-message') parts.push('global chat');
   if (item.kind === 'global-comment') parts.push('historisk kommentar');
   return parts.filter(Boolean).join(' · ');
@@ -2161,7 +2212,7 @@ function renderAdminMessageViewer() {
       ? `${formatNumber(shownCount)} af ${formatNumber(totalCount)} globale`
       : `${formatNumber(shownCount)} globale`;
     count.textContent = privateCount
-      ? `${globalText} · ${formatNumber(privateCount)} private skjult`
+      ? `${globalText} · ${formatNumber(privateCount)} private i alt · Verified AI kan læses`
       : globalText;
   }
 
@@ -2175,7 +2226,7 @@ function renderAdminMessageViewer() {
   if (!adminMessagesList) return;
 
   if (!shownCount) {
-    adminMessagesList.innerHTML = '<div class="empty admin-message-empty">Klik på “Indlæs beskeder” for at gennemgå globale TSN-beskeder. Private beskeder vises ikke.</div>';
+    adminMessagesList.innerHTML = '<div class="empty admin-message-empty">Klik på “Indlæs beskeder” for at gennemgå globale beskeder og private beskeder fra Verified AI-brugere.</div>';
     adminMessagesList.scrollTop = 0;
     return;
   }
@@ -2192,6 +2243,7 @@ function renderAdminMessageViewer() {
       </div>
       <div class="admin-message-meta">${escapeHtml(adminMessageMeta(item))}</div>
       <p class="admin-message-body">${escapeHtml(item.body || '')}</p>
+      ${item.verifiedAiEvidence ? '<p class="admin-parent-excerpt verified-ai-notice"><strong>Verified AI:</strong> Denne private besked er synlig, fordi afsenderen har badget Verified AI.</p>' : ''}
       ${item.parentBody ? `<p class="admin-parent-excerpt"><strong>Svar på:</strong><br>${escapeHtml(item.parentBody)}</p>` : ''}
     </article>
   `).join('');
@@ -2904,8 +2956,9 @@ function connectSocket() {
 
     if (isActiveConversation) {
       const exists = state.activeMessages.some((candidate) => candidate.id === message.id);
+      const wasNearBottom = isElementNearBottom(messagesList);
       if (!exists) state.activeMessages.push(message);
-      renderChat({ forceBottom: message.from === state.me?.id });
+      renderChat({ forceBottom: message.from === state.me?.id || wasNearBottom });
       if (message.to === state.me.id) markConversationRead(message.from).catch(() => {});
     } else if (message.to === state.me.id) {
       const sender = state.users.find((user) => user.id === message.from);

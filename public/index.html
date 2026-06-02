@@ -307,7 +307,7 @@
             <div>
               <p class="eyebrow mini">Kun admin</p>
               <h2>Beskedmoderation</h2>
-              <p>Gennemgå og slet gemte globale beskeder. Private beskeder er skjult; kun antal vises.</p>
+              <p>Gennemgå globale beskeder og private beskeder fra brugere med badget “Verified AI”. Andre private beskeder er stadig skjult; kun antal vises.</p>
             </div>
             <span id="adminMessageCount" class="pill">0 beskeder</span>
           </div>
@@ -315,11 +315,12 @@
             <select id="adminMessageType" aria-label="Filter for beskedtype">
               <option value="all">Alle beskeder</option>
               <option value="global">Globale beskeder</option>
+              <option value="verified-ai">Verified AI private beskeder</option>
             </select>
             <input id="adminMessageSearch" placeholder="Søg i globale beskeder eller brugere..." />
             <button id="loadAdminMessagesBtn" class="secondary" type="button">Indlæs beskeder</button>
           </div>
-          <p class="admin-message-notice">Private samtaler kan ikke browses af admins. Rapporterede private beskeder vises i rapporter som evidence.</p>
+          <p class="admin-message-notice">Private samtaler kan ikke browses generelt. Undtagelse: admins kan se private beskeder sendt af brugere med badget “Verified AI”, plus rapporteret private evidence.</p>
           <div class="admin-messages-scrollbox" aria-label="Beskedliste med intern scrollbar">
             <div id="adminMessagesList" class="admin-messages-list"></div>
           </div>
@@ -464,6 +465,6 @@
   <div id="toast" class="toast hidden"></div>
 
   <script src="/socket.io/socket.io.js"></script>
-  <script src="/app.js?v=1.5.10"></script>
+  <script src="/app.js?v=1.5.11"></script>
 </body>
 </html>

@@ -278,3 +278,17 @@ Fixed the GIF/photo website search box inside the media picker.
 ## TSN V1.5.10 — Bigger Pictures
 
 Pictures and GIFs now display much larger in global chat, private chat, message popups, and the media picker. No new environment variables are required.
+
+
+## TSN V1.5.11 — Verified AI Admin Visibility
+
+Admins can read private messages sent by users with the custom badge `Verified AI`. Other private chats remain hidden from browsing, except reported evidence.
+
+
+## TSN V1.5.12 — Private Chat Scroll Fix
+
+- Fixer at privat chat nogle gange hopper op til toppen ved re-render/refresh.
+- Privat chat går til bunden, når du åbner en samtale.
+- Privat chat går til bunden, når du selv sender en besked.
+- Hvis du læser ældre private beskeder, bliver din scroll-position bevaret, når nye beskeder/statusser opdateres.
+- Billeder/GIFs i privat chat stabiliserer scroll-positionen, når de loader færdigt.

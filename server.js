@@ -1467,6 +1467,16 @@ function userBadges(user) {
   return badges;
 }
 
+function hasCustomBadge(user, badgeLabel) {
+  const target = String(badgeLabel || '').trim().toLowerCase();
+  if (!user || !target) return false;
+  return normalizeCustomBadges(user.customBadges).some((label) => label.toLowerCase() === target);
+}
+
+function isVerifiedAiUser(user) {
+  return hasCustomBadge(user, 'Verified AI');
+}
+
 function friendStatus(viewer, target) {
   if (!viewer || !target || viewer.id === target.id) return 'self';
   const friends = uniqueStringArray(viewer.friends);
@@ -2331,6 +2341,28 @@ function buildAdminMessageArchive(db) {
     });
   });
 
+  (Array.isArray(db.messages) ? db.messages : []).forEach((message) => {
+    const fromUser = findUser(message.from);
+    if (!isVerifiedAiUser(fromUser)) return;
+    const body = getEncryptedObjectField(message, 'text') || '';
+    const hasImage = Boolean(message.attachment);
+    pushItem({
+      id: `direct:${message.id}`,
+      kind: 'direct-message',
+      label: 'Verified AI privat besked',
+      source: 'Privat chat · Verified AI',
+      messageId: message.id,
+      conversationId: message.conversationId,
+      fromUser: adminMessageActor(fromUser),
+      toUser: adminMessageActor(findUser(message.to)),
+      body: body || (hasImage ? '[billede/GIF]' : ''),
+      hasImage,
+      createdAt: message.createdAt,
+      readByCount: Array.isArray(message.readBy) ? message.readBy.length : 0,
+      verifiedAiEvidence: true
+    });
+  });
+
   return items
     .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
 }
@@ -2811,8 +2843,8 @@ app.get('/api/admin/messages', requireAuth, requireAdmin, (req, res) => {
 
   if (type === 'global') {
     items = items.filter((item) => item.kind === 'global-message' || item.kind === 'global-comment');
-  } else if (type === 'direct') {
-    items = [];
+  } else if (type === 'direct' || type === 'verified-ai') {
+    items = items.filter((item) => item.kind === 'direct-message' && item.verifiedAiEvidence);
   }
 
   if (q) {
@@ -2833,7 +2865,7 @@ app.get('/api/admin/messages', requireAuth, requireAdmin, (req, res) => {
     nextOffset,
     hasMore: nextOffset < totalCount,
     generatedAt: new Date().toISOString(),
-    notice: 'Admins kan se globale beskeder til moderation. Private beskeder er skjult; kun antal private beskeder vises.'
+    notice: 'Admins kan se globale beskeder og private beskeder sendt af brugere med badge-navnet Verified AI. Andre private beskeder er stadig skjult; kun antal vises.'
   });
 });
 
@@ -3868,7 +3900,7 @@ async function startServer() {
       console.log(`Backup directory: ${DB_BACKUP_DIR}`);
       const warning = storagePersistenceWarning();
       if (warning) console.warn(`Persistence warning: ${warning}`);
-      console.log('TSN V1.5.3 mode: activity hub, XP, streaks, safe media library, leaderboard, events, polls, TSN-S widget, manual badges, friends, notifications, mentions, reactions and warnings.');
+      console.log('TSN V1.5.11 mode: activity hub, XP, streaks, safe media library, leaderboard, events, polls, TSN-S widget, manual badges, friends, notifications, mentions, reactions and warnings.');
       console.log('Admin rights can be claimed inside the app with TSN_ADMIN_SETUP_PASSWORD or TSN_ADMIN_SETUP_PASSWORD_HASH.');
 
       if (process.env.NODE_ENV === 'production' && JWT_SECRET === DEFAULT_JWT_SECRET) {
