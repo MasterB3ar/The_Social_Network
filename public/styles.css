@@ -5338,3 +5338,52 @@ body.is-admin .growth-admin-tools { display:grid; }
     grid-column: 2;
   }
 }
+
+/* TSN V1.5.14: show who reacted to global/private messages */
+.reaction-people-list {
+  display: grid;
+  gap: 0.55rem;
+  margin-top: 0.2rem;
+  max-height: 160px;
+  overflow: auto;
+  padding: 0.1rem 0.15rem 0.25rem;
+}
+
+.reaction-people-row {
+  display: grid;
+  grid-template-columns: 2.2rem 1fr;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.65rem 0.75rem;
+  border-radius: 16px;
+  background: rgba(15, 23, 42, 0.72);
+  border: 1px solid rgba(148, 163, 184, 0.16);
+}
+
+.reaction-people-emoji {
+  width: 2.2rem;
+  height: 2.2rem;
+  display: grid;
+  place-items: center;
+  border-radius: 14px;
+  background: rgba(59, 130, 246, 0.16);
+  font-size: 1.25rem;
+}
+
+.reaction-people-row strong {
+  display: block;
+  font-size: 0.86rem;
+  color: rgba(241, 245, 249, 0.95);
+}
+
+.reaction-people-row p,
+.reaction-people-empty {
+  margin: 0.16rem 0 0;
+  color: rgba(203, 213, 225, 0.78);
+  font-size: 0.82rem;
+  line-height: 1.35;
+}
+
+.reaction-summary-chip {
+  cursor: pointer;
+}

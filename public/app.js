@@ -53,7 +53,7 @@ state.polls = [];
 
 
 const PRIVATE_MESSAGE_DELETE_FOR_EVERYONE_MS = 15 * 60 * 1000;
-const IMAGE_MAX_BYTES = 2 * 1024 * 1024; // Legacy limit for old uploaded image messages only. New messages use the safe media library.
+const IMAGE_MAX_BYTES = 2 * 1024 * 1024; // Legacy limit for old uploaded image messages only. New messages use approved website media.
 
 const $ = (selector) => document.querySelector(selector);
 const authScreen = $('#authScreen');
@@ -220,7 +220,7 @@ function mediaItemButtonHtml(item, kind) {
   const selectedId = selectedSafeMediaId(kind);
   const thumb = item.thumbnailUrl || item.dataUrl || item.url || '';
   const label = item.label || item.name || 'Medie';
-  const provider = item.provider || (String(item.source || '').includes('tsn-safe') ? 'TSN' : 'Web');
+  const provider = item.provider || 'Web';
   return `
     <button class="safe-media-item ${item.id === selectedId ? 'selected' : ''}" type="button" data-safe-media-kind="${escapeHtml(kind)}" data-safe-media-id="${escapeHtml(item.id)}">
       <img src="${escapeHtml(thumb)}" alt="${escapeHtml(label)}" loading="lazy" referrerpolicy="no-referrer" />
@@ -233,14 +233,13 @@ function mediaItemButtonHtml(item, kind) {
 function renderSafeMediaPicker(kind) {
   const picker = kind === 'private' ? privateMediaPicker : globalMediaPicker;
   if (!picker) return;
-  const localItems = Array.isArray(state.mediaLibrary) ? state.mediaLibrary : [];
   const webItems = Array.isArray(state.mediaSearchResults) ? state.mediaSearchResults : [];
   const warnings = Array.isArray(state.mediaSearchWarnings) ? state.mediaSearchWarnings : [];
-  const webProviderLabel = state.mediaWebProviders?.length ? state.mediaWebProviders.join(' + ') : 'Tenor/Pixabay';
+  const webProviderLabel = state.mediaWebProviders?.length ? state.mediaWebProviders.join(' + ') : 'GIPHY/Pixabay';
   picker.innerHTML = `
     <div class="media-search-panel">
       <div class="media-search-title">
-        <strong>Find GIFs/fotos fra website</strong>
+        <strong>Find GIFs/fotos fra GIPHY/Pixabay</strong>
         <span>${state.mediaWebSearchEnabled ? `Aktiv: ${escapeHtml(webProviderLabel)}` : 'Websøgning ikke sat op endnu'}</span>
       </div>
       <form class="media-search-form" data-media-search-form="${escapeHtml(kind)}">
@@ -252,7 +251,7 @@ function renderSafeMediaPicker(kind) {
         </select>
         <button class="secondary tiny" type="submit" ${state.mediaSearchLoading ? 'disabled' : ''}>${state.mediaSearchLoading ? 'Søger...' : 'Søg'}</button>
       </form>
-      <p class="media-search-note">Brugere kan stadig ikke uploade egne billeder. De kan kun sende medier valgt fra TSN-listen eller en godkendt websøgning.</p>
+      <p class="media-search-note">Brugere kan stadig ikke uploade egne billeder. De kan kun sende medier valgt fra GIPHY eller Pixabay.</p>
       ${warnings.length ? `<div class="media-search-warning">${warnings.map(escapeHtml).join('<br>')}</div>` : ''}
     </div>
     <div class="safe-media-scroll-area">
@@ -260,10 +259,8 @@ function renderSafeMediaPicker(kind) {
         <div class="safe-media-section-title">Web-resultater</div>
         <div class="safe-media-grid">${webItems.map((item) => mediaItemButtonHtml(item, kind)).join('')}</div>
       ` : `
-        <div class="safe-media-empty">Søg efter GIFs/fotos for at hente web-resultater.</div>
+        <div class="safe-media-empty">Søg efter GIFs/fotos fra GIPHY eller Pixabay.</div>
       `}
-      <div class="safe-media-section-title">TSN sikre medier</div>
-      <div class="safe-media-grid">${localItems.map((item) => mediaItemButtonHtml(item, kind)).join('') || '<p class="muted">Ingen sikre billeder/GIFs kunne indlæses.</p>'}</div>
     </div>
   `;
 }
@@ -344,6 +341,35 @@ function reactionActive(reactions, emoji) {
   return Boolean(item?.reactedByMe);
 }
 
+function reactionPeople(reactions, emoji) {
+  const item = (Array.isArray(reactions) ? reactions : []).find((reaction) => reaction.emoji === emoji);
+  return Array.isArray(item?.reactedBy) ? item.reactedBy : [];
+}
+
+function reactionPeopleText(reactions, emoji) {
+  const people = reactionPeople(reactions, emoji);
+  if (!people.length) return '';
+  return people.map((person) => person?.name || person?.username || 'Ukendt bruger').join(', ');
+}
+
+function reactionPeopleListHtml(reactions) {
+  const items = reactionItems(reactions);
+  if (!items.length) return '<p class="reaction-people-empty">Ingen reaktioner endnu.</p>';
+  return items.map((reaction) => {
+    const peopleText = reactionPeopleText(reactions, reaction.emoji);
+    const label = peopleText || `${formatNumber(reaction.count)} reaktioner`;
+    return `
+      <div class="reaction-people-row">
+        <span class="reaction-people-emoji">${escapeHtml(reaction.emoji)}</span>
+        <div>
+          <strong>${escapeHtml(formatNumber(reaction.count))} ${Number(reaction.count) === 1 ? 'reaktion' : 'reaktioner'}</strong>
+          <p>${escapeHtml(label)}</p>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
 function renderReactionBar(reactions, idValue, type) {
   const attr = type === 'direct' ? 'data-react-direct-message' : 'data-react-global-message';
   return `<div class="reaction-bar">${REACTION_EMOJIS.map((emoji) => {
@@ -363,12 +389,16 @@ function renderReactionSummary(reactions) {
   const items = reactionItems(reactions);
   if (!items.length) return '';
 
-  const chips = items.map((reaction) => `
-    <span class="reaction-summary-chip ${reaction.reactedByMe ? 'active' : ''}" title="${escapeHtml(reaction.count)} reaktioner">
-      <span class="reaction-summary-emoji">${escapeHtml(reaction.emoji)}</span>
-      <strong>${escapeHtml(formatNumber(reaction.count))}</strong>
-    </span>
-  `).join('');
+  const chips = items.map((reaction) => {
+    const peopleText = reactionPeopleText(reactions, reaction.emoji);
+    const title = peopleText ? `${reaction.emoji} ${peopleText}` : `${reaction.count} reaktioner`;
+    return `
+      <span class="reaction-summary-chip ${reaction.reactedByMe ? 'active' : ''}" title="${escapeHtml(title)}">
+        <span class="reaction-summary-emoji">${escapeHtml(reaction.emoji)}</span>
+        <strong>${escapeHtml(formatNumber(reaction.count))}</strong>
+      </span>
+    `;
+  }).join('');
 
   return `<div class="reaction-summary" aria-label="Reaktioner på beskeden">${chips}</div>`;
 }
@@ -1503,8 +1533,15 @@ function openMessageActionPopup(type, messageId) {
         ${REACTION_EMOJIS.map((emoji) => {
           const active = reactionActive(message.reactions, emoji);
           const count = reactionCount(message.reactions, emoji);
-          return `<button class="popup-reaction-button ${active ? 'active' : ''}" type="button" data-popup-react="${escapeHtml(type)}" data-message-id="${escapeHtml(message.id)}" data-emoji="${escapeHtml(emoji)}"><span>${escapeHtml(emoji)}</span>${count ? `<strong>${escapeHtml(formatNumber(count))}</strong>` : ''}</button>`;
+          const peopleText = reactionPeopleText(message.reactions, emoji);
+          const title = peopleText ? `${emoji} ${peopleText}` : `${emoji} Ingen endnu`;
+          return `<button class="popup-reaction-button ${active ? 'active' : ''}" type="button" data-popup-react="${escapeHtml(type)}" data-message-id="${escapeHtml(message.id)}" data-emoji="${escapeHtml(emoji)}" title="${escapeHtml(title)}"><span>${escapeHtml(emoji)}</span>${count ? `<strong>${escapeHtml(formatNumber(count))}</strong>` : ''}</button>`;
         }).join('')}
+      </div>
+
+      <div class="message-action-section-title">Hvem reagerede?</div>
+      <div class="reaction-people-list" aria-label="Brugere der reagerede">
+        ${reactionPeopleListHtml(message.reactions)}
       </div>
 
       <div class="message-action-footer">

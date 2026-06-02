@@ -206,7 +206,7 @@ Random image uploads are blocked. Users can only send pre-approved safe pictures
 
 TSN can now search approved external websites for GIFs/photos while still blocking random user uploads.
 
-- Users can search Tenor for GIFs when `TSN_TENOR_API_KEY` is set.
+- Users can search GIPHY for GIFs when `TSN_GIPHY_API_KEY` is set.
 - Users can search Pixabay for photos when `TSN_PIXABAY_API_KEY` is set.
 - Custom uploads, custom URLs, base64, and arbitrary data URLs are still rejected by the server.
 - Messages only accept media IDs returned by `/api/media-library` or `/api/media-search`.
@@ -216,13 +216,12 @@ Optional environment variables:
 
 ```txt
 TSN_MEDIA_WEB_SEARCH_ENABLED=true
-TSN_MEDIA_WEB_PROVIDERS=tenor,pixabay
+TSN_MEDIA_WEB_PROVIDERS=giphy,pixabay
 TSN_MEDIA_WEB_SEARCH_LIMIT=18
 TSN_MEDIA_WEB_CACHE_TTL_MS=900000
-TSN_TENOR_API_KEY=
-TSN_TENOR_CLIENT_KEY=tsn
-TSN_TENOR_CONTENT_FILTER=high
-TSN_TENOR_LOCALE=da_DK
+TSN_GIPHY_API_KEY=
+TSN_GIPHY_RATING=pg-13
+TSN_GIPHY_LANG=da
 TSN_PIXABAY_API_KEY=
 ```
 
@@ -240,7 +239,7 @@ Important: calls require HTTPS and microphone/camera permission. No new environm
 
 - Fixed `WarnButton is not defined` when clicking chat/private messages.
 - Fixed picture/GIF display sizing in chat bubbles and message popups.
-- Fixed media picker thumbnails so safe media and web media look cleaner.
+- Fixed media picker thumbnails so website media look cleaner.
 - No new environment variables are required.
 
 
@@ -262,7 +261,7 @@ Important: calls require HTTPS and microphone/camera permission. No new environm
 
 ## TSN V1.5.8 — Private Media Picker Scroll Fix
 
-Fixed the private-chat media picker so users can scroll down and choose pictures/GIFs when the picker contains many safe media or web-search results. The picker now has its own scroll area inside the private chat window, with mobile-safe height limits.
+Fixed the private-chat media picker so users can scroll down and choose pictures/GIFs when the picker contains many website media search results. The picker now has its own scroll area inside the private chat window, with mobile-safe height limits.
 
 
 ## TSN V1.5.9 — Media Picker Fixed Header
@@ -302,3 +301,28 @@ Admins can read private messages sent by users with the custom badge `Verified A
 - The old Notifications navigation tab has been removed.
 - Private-message notifications now appear as a red badge on Privat chat.
 - Global @mentions now appear as a red badge on Global chat and as a bottom banner saying who pinged you.
+
+## TSN V1.5.14 — Reaction Names
+
+This update makes reactions more transparent: when a global/private message has reactions, the message popup now shows which users reacted under "Hvem reagerede?". Reaction chips also include the names in their tooltip.
+
+
+## TSN V1.5.15 — Pixabay + GIPHY Only Media
+
+- Deleted the built-in TSN safe media list.
+- Users can no longer choose default TSN media.
+- Users can only send media selected from approved website search results.
+- GIF provider: GIPHY.
+- Photo provider: Pixabay.
+- Random uploads, base64 images, custom URLs, and old safe-media IDs are blocked for new messages.
+
+Required for media search on Render:
+
+```env
+TSN_MEDIA_WEB_SEARCH_ENABLED=true
+TSN_MEDIA_WEB_PROVIDERS=giphy,pixabay
+TSN_GIPHY_API_KEY=your-giphy-key
+TSN_GIPHY_RATING=pg-13
+TSN_GIPHY_LANG=da
+TSN_PIXABAY_API_KEY=your-pixabay-key
+```

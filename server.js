@@ -70,17 +70,16 @@ const SAFE_MEDIA_LIBRARY = createSafeMediaLibrary();
 const SAFE_MEDIA_BY_ID = new Map(SAFE_MEDIA_LIBRARY.map((item) => [item.id, item]));
 
 const MEDIA_WEB_SEARCH_ENABLED = String(process.env.TSN_MEDIA_WEB_SEARCH_ENABLED || 'true').toLowerCase() !== 'false';
-const MEDIA_WEB_PROVIDERS = String(process.env.TSN_MEDIA_WEB_PROVIDERS || 'tenor,pixabay')
+const MEDIA_WEB_PROVIDERS = String(process.env.TSN_MEDIA_WEB_PROVIDERS || 'giphy,pixabay')
   .split(',')
   .map((provider) => provider.trim().toLowerCase())
-  .filter(Boolean);
+  .filter((provider) => ['giphy', 'pixabay'].includes(provider));
 const MEDIA_WEB_SEARCH_LIMIT = clampInteger(process.env.TSN_MEDIA_WEB_SEARCH_LIMIT || 18, 4, 30);
 const MEDIA_WEB_CACHE_TTL_MS = clampInteger(process.env.TSN_MEDIA_WEB_CACHE_TTL_MS || 15 * 60 * 1000, 60 * 1000, 60 * 60 * 1000);
 const MEDIA_WEB_CACHE_LIMIT = clampInteger(process.env.TSN_MEDIA_WEB_CACHE_LIMIT || 400, 50, 2000);
-const TENOR_API_KEY = process.env.TSN_TENOR_API_KEY || process.env.TENOR_API_KEY || '';
-const TENOR_CLIENT_KEY = process.env.TSN_TENOR_CLIENT_KEY || process.env.TENOR_CLIENT_KEY || 'tsn';
-const TENOR_CONTENT_FILTER = process.env.TSN_TENOR_CONTENT_FILTER || 'high';
-const TENOR_LOCALE = process.env.TSN_TENOR_LOCALE || 'da_DK';
+const GIPHY_API_KEY = process.env.TSN_GIPHY_API_KEY || process.env.GIPHY_API_KEY || '';
+const GIPHY_RATING = process.env.TSN_GIPHY_RATING || 'pg-13';
+const GIPHY_LANG = process.env.TSN_GIPHY_LANG || 'da';
 const PIXABAY_API_KEY = process.env.TSN_PIXABAY_API_KEY || process.env.PIXABAY_API_KEY || '';
 const WEB_MEDIA_CACHE = new Map();
 
@@ -665,33 +664,11 @@ function svgDataUrl({ title, subtitle, emoji, bg1, bg2, accent, animated = false
 }
 
 function createSafeMediaLibrary() {
-  const items = [
-    { id: 'safe-heart', kind: 'picture', name: 'Heart', label: 'Heart Picture', emoji: '💚', bg1: '#16a34a', bg2: '#064e3b', accent: '#bbf7d0', subtitle: 'Safe TSN picture' },
-    { id: 'safe-party', kind: 'picture', name: 'Party', label: 'Party Picture', emoji: '🎉', bg1: '#7c3aed', bg2: '#1e1b4b', accent: '#ddd6fe', subtitle: 'Safe TSN picture' },
-    { id: 'safe-laugh', kind: 'picture', name: 'Laugh', label: 'Laugh Picture', emoji: '😂', bg1: '#f59e0b', bg2: '#7c2d12', accent: '#fde68a', subtitle: 'Safe TSN picture' },
-    { id: 'safe-fire', kind: 'picture', name: 'Fire', label: 'Fire Picture', emoji: '🔥', bg1: '#ef4444', bg2: '#450a0a', accent: '#fecaca', subtitle: 'Safe TSN picture' },
-    { id: 'safe-star', kind: 'picture', name: 'Star', label: 'Star Picture', emoji: '⭐', bg1: '#0ea5e9', bg2: '#082f49', accent: '#bae6fd', subtitle: 'Safe TSN picture' },
-    { id: 'safe-thumbs', kind: 'picture', name: 'Thumbs Up', label: 'Thumbs Up Picture', emoji: '👍', bg1: '#2563eb', bg2: '#111827', accent: '#bfdbfe', subtitle: 'Safe TSN picture' },
-    { id: 'gif-wave', kind: 'gif', name: 'Wave', label: 'Wave GIF', emoji: '👋', bg1: '#14b8a6', bg2: '#0f172a', accent: '#99f6e4', subtitle: 'Safe animated TSN GIF', animated: true },
-    { id: 'gif-hype', kind: 'gif', name: 'Hype', label: 'Hype GIF', emoji: '🚀', bg1: '#db2777', bg2: '#111827', accent: '#fbcfe8', subtitle: 'Safe animated TSN GIF', animated: true },
-    { id: 'gif-win', kind: 'gif', name: 'Win', label: 'Win GIF', emoji: '🏆', bg1: '#ca8a04', bg2: '#422006', accent: '#fef08a', subtitle: 'Safe animated TSN GIF', animated: true },
-    { id: 'gif-cool', kind: 'gif', name: 'Cool', label: 'Cool GIF', emoji: '😎', bg1: '#6366f1', bg2: '#020617', accent: '#c7d2fe', subtitle: 'Safe animated TSN GIF', animated: true }
-  ];
-  return items.map((item) => {
-    const dataUrl = svgDataUrl(item);
-    return {
-      id: item.id,
-      type: 'image',
-      kind: item.kind,
-      name: item.name,
-      label: item.label,
-      mimeType: 'image/svg+xml',
-      size: Buffer.byteLength(dataUrl, 'utf8'),
-      source: 'tsn-safe-whatsapp-style-library',
-      dataUrl
-    };
-  });
+  // TSN no longer ships a built-in safe media pack.
+  // Users can only send media returned from approved website providers.
+  return [];
 }
+
 
 function publicSafeMediaItem(item) {
   return {
@@ -749,24 +726,25 @@ function normalizeMediaUrl(value) {
   return url.slice(0, 1200);
 }
 
-function mapTenorResult(result) {
-  const formats = result?.media_formats || {};
-  const full = formats.gif || formats.mediumgif || formats.tinygif || formats.nanogif;
-  const preview = formats.tinygif || formats.nanogif || formats.gif || full;
+function mapGiphyResult(result) {
+  const images = result?.images || {};
+  const full = images.fixed_height || images.original || images.downsized || images.preview_gif;
+  const preview = images.fixed_width_small || images.fixed_height_small || images.preview_gif || full;
   const url = normalizeMediaUrl(full?.url || preview?.url);
   const thumbnailUrl = normalizeMediaUrl(preview?.url || url);
   if (!result?.id || !url) return null;
+  const title = cleanText(result.title || result.slug || 'GIPHY GIF', 80) || 'GIPHY GIF';
   return {
-    id: `tenor:${result.id}`,
+    id: `giphy:${result.id}`,
     type: 'image',
     kind: 'gif',
-    name: cleanText(result.content_description || result.title || 'Tenor GIF', 80) || 'Tenor GIF',
-    label: cleanText(result.content_description || result.title || 'Tenor GIF', 80) || 'Tenor GIF',
+    name: title,
+    label: title,
     mimeType: 'image/gif',
-    source: 'tenor-web-search',
-    provider: 'Tenor',
-    providerUrl: normalizeMediaUrl(result.itemurl || result.url || ''),
-    attribution: 'GIF fra Tenor',
+    source: 'giphy-web-search',
+    provider: 'GIPHY',
+    providerUrl: normalizeMediaUrl(result.url || ''),
+    attribution: 'GIF fra GIPHY',
     url,
     thumbnailUrl,
     dataUrl: thumbnailUrl || url
@@ -795,25 +773,23 @@ function mapPixabayResult(hit) {
   };
 }
 
-async function searchTenorMedia(query, limit) {
-  if (!TENOR_API_KEY) return [];
+async function searchGiphyMedia(query, limit) {
+  if (!GIPHY_API_KEY) return [];
   const params = new URLSearchParams({
-    key: TENOR_API_KEY,
-    client_key: TENOR_CLIENT_KEY,
+    api_key: GIPHY_API_KEY,
     limit: String(limit),
-    media_filter: 'gif,tinygif,nanogif',
-    contentfilter: TENOR_CONTENT_FILTER,
-    locale: TENOR_LOCALE
+    rating: GIPHY_RATING,
+    lang: GIPHY_LANG
   });
-  const endpoint = query ? 'search' : 'featured';
+  const endpoint = query ? 'search' : 'trending';
   if (query) params.set('q', query);
-  const response = await fetch(`https://tenor.googleapis.com/v2/${endpoint}?${params.toString()}`, {
+  const response = await fetch(`https://api.giphy.com/v1/gifs/${endpoint}?${params.toString()}`, {
     headers: { Accept: 'application/json' }
   });
-  if (!response.ok) throw new Error(`Tenor svarede ${response.status}.`);
+  if (!response.ok) throw new Error(`GIPHY svarede ${response.status}.`);
   const data = await response.json();
-  return (Array.isArray(data.results) ? data.results : [])
-    .map(mapTenorResult)
+  return (Array.isArray(data.data) ? data.data : [])
+    .map(mapGiphyResult)
     .filter(Boolean)
     .map(webMediaCacheSet)
     .filter(Boolean)
@@ -852,15 +828,15 @@ async function searchWebMedia({ query, kind, limit }) {
   const providers = [];
   const warnings = [];
 
-  if ((requestedKind === 'gif' || requestedKind === 'all') && MEDIA_WEB_PROVIDERS.includes('tenor')) {
-    if (TENOR_API_KEY) {
-      providers.push('tenor');
-      searches.push(searchTenorMedia(normalizedQuery, requestedLimit).catch((error) => {
+  if ((requestedKind === 'gif' || requestedKind === 'all') && MEDIA_WEB_PROVIDERS.includes('giphy')) {
+    if (GIPHY_API_KEY) {
+      providers.push('giphy');
+      searches.push(searchGiphyMedia(normalizedQuery, requestedLimit).catch((error) => {
         warnings.push(error.message);
         return [];
       }));
     } else {
-      warnings.push('TSN_TENOR_API_KEY mangler, så Tenor GIFs er ikke aktive.');
+      warnings.push('TSN_GIPHY_API_KEY mangler, så GIPHY GIFs er ikke aktive.');
     }
   }
 
@@ -919,7 +895,7 @@ function normalizeImageAttachment(input) {
   const libraryId = cleanText(input.libraryId || input.id || input.safeMediaId || input.webMediaId || '', 180);
   if (!libraryId) {
     if (input.dataUrl || input.url || input.base64 || input.mimeType || input.name) {
-      throw new Error('Random billed-upload er slået fra. Vælg et billede/GIF fra TSN-mediesøgningen eller TSN-biblioteket.');
+      throw new Error('Random billed-upload er slået fra. Vælg et billede/GIF fra Pixabay eller GIPHY.');
     }
     return null;
   }
@@ -927,10 +903,10 @@ function normalizeImageAttachment(input) {
   const webMedia = safeMedia ? null : webMediaCacheGet(libraryId);
   const media = safeMedia || webMedia;
   if (!media) {
-    if (/^(tenor|pixabay):/i.test(libraryId)) {
+    if (/^(giphy|pixabay):/i.test(libraryId)) {
       throw new Error('Dette webmedie er udløbet. Søg efter GIF/foto igen og vælg det på ny.');
     }
-    throw new Error('Du kan kun sende godkendte TSN-medier eller medier valgt fra TSN-websøgningen.');
+    throw new Error('Du kan kun sende medier valgt fra Pixabay eller GIPHY-websøgningen.');
   }
 
   const url = media.url || media.dataUrl || media.thumbnailUrl || '';
@@ -980,7 +956,7 @@ function publicMessageAttachment(message) {
     type: 'image',
     libraryId: message.attachmentLibraryId || '',
     kind: message.attachmentKind || 'picture',
-    source: message.attachmentSource || (message.attachmentLibraryId ? 'tsn-safe-whatsapp-style-library' : 'legacy-upload'),
+    source: message.attachmentSource || (message.attachmentLibraryId ? 'website-media-search' : 'legacy-upload'),
     provider: getEncryptedObjectField(message, 'attachmentProvider'),
     providerUrl: getEncryptedObjectField(message, 'attachmentProviderUrl'),
     attribution: getEncryptedObjectField(message, 'attachmentAttribution'),
@@ -1575,11 +1551,26 @@ function normalizeReactionsOnItem(item) {
   return changed;
 }
 
-function publicReactions(item, viewerId = '') {
+function publicReactions(item, viewerId = '', users = []) {
   normalizeReactionsOnItem(item);
+  const userList = Array.isArray(users) ? users : [];
+  const userMap = new Map(userList.map((user) => [user.id, user]));
   return [...ALLOWED_REACTIONS].map((emoji) => {
-    const users = uniqueStringArray(item?.reactions?.[emoji]);
-    return { emoji, count: users.length, reactedByMe: viewerId ? users.includes(viewerId) : false };
+    const reactionUserIds = uniqueStringArray(item?.reactions?.[emoji]);
+    const reactedBy = reactionUserIds.map((userId) => {
+      const user = userMap.get(userId);
+      return {
+        id: userId,
+        name: user ? getUserField(user, 'name') : 'Ukendt bruger',
+        username: user ? getUserField(user, 'username') : ''
+      };
+    });
+    return {
+      emoji,
+      count: reactionUserIds.length,
+      reactedByMe: viewerId ? reactionUserIds.includes(viewerId) : false,
+      reactedBy
+    };
   });
 }
 
@@ -1968,7 +1959,7 @@ function attachGlobalMessagePeople(message, users, viewerId = '') {
     author: publicUser(author),
     likesCount: message.likes.length,
     likedByMe: viewerId ? message.likes.includes(viewerId) : false,
-    reactions: publicReactions(message, viewerId),
+    reactions: publicReactions(message, viewerId, users),
     commentsCount: comments.length,
     comments
   };
@@ -1983,7 +1974,7 @@ function emitGlobalMessageUpdated(db, message) {
   }
 }
 
-function publicMessage(message, viewerId = '') {
+function publicMessage(message, viewerId = '', users = []) {
   const readBy = Array.isArray(message.readBy) ? [...new Set(message.readBy.filter(Boolean))] : [];
   return {
     id: message.id,
@@ -1993,7 +1984,7 @@ function publicMessage(message, viewerId = '') {
     text: getEncryptedObjectField(message, 'text'),
     attachment: publicMessageAttachment(message),
     createdAt: message.createdAt,
-    reactions: publicReactions(message, viewerId),
+    reactions: publicReactions(message, viewerId, users),
     readBy,
     isReadByRecipient: Boolean(message.to && readBy.includes(message.to))
   };
@@ -3343,10 +3334,10 @@ app.patch('/api/polls/:pollId', requireAuth, requireAdmin, async (req, res) => {
 
 app.get('/api/media-library', requireAuth, (req, res) => {
   res.json({
-    items: SAFE_MEDIA_LIBRARY.map(publicSafeMediaItem),
-    mode: MEDIA_WEB_SEARCH_ENABLED ? 'safe-library-plus-web-search' : 'safe-library-only',
+    items: [],
+    mode: 'web-search-only',
     webSearchEnabled: MEDIA_WEB_SEARCH_ENABLED,
-    webProviders: MEDIA_WEB_PROVIDERS.filter((provider) => (provider === 'tenor' && TENOR_API_KEY) || (provider === 'pixabay' && PIXABAY_API_KEY))
+    webProviders: MEDIA_WEB_PROVIDERS.filter((provider) => (provider === 'giphy' && GIPHY_API_KEY) || (provider === 'pixabay' && PIXABAY_API_KEY))
   });
 });
 
@@ -3630,7 +3621,7 @@ app.get('/api/messages/:userId', requireAuth, async (req, res) => {
   const messages = req.db.messages
     .filter((message) => message.conversationId === key && !isMessageHiddenFor(message, req.user.id))
     .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt))
-    .map((message) => publicMessage(message, req.user.id));
+    .map((message) => publicMessage(message, req.user.id, db.users));
 
   res.json({ user: { ...publicUser(other), unreadCount: 0 }, messages });
 });
@@ -3685,9 +3676,9 @@ app.post('/api/messages/:messageId/reactions', requireAuth, async (req, res) => 
     createNotification(db, otherUserId, 'reaction', `${getUserField(req.user, 'name')} reagerede på en privat besked`, `${emoji} i privat chat`, { type: 'direct-message', messageId: message.id });
   }
   await writeDb(db);
-  io.to(message.from).emit('private-message-updated', publicMessage(message, message.from));
-  io.to(message.to).emit('private-message-updated', publicMessage(message, message.to));
-  res.json({ ok: true, reacted, message: publicMessage(message, req.user.id) });
+  io.to(message.from).emit('private-message-updated', publicMessage(message, message.from, db.users));
+  io.to(message.to).emit('private-message-updated', publicMessage(message, message.to, db.users));
+  res.json({ ok: true, reacted, message: publicMessage(message, req.user.id, db.users) });
 });
 
 
@@ -3788,9 +3779,9 @@ io.on('connection', (socket) => {
       addActivity(db, 'private-chat', `${getUserField(sender, 'name')} sendte en privat besked`, 'Privat aktivitet tæller til TSN-aktivitet uden at vise indholdet.', sender.id, { messageId: message.id });
       await writeDb(db);
       broadcastTsnStock(readDb(), 'private-message').catch((error) => console.warn(`TSN Stock update failed: ${error.message}`));
-      io.to(user.id).emit('private-message', publicMessage(message, user.id));
-      io.to(recipient.id).emit('private-message', publicMessage(message, recipient.id));
-      if (typeof callback === 'function') callback({ ok: true, message: publicMessage(message, user.id) });
+      io.to(user.id).emit('private-message', publicMessage(message, user.id, db.users));
+      io.to(recipient.id).emit('private-message', publicMessage(message, recipient.id, db.users));
+      if (typeof callback === 'function') callback({ ok: true, message: publicMessage(message, user.id, db.users) });
     } catch (error) {
       if (typeof callback === 'function') callback({ ok: false, error: error.message });
     }
@@ -3900,7 +3891,7 @@ async function startServer() {
       console.log(`Backup directory: ${DB_BACKUP_DIR}`);
       const warning = storagePersistenceWarning();
       if (warning) console.warn(`Persistence warning: ${warning}`);
-      console.log('TSN V1.5.11 mode: activity hub, XP, streaks, safe media library, leaderboard, events, polls, TSN-S widget, manual badges, friends, notifications, mentions, reactions and warnings.');
+      console.log('TSN V1.5.15 mode: activity hub, XP, streaks, Pixabay/GIPHY media only, leaderboard, events, polls, TSN-S widget, manual badges, friends, notifications, mentions, reactions and warnings.');
       console.log('Admin rights can be claimed inside the app with TSN_ADMIN_SETUP_PASSWORD or TSN_ADMIN_SETUP_PASSWORD_HASH.');
 
       if (process.env.NODE_ENV === 'production' && JWT_SECRET === DEFAULT_JWT_SECRET) {
