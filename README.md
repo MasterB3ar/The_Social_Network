@@ -258,3 +258,8 @@ Important: calls require HTTPS and microphone/camera permission. No new environm
 - Added a defensive fallback for older click-handler paths.
 - Added a versioned `/app.js?v=1.5.7` script URL so browsers do not keep using an old cached frontend file.
 - No new environment variables.
+
+
+## TSN V1.5.8 — Private Media Picker Scroll Fix
+
+Fixed the private-chat media picker so users can scroll down and choose pictures/GIFs when the picker contains many safe media or web-search results. The picker now has its own scroll area inside the private chat window, with mobile-safe height limits.
