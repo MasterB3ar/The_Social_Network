@@ -1,7 +1,7 @@
 {
   "name": "the-social-network-tsn",
-  "version": "1.5.0",
-  "description": "TSN Activity + Events update with XP, streaks, leaderboard, events, polls and TSN-S widget.",
+  "version": "1.5.4",
+  "description": "TSN Activity + Events update with safe media search and private voice/video calls.",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",

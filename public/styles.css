@@ -4449,3 +4449,421 @@ body.is-admin .growth-admin-tools { display:grid; }
 .app:not([data-view="home"]) .clean-discord-layout > #homePanel {
   display: none !important;
 }
+
+
+/* TSN V1.5.1 picture messages */
+.hidden-file-input {
+  position: absolute;
+  inline-size: 1px;
+  block-size: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.image-message-form {
+  position: relative;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 0.55rem;
+  align-items: center;
+}
+
+.image-message-form .image-send-preview {
+  grid-column: 1 / -1;
+}
+
+.image-picker-button {
+  inline-size: 2.55rem;
+  block-size: 2.55rem;
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  border-radius: 0.95rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  background: rgba(15, 23, 42, 0.72);
+  color: #e5edf8;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.08);
+  transition: transform 0.16s ease, border-color 0.16s ease, background 0.16s ease;
+}
+
+.image-picker-button:hover,
+.image-picker-button:focus-visible {
+  transform: translateY(-1px);
+  border-color: rgba(96, 165, 250, 0.55);
+  background: rgba(30, 41, 59, 0.92);
+}
+
+.image-send-preview {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.55rem 0.7rem;
+  border-radius: 0.9rem;
+  border: 1px solid rgba(59, 130, 246, 0.24);
+  background: rgba(37, 99, 235, 0.11);
+  color: #dbeafe;
+  font-size: 0.85rem;
+}
+
+.image-remove-button {
+  border: 0;
+  border-radius: 999px;
+  padding: 0.35rem 0.65rem;
+  background: rgba(15, 23, 42, 0.62);
+  color: #bfdbfe;
+  cursor: pointer;
+  font-weight: 800;
+}
+
+.message-body {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.message-image {
+  margin: 0.45rem 0 0;
+  display: grid;
+  gap: 0.35rem;
+}
+
+.message-image img {
+  max-inline-size: min(100%, 360px);
+  max-block-size: 320px;
+  object-fit: contain;
+  border-radius: 1rem;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  background: rgba(2, 6, 23, 0.55);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.22);
+}
+
+.message-image figcaption {
+  font-size: 0.72rem;
+  color: rgba(203, 213, 225, 0.72);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-inline-size: min(100%, 360px);
+}
+
+.message.mine .message-image img,
+.global-chat-message.mine .message-image img {
+  border-color: rgba(59, 130, 246, 0.35);
+}
+
+.message-action-preview .message-image img {
+  max-inline-size: 100%;
+  max-block-size: 260px;
+}
+
+@media (max-width: 720px) {
+  .image-message-form {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    gap: 0.45rem;
+  }
+
+  .image-picker-button {
+    inline-size: 2.35rem;
+    block-size: 2.35rem;
+  }
+
+  .message-image img {
+    max-inline-size: 100%;
+    max-block-size: 260px;
+  }
+}
+
+.safe-media-picker {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 0.75rem;
+  padding: 0.75rem;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  border-radius: 18px;
+  background: rgba(15, 23, 42, 0.90);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.05), 0 18px 50px rgba(0, 0, 0, 0.22);
+}
+
+.safe-media-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(105px, 1fr));
+  gap: 0.65rem;
+}
+
+.media-search-panel {
+  display: grid;
+  gap: 0.55rem;
+  padding: 0.7rem;
+  border: 1px solid rgba(88, 166, 255, 0.18);
+  border-radius: 16px;
+  background: linear-gradient(135deg, rgba(30, 64, 175, 0.16), rgba(15, 23, 42, 0.66));
+}
+
+.media-search-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.7rem;
+}
+
+.media-search-title span,
+.media-search-note,
+.media-search-warning,
+.safe-media-empty {
+  color: var(--muted);
+  font-size: 0.78rem;
+  line-height: 1.35;
+}
+
+.media-search-warning {
+  color: #fde68a;
+  border: 1px solid rgba(245, 158, 11, 0.24);
+  background: rgba(245, 158, 11, 0.08);
+  border-radius: 12px;
+  padding: 0.5rem;
+}
+
+.media-search-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 112px auto;
+  gap: 0.5rem;
+}
+
+.media-search-form input,
+.media-search-form select {
+  min-width: 0;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  background: rgba(2, 6, 23, 0.55);
+  color: var(--text);
+  border-radius: 12px;
+  padding: 0.58rem 0.65rem;
+  font: inherit;
+}
+
+.safe-media-section-title {
+  font-weight: 900;
+  font-size: 0.78rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(226, 232, 240, 0.82);
+}
+
+.safe-media-empty {
+  border: 1px dashed rgba(148, 163, 184, 0.24);
+  border-radius: 14px;
+  padding: 0.75rem;
+}
+
+.safe-media-item {
+  border: 1px solid rgba(148, 163, 184, 0.20);
+  background: rgba(15, 23, 42, 0.72);
+  color: var(--text);
+  border-radius: 16px;
+  padding: 0.45rem;
+  display: grid;
+  gap: 0.35rem;
+  cursor: pointer;
+  text-align: center;
+  transition: transform 0.16s ease, border-color 0.16s ease, background 0.16s ease;
+}
+
+.safe-media-item:hover,
+.safe-media-item:focus-visible,
+.safe-media-item.selected {
+  transform: translateY(-1px);
+  border-color: rgba(88, 166, 255, 0.72);
+  background: rgba(30, 64, 175, 0.25);
+  outline: none;
+}
+
+.safe-media-item img {
+  width: 100%;
+  aspect-ratio: 1.45 / 1;
+  object-fit: cover;
+  border-radius: 12px;
+  background: rgba(2, 6, 23, 0.65);
+}
+
+.safe-media-item span {
+  font-weight: 800;
+  font-size: 0.78rem;
+}
+
+.safe-media-item small {
+  color: var(--muted);
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+@media (max-width: 700px) {
+  .safe-media-picker {
+    max-height: 56vh;
+    overflow: auto;
+  }
+
+  .safe-media-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .media-search-title {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .media-search-form {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* TSN V1.5.4 — private voice/video calls */
+.call-action {
+  min-width: 2.35rem;
+  font-size: 1rem;
+}
+
+.call-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1400;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  background: rgba(4, 8, 18, 0.72);
+  backdrop-filter: blur(18px);
+}
+
+.call-overlay.hidden {
+  display: none;
+}
+
+.call-card {
+  width: min(760px, 96vw);
+  border-radius: 28px;
+  padding: 1.25rem;
+  background: linear-gradient(145deg, rgba(13, 22, 45, 0.98), rgba(8, 14, 30, 0.98));
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  box-shadow: 0 30px 100px rgba(0, 0, 0, 0.46);
+}
+
+.call-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.call-header h2 {
+  margin: 0.15rem 0;
+}
+
+.call-header p:last-child {
+  margin: 0;
+  color: var(--muted);
+}
+
+.call-video-grid {
+  display: grid;
+  grid-template-columns: 1fr 190px;
+  gap: 0.85rem;
+  align-items: stretch;
+}
+
+.call-video-box {
+  position: relative;
+  min-height: 210px;
+  overflow: hidden;
+  border-radius: 22px;
+  background: radial-gradient(circle at top, rgba(96, 165, 250, 0.22), rgba(15, 23, 42, 0.92));
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  display: grid;
+  place-items: center;
+}
+
+.call-video-box.local {
+  min-height: 150px;
+}
+
+.call-video-box video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.call-video-box video.hidden {
+  display: none;
+}
+
+.call-video-box span {
+  position: absolute;
+  left: 0.75rem;
+  bottom: 0.75rem;
+  padding: 0.3rem 0.55rem;
+  border-radius: 999px;
+  background: rgba(2, 6, 23, 0.68);
+  color: #e5e7eb;
+  font-size: 0.78rem;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.call-audio-avatar {
+  width: 92px;
+  height: 92px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #60a5fa, #a78bfa);
+  color: white;
+  font-weight: 900;
+  font-size: 1.8rem;
+  box-shadow: 0 20px 60px rgba(37, 99, 235, 0.28);
+}
+
+.call-audio-avatar.small {
+  width: 58px;
+  height: 58px;
+  font-size: 1rem;
+}
+
+.call-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+  justify-content: center;
+  margin-top: 1rem;
+}
+
+.call-actions.hidden {
+  display: none;
+}
+
+.call-help {
+  margin: 0.85rem 0 0;
+  color: var(--muted);
+  text-align: center;
+  font-size: 0.85rem;
+}
+
+@media (max-width: 720px) {
+  .chat-header-actions {
+    flex-wrap: wrap;
+  }
+
+  .call-card {
+    width: 100%;
+    max-height: 92vh;
+    overflow: auto;
+    border-radius: 24px;
+  }
+
+  .call-video-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .call-video-box.local {
+    min-height: 120px;
+  }
+}

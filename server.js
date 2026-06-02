@@ -64,6 +64,25 @@ const XP_REACTION_RECEIVED = clampInteger(process.env.TSN_XP_REACTION_RECEIVED |
 const XP_FRIEND_ACCEPTED = clampInteger(process.env.TSN_XP_FRIEND_ACCEPTED || 10, 0, 1000);
 const XP_EVENT_JOIN = clampInteger(process.env.TSN_XP_EVENT_JOIN || 8, 0, 1000);
 const XP_POLL_VOTE = clampInteger(process.env.TSN_XP_POLL_VOTE || 4, 0, 1000);
+const IMAGE_MAX_BYTES = clampInteger(process.env.TSN_IMAGE_MAX_BYTES || 2097152, 65536, 5242880);
+const IMAGE_ALLOWED_MIME_TYPES = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp']);
+const SAFE_MEDIA_LIBRARY = createSafeMediaLibrary();
+const SAFE_MEDIA_BY_ID = new Map(SAFE_MEDIA_LIBRARY.map((item) => [item.id, item]));
+
+const MEDIA_WEB_SEARCH_ENABLED = String(process.env.TSN_MEDIA_WEB_SEARCH_ENABLED || 'true').toLowerCase() !== 'false';
+const MEDIA_WEB_PROVIDERS = String(process.env.TSN_MEDIA_WEB_PROVIDERS || 'tenor,pixabay')
+  .split(',')
+  .map((provider) => provider.trim().toLowerCase())
+  .filter(Boolean);
+const MEDIA_WEB_SEARCH_LIMIT = clampInteger(process.env.TSN_MEDIA_WEB_SEARCH_LIMIT || 18, 4, 30);
+const MEDIA_WEB_CACHE_TTL_MS = clampInteger(process.env.TSN_MEDIA_WEB_CACHE_TTL_MS || 15 * 60 * 1000, 60 * 1000, 60 * 60 * 1000);
+const MEDIA_WEB_CACHE_LIMIT = clampInteger(process.env.TSN_MEDIA_WEB_CACHE_LIMIT || 400, 50, 2000);
+const TENOR_API_KEY = process.env.TSN_TENOR_API_KEY || process.env.TENOR_API_KEY || '';
+const TENOR_CLIENT_KEY = process.env.TSN_TENOR_CLIENT_KEY || process.env.TENOR_CLIENT_KEY || 'tsn';
+const TENOR_CONTENT_FILTER = process.env.TSN_TENOR_CONTENT_FILTER || 'high';
+const TENOR_LOCALE = process.env.TSN_TENOR_LOCALE || 'da_DK';
+const PIXABAY_API_KEY = process.env.TSN_PIXABAY_API_KEY || process.env.PIXABAY_API_KEY || '';
+const WEB_MEDIA_CACHE = new Map();
 
 const ROOMS = Array.from({ length: 7 }, (_, index) => {
   const id = index + 1;
@@ -83,12 +102,13 @@ const io = new Server(server, {
   cors: {
     origin: '*',
     methods: ['GET', 'POST', 'PATCH']
-  }
+  },
+  maxHttpBufferSize: Math.max(IMAGE_MAX_BYTES * 2 + 1024 * 1024, 2 * 1024 * 1024)
 });
 
 app.use(helmet({ contentSecurityPolicy: false }));
 app.use(cors());
-app.use(express.json({ limit: '1mb' }));
+app.use(express.json({ limit: '8mb' }));
 app.use(morgan('dev'));
 app.use(express.static(PUBLIC_DIR, {
   setHeaders(res, filePath) {
@@ -615,6 +635,258 @@ function lookupHashes(scope, normalizedValue) {
   return CRYPTO_KEY_CANDIDATES.map((keySet) => lookupHashWithKey(scope, value, keySet.lookupKey));
 }
 
+function svgDataUrl({ title, subtitle, emoji, bg1, bg2, accent, animated = false }) {
+  const safeTitle = String(title || '').slice(0, 28).replace(/[&<>"']/g, '');
+  const safeSubtitle = String(subtitle || '').slice(0, 42).replace(/[&<>"']/g, '');
+  const safeEmoji = String(emoji || '✨').slice(0, 4).replace(/[&<>"']/g, '');
+  const pulse = animated
+    ? '<animate attributeName="r" values="54;70;54" dur="1.25s" repeatCount="indefinite"/><animate attributeName="opacity" values="0.20;0.42;0.20" dur="1.25s" repeatCount="indefinite"/>'
+    : '';
+  const float = animated
+    ? '<animateTransform attributeName="transform" attributeType="XML" type="translate" values="0 0;0 -8;0 0" dur="1.4s" repeatCount="indefinite"/>'
+    : '';
+  const svg = `
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 420" role="img" aria-label="${safeTitle}">
+    <defs>
+      <linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${bg1}"/><stop offset="1" stop-color="${bg2}"/></linearGradient>
+      <filter id="shadow"><feDropShadow dx="0" dy="18" stdDeviation="18" flood-color="#000" flood-opacity="0.35"/></filter>
+    </defs>
+    <rect width="640" height="420" rx="46" fill="url(#g)"/>
+    <circle cx="525" cy="76" r="54" fill="${accent}" opacity="0.23">${pulse}</circle>
+    <circle cx="106" cy="338" r="82" fill="#ffffff" opacity="0.10"/>
+    <g filter="url(#shadow)" ${animated ? '' : ''}>
+      <g>${float}<text x="320" y="180" font-size="108" text-anchor="middle" dominant-baseline="middle">${safeEmoji}</text></g>
+      <rect x="90" y="238" width="460" height="96" rx="28" fill="rgba(255,255,255,0.18)" stroke="rgba(255,255,255,0.24)"/>
+      <text x="320" y="282" fill="#ffffff" font-family="Arial, Helvetica, sans-serif" font-size="34" font-weight="800" text-anchor="middle">${safeTitle}</text>
+      <text x="320" y="315" fill="rgba(255,255,255,0.78)" font-family="Arial, Helvetica, sans-serif" font-size="17" font-weight="700" text-anchor="middle">${safeSubtitle}</text>
+    </g>
+  </svg>`;
+  return `data:image/svg+xml;base64,${Buffer.from(svg).toString('base64')}`;
+}
+
+function createSafeMediaLibrary() {
+  const items = [
+    { id: 'safe-heart', kind: 'picture', name: 'Heart', label: 'Heart Picture', emoji: '💚', bg1: '#16a34a', bg2: '#064e3b', accent: '#bbf7d0', subtitle: 'Safe TSN picture' },
+    { id: 'safe-party', kind: 'picture', name: 'Party', label: 'Party Picture', emoji: '🎉', bg1: '#7c3aed', bg2: '#1e1b4b', accent: '#ddd6fe', subtitle: 'Safe TSN picture' },
+    { id: 'safe-laugh', kind: 'picture', name: 'Laugh', label: 'Laugh Picture', emoji: '😂', bg1: '#f59e0b', bg2: '#7c2d12', accent: '#fde68a', subtitle: 'Safe TSN picture' },
+    { id: 'safe-fire', kind: 'picture', name: 'Fire', label: 'Fire Picture', emoji: '🔥', bg1: '#ef4444', bg2: '#450a0a', accent: '#fecaca', subtitle: 'Safe TSN picture' },
+    { id: 'safe-star', kind: 'picture', name: 'Star', label: 'Star Picture', emoji: '⭐', bg1: '#0ea5e9', bg2: '#082f49', accent: '#bae6fd', subtitle: 'Safe TSN picture' },
+    { id: 'safe-thumbs', kind: 'picture', name: 'Thumbs Up', label: 'Thumbs Up Picture', emoji: '👍', bg1: '#2563eb', bg2: '#111827', accent: '#bfdbfe', subtitle: 'Safe TSN picture' },
+    { id: 'gif-wave', kind: 'gif', name: 'Wave', label: 'Wave GIF', emoji: '👋', bg1: '#14b8a6', bg2: '#0f172a', accent: '#99f6e4', subtitle: 'Safe animated TSN GIF', animated: true },
+    { id: 'gif-hype', kind: 'gif', name: 'Hype', label: 'Hype GIF', emoji: '🚀', bg1: '#db2777', bg2: '#111827', accent: '#fbcfe8', subtitle: 'Safe animated TSN GIF', animated: true },
+    { id: 'gif-win', kind: 'gif', name: 'Win', label: 'Win GIF', emoji: '🏆', bg1: '#ca8a04', bg2: '#422006', accent: '#fef08a', subtitle: 'Safe animated TSN GIF', animated: true },
+    { id: 'gif-cool', kind: 'gif', name: 'Cool', label: 'Cool GIF', emoji: '😎', bg1: '#6366f1', bg2: '#020617', accent: '#c7d2fe', subtitle: 'Safe animated TSN GIF', animated: true }
+  ];
+  return items.map((item) => {
+    const dataUrl = svgDataUrl(item);
+    return {
+      id: item.id,
+      type: 'image',
+      kind: item.kind,
+      name: item.name,
+      label: item.label,
+      mimeType: 'image/svg+xml',
+      size: Buffer.byteLength(dataUrl, 'utf8'),
+      source: 'tsn-safe-whatsapp-style-library',
+      dataUrl
+    };
+  });
+}
+
+function publicSafeMediaItem(item) {
+  return {
+    id: item.id,
+    type: item.type,
+    kind: item.kind,
+    name: item.name,
+    label: item.label,
+    mimeType: item.mimeType,
+    source: item.source,
+    provider: item.provider || '',
+    providerUrl: item.providerUrl || '',
+    attribution: item.attribution || '',
+    dataUrl: item.dataUrl || item.url || item.thumbnailUrl || '',
+    url: item.url || item.dataUrl || '',
+    thumbnailUrl: item.thumbnailUrl || item.dataUrl || item.url || ''
+  };
+}
+
+function safeSearchQuery(value) {
+  return cleanText(value || '', 80).replace(/[^\p{L}\p{N}\s_.#@+-]/gu, ' ').replace(/\s+/g, ' ').trim();
+}
+
+function webMediaCacheSet(item) {
+  if (!item || !item.id || !item.url) return null;
+  const cached = {
+    ...item,
+    type: 'image',
+    cachedAt: Date.now(),
+    expiresAt: Date.now() + MEDIA_WEB_CACHE_TTL_MS
+  };
+  WEB_MEDIA_CACHE.set(cached.id, cached);
+  while (WEB_MEDIA_CACHE.size > MEDIA_WEB_CACHE_LIMIT) {
+    const firstKey = WEB_MEDIA_CACHE.keys().next().value;
+    if (!firstKey) break;
+    WEB_MEDIA_CACHE.delete(firstKey);
+  }
+  return cached;
+}
+
+function webMediaCacheGet(idValue) {
+  const id = cleanText(idValue || '', 180);
+  const item = WEB_MEDIA_CACHE.get(id);
+  if (!item) return null;
+  if (Date.now() > Number(item.expiresAt || 0)) {
+    WEB_MEDIA_CACHE.delete(id);
+    return null;
+  }
+  return item;
+}
+
+function normalizeMediaUrl(value) {
+  const url = String(value || '').trim();
+  if (!/^https:\/\//i.test(url)) return '';
+  return url.slice(0, 1200);
+}
+
+function mapTenorResult(result) {
+  const formats = result?.media_formats || {};
+  const full = formats.gif || formats.mediumgif || formats.tinygif || formats.nanogif;
+  const preview = formats.tinygif || formats.nanogif || formats.gif || full;
+  const url = normalizeMediaUrl(full?.url || preview?.url);
+  const thumbnailUrl = normalizeMediaUrl(preview?.url || url);
+  if (!result?.id || !url) return null;
+  return {
+    id: `tenor:${result.id}`,
+    type: 'image',
+    kind: 'gif',
+    name: cleanText(result.content_description || result.title || 'Tenor GIF', 80) || 'Tenor GIF',
+    label: cleanText(result.content_description || result.title || 'Tenor GIF', 80) || 'Tenor GIF',
+    mimeType: 'image/gif',
+    source: 'tenor-web-search',
+    provider: 'Tenor',
+    providerUrl: normalizeMediaUrl(result.itemurl || result.url || ''),
+    attribution: 'GIF fra Tenor',
+    url,
+    thumbnailUrl,
+    dataUrl: thumbnailUrl || url
+  };
+}
+
+function mapPixabayResult(hit) {
+  const url = normalizeMediaUrl(hit?.webformatURL || hit?.largeImageURL || hit?.previewURL);
+  const thumbnailUrl = normalizeMediaUrl(hit?.previewURL || hit?.webformatURL || url);
+  if (!hit?.id || !url) return null;
+  const label = cleanText(String(hit.tags || 'Pixabay photo').split(',').slice(0, 2).join(', '), 80) || 'Pixabay photo';
+  return {
+    id: `pixabay:${hit.id}`,
+    type: 'image',
+    kind: 'picture',
+    name: label,
+    label,
+    mimeType: 'image/jpeg',
+    source: 'pixabay-web-search',
+    provider: 'Pixabay',
+    providerUrl: normalizeMediaUrl(hit.pageURL || ''),
+    attribution: 'Foto fra Pixabay',
+    url,
+    thumbnailUrl,
+    dataUrl: thumbnailUrl || url
+  };
+}
+
+async function searchTenorMedia(query, limit) {
+  if (!TENOR_API_KEY) return [];
+  const params = new URLSearchParams({
+    key: TENOR_API_KEY,
+    client_key: TENOR_CLIENT_KEY,
+    limit: String(limit),
+    media_filter: 'gif,tinygif,nanogif',
+    contentfilter: TENOR_CONTENT_FILTER,
+    locale: TENOR_LOCALE
+  });
+  const endpoint = query ? 'search' : 'featured';
+  if (query) params.set('q', query);
+  const response = await fetch(`https://tenor.googleapis.com/v2/${endpoint}?${params.toString()}`, {
+    headers: { Accept: 'application/json' }
+  });
+  if (!response.ok) throw new Error(`Tenor svarede ${response.status}.`);
+  const data = await response.json();
+  return (Array.isArray(data.results) ? data.results : [])
+    .map(mapTenorResult)
+    .filter(Boolean)
+    .map(webMediaCacheSet)
+    .filter(Boolean)
+    .slice(0, limit);
+}
+
+async function searchPixabayMedia(query, limit) {
+  if (!PIXABAY_API_KEY || !query) return [];
+  const params = new URLSearchParams({
+    key: PIXABAY_API_KEY,
+    q: query,
+    image_type: 'photo',
+    safesearch: 'true',
+    per_page: String(limit),
+    lang: 'da'
+  });
+  const response = await fetch(`https://pixabay.com/api/?${params.toString()}`, {
+    headers: { Accept: 'application/json' }
+  });
+  if (!response.ok) throw new Error(`Pixabay svarede ${response.status}.`);
+  const data = await response.json();
+  return (Array.isArray(data.hits) ? data.hits : [])
+    .map(mapPixabayResult)
+    .filter(Boolean)
+    .map(webMediaCacheSet)
+    .filter(Boolean)
+    .slice(0, limit);
+}
+
+async function searchWebMedia({ query, kind, limit }) {
+  if (!MEDIA_WEB_SEARCH_ENABLED) return { items: [], providers: [], warnings: ['Webmediesøgning er slået fra.'] };
+  const normalizedQuery = safeSearchQuery(query);
+  const requestedKind = ['gif', 'picture', 'all'].includes(kind) ? kind : 'all';
+  const requestedLimit = clampInteger(limit || MEDIA_WEB_SEARCH_LIMIT, 4, MEDIA_WEB_SEARCH_LIMIT);
+  const searches = [];
+  const providers = [];
+  const warnings = [];
+
+  if ((requestedKind === 'gif' || requestedKind === 'all') && MEDIA_WEB_PROVIDERS.includes('tenor')) {
+    if (TENOR_API_KEY) {
+      providers.push('tenor');
+      searches.push(searchTenorMedia(normalizedQuery, requestedLimit).catch((error) => {
+        warnings.push(error.message);
+        return [];
+      }));
+    } else {
+      warnings.push('TSN_TENOR_API_KEY mangler, så Tenor GIFs er ikke aktive.');
+    }
+  }
+
+  if ((requestedKind === 'picture' || requestedKind === 'all') && MEDIA_WEB_PROVIDERS.includes('pixabay')) {
+    if (PIXABAY_API_KEY) {
+      providers.push('pixabay');
+      searches.push(searchPixabayMedia(normalizedQuery, requestedLimit).catch((error) => {
+        warnings.push(error.message);
+        return [];
+      }));
+    } else if (requestedKind === 'picture') {
+      warnings.push('TSN_PIXABAY_API_KEY mangler, så fotosøgning er ikke aktiv.');
+    }
+  }
+
+  const results = (await Promise.all(searches)).flat();
+  const seen = new Set();
+  const items = results.filter((item) => {
+    if (!item?.id || seen.has(item.id)) return false;
+    seen.add(item.id);
+    return true;
+  }).slice(0, requestedLimit);
+
+  return { items, providers, warnings, query: normalizedQuery, kind: requestedKind };
+}
+
 function lookupHash(scope, normalizedValue) {
   return lookupHashes(scope, normalizedValue)[0] || '';
 }
@@ -640,6 +912,85 @@ function getEncryptedObjectField(object, field) {
   const encrypted = object[`${field}Enc`];
   if (encrypted) return decryptField(encrypted);
   return String(object[field] || '');
+}
+
+function normalizeImageAttachment(input) {
+  if (!input) return null;
+  const libraryId = cleanText(input.libraryId || input.id || input.safeMediaId || input.webMediaId || '', 180);
+  if (!libraryId) {
+    if (input.dataUrl || input.url || input.base64 || input.mimeType || input.name) {
+      throw new Error('Random billed-upload er slået fra. Vælg et billede/GIF fra TSN-mediesøgningen eller TSN-biblioteket.');
+    }
+    return null;
+  }
+  const safeMedia = SAFE_MEDIA_BY_ID.get(libraryId);
+  const webMedia = safeMedia ? null : webMediaCacheGet(libraryId);
+  const media = safeMedia || webMedia;
+  if (!media) {
+    if (/^(tenor|pixabay):/i.test(libraryId)) {
+      throw new Error('Dette webmedie er udløbet. Søg efter GIF/foto igen og vælg det på ny.');
+    }
+    throw new Error('Du kan kun sende godkendte TSN-medier eller medier valgt fra TSN-websøgningen.');
+  }
+
+  const url = media.url || media.dataUrl || media.thumbnailUrl || '';
+  const thumbnailUrl = media.thumbnailUrl || media.dataUrl || url;
+  return {
+    type: 'image',
+    libraryId: media.id,
+    kind: media.kind || 'picture',
+    mimeType: media.mimeType || 'image/jpeg',
+    name: media.name || media.label || 'billede',
+    label: media.label || media.name || 'billede',
+    size: media.size || 0,
+    source: media.source || 'tsn-web-media-search',
+    provider: media.provider || '',
+    providerUrl: media.providerUrl || '',
+    attribution: media.attribution || '',
+    dataUrl: url,
+    url,
+    thumbnailUrl
+  };
+}
+
+function setMessageAttachment(message, attachment) {
+  if (!attachment) return;
+  message.attachmentType = 'image';
+  message.attachmentLibraryId = attachment.libraryId || '';
+  message.attachmentKind = attachment.kind || 'picture';
+  message.attachmentSource = attachment.source || 'tsn-web-media-search';
+  message.attachmentMimeType = attachment.mimeType;
+  message.attachmentSize = attachment.size;
+  message.attachmentNameEnc = encryptField(attachment.name || attachment.label || 'billede');
+  message.attachmentDataUrlEnc = encryptField(attachment.dataUrl || attachment.url || attachment.thumbnailUrl || '');
+  message.attachmentUrlEnc = encryptField(attachment.url || attachment.dataUrl || '');
+  message.attachmentThumbnailUrlEnc = encryptField(attachment.thumbnailUrl || attachment.dataUrl || attachment.url || '');
+  message.attachmentProviderEnc = encryptField(attachment.provider || '');
+  message.attachmentProviderUrlEnc = encryptField(attachment.providerUrl || '');
+  message.attachmentAttributionEnc = encryptField(attachment.attribution || '');
+}
+
+function publicMessageAttachment(message) {
+  if (!message || message.attachmentType !== 'image') return null;
+  const storedDataUrl = getEncryptedObjectField(message, 'attachmentDataUrl');
+  const url = getEncryptedObjectField(message, 'attachmentUrl') || storedDataUrl;
+  const thumbnailUrl = getEncryptedObjectField(message, 'attachmentThumbnailUrl') || storedDataUrl || url;
+  if (!storedDataUrl && !url && !thumbnailUrl) return null;
+  return {
+    type: 'image',
+    libraryId: message.attachmentLibraryId || '',
+    kind: message.attachmentKind || 'picture',
+    source: message.attachmentSource || (message.attachmentLibraryId ? 'tsn-safe-whatsapp-style-library' : 'legacy-upload'),
+    provider: getEncryptedObjectField(message, 'attachmentProvider'),
+    providerUrl: getEncryptedObjectField(message, 'attachmentProviderUrl'),
+    attribution: getEncryptedObjectField(message, 'attachmentAttribution'),
+    mimeType: message.attachmentMimeType || '',
+    name: getEncryptedObjectField(message, 'attachmentName') || 'billede',
+    size: Number(message.attachmentSize) || 0,
+    dataUrl: url || thumbnailUrl || storedDataUrl,
+    url: url || storedDataUrl || thumbnailUrl,
+    thumbnailUrl: thumbnailUrl || url || storedDataUrl
+  };
 }
 
 function encryptedUserIdentity({ name, username, bio }) {
@@ -1542,6 +1893,7 @@ function attachRoomMessagePeople(message, users) {
     roomId: message.roomId,
     authorId: message.authorId,
     text: getEncryptedObjectField(message, 'text'),
+    attachment: publicMessageAttachment(message),
     createdAt: message.createdAt,
     author: publicUser(author)
   };
@@ -1601,6 +1953,7 @@ function attachGlobalMessagePeople(message, users, viewerId = '') {
     id: message.id,
     authorId: message.authorId,
     text: getEncryptedObjectField(message, 'text'),
+    attachment: publicMessageAttachment(message),
     createdAt: message.createdAt,
     author: publicUser(author),
     likesCount: message.likes.length,
@@ -1628,6 +1981,7 @@ function publicMessage(message, viewerId = '') {
     from: message.from,
     to: message.to,
     text: getEncryptedObjectField(message, 'text'),
+    attachment: publicMessageAttachment(message),
     createdAt: message.createdAt,
     reactions: publicReactions(message, viewerId),
     readBy,
@@ -2228,8 +2582,8 @@ app.get('/api/health', (req, res) => {
     const storage = getStorageStatus();
     res.json({
       ok: true,
-      app: 'TSN V1.4.0',
-      shortName: 'TSN V1.4.0',
+      app: 'TSN V1.5.1',
+      shortName: 'TSN V1.5.1',
       environment: process.env.NODE_ENV || 'development',
       storage: {
         ok: storage.ok,
@@ -2258,8 +2612,8 @@ app.get('/api/health', (req, res) => {
   } catch (error) {
     res.status(503).json({
       ok: false,
-      app: 'TSN V1.4.0',
-      shortName: 'TSN V1.4.0',
+      app: 'TSN V1.5.1',
+      shortName: 'TSN V1.5.1',
       error: 'Lageret er ikke klar.',
       detail: error.message
     });
@@ -2269,7 +2623,7 @@ app.get('/api/health', (req, res) => {
 app.get('/api/ping', (req, res) => {
   res.json({
     ok: true,
-    app: 'TSN V1.4.0',
+    app: 'TSN V1.5.1',
     message: 'pong',
     now: new Date().toISOString()
   });
@@ -2955,6 +3309,32 @@ app.patch('/api/polls/:pollId', requireAuth, requireAdmin, async (req, res) => {
   await writeDb(db); res.json({ poll: publicPoll(poll, req.user.id) });
 });
 
+app.get('/api/media-library', requireAuth, (req, res) => {
+  res.json({
+    items: SAFE_MEDIA_LIBRARY.map(publicSafeMediaItem),
+    mode: MEDIA_WEB_SEARCH_ENABLED ? 'safe-library-plus-web-search' : 'safe-library-only',
+    webSearchEnabled: MEDIA_WEB_SEARCH_ENABLED,
+    webProviders: MEDIA_WEB_PROVIDERS.filter((provider) => (provider === 'tenor' && TENOR_API_KEY) || (provider === 'pixabay' && PIXABAY_API_KEY))
+  });
+});
+
+app.get('/api/media-search', requireAuth, async (req, res) => {
+  try {
+    const result = await searchWebMedia({
+      query: req.query.q || req.query.query || '',
+      kind: req.query.kind || req.query.type || 'all',
+      limit: Number(req.query.limit) || MEDIA_WEB_SEARCH_LIMIT
+    });
+    res.json({
+      ...result,
+      items: result.items.map(publicSafeMediaItem),
+      cacheTtlMs: MEDIA_WEB_CACHE_TTL_MS
+    });
+  } catch (error) {
+    res.status(502).json({ error: error.message || 'Kunne ikke søge efter medier fra websitet.' });
+  }
+});
+
 app.get('/api/stock', requireAuth, (req, res) => {
   const snapshot = getTsnStockSnapshot(req.db, { persist: false, reason: 'view' });
   res.json({ stock: snapshot });
@@ -2973,11 +3353,17 @@ app.get('/api/global/messages', requireAuth, (req, res) => {
 
 app.post('/api/global/messages', requireAuth, async (req, res) => {
   const text = cleanText(req.body.text || req.body.body, 600);
-  if (!text) return res.status(400).json({ error: 'Global chatbesked må ikke være tom.' });
-  if (rejectBlockedContent(res, text, 'Global chatbesked')) return;
+  let attachment = null;
+  try {
+    attachment = normalizeImageAttachment(req.body.attachment || req.body.image || null);
+  } catch (error) {
+    return res.status(400).json({ error: error.message });
+  }
+  if (!text && !attachment) return res.status(400).json({ error: 'Global chatbesked skal have tekst eller billede.' });
+  if (text && rejectBlockedContent(res, text, 'Global chatbesked')) return;
 
   const db = req.db;
-  const spamError = applyChatAntiSpam(db, req.user, text, 'global-chat');
+  const spamError = applyChatAntiSpam(db, req.user, text || '[billede]', 'global-chat');
   if (spamError) {
     await writeDb(db);
     return res.status(429).json({ error: spamError, mutedUntil: req.user.mutedUntil || null });
@@ -2991,10 +3377,11 @@ app.post('/api/global/messages', requireAuth, async (req, res) => {
     ...encryptedTextObject('text', text),
     createdAt: new Date().toISOString()
   };
+  setMessageAttachment(message, attachment);
 
   db.globalMessages = Array.isArray(db.globalMessages) ? db.globalMessages : [];
   db.globalMessages.push(message);
-  notifyMentions(db, text, req.user, { type: 'global-message', messageId: message.id });
+  if (text) notifyMentions(db, text, req.user, { type: 'global-message', messageId: message.id });
   awardXp(db, req.user.id, XP_GLOBAL_MESSAGE, 'global chat', { messageId: message.id });
   addActivity(db, 'global-chat', `${getUserField(req.user, 'name')} skrev i global chat`, text.slice(0, 140), req.user.id, { messageId: message.id });
   if (db.globalMessages.length > 1000) {
@@ -3198,7 +3585,7 @@ app.post('/api/reports', requireAuth, async (req, res) => {
 });
 
 app.all(['/api/posts', '/api/posts/*', '/api/rooms', '/api/rooms/*'], requireAuth, (req, res) => {
-  res.status(410).json({ error: 'TSN V1.4.0 understøtter globale chatbeskeder, privat chat, læsekvitteringer og tidsbegrænset slet-for-alle.' });
+  res.status(410).json({ error: 'TSN V1.5.1 understøtter globale chatbeskeder, privat chat, læsekvitteringer og tidsbegrænset slet-for-alle.' });
 });
 
 app.get('/api/messages/:userId', requireAuth, async (req, res) => {
@@ -3337,13 +3724,14 @@ io.on('connection', (socket) => {
     try {
       const to = String(payload.to || '');
       const text = cleanText(payload.text, 1000);
-      if (!to || !text) throw new Error('Beskeden skal have en modtager og tekst.');
-      assertContentAllowed(text, 'Besked');
+      const attachment = normalizeImageAttachment(payload.attachment || payload.image || null);
+      if (!to || (!text && !attachment)) throw new Error('Beskeden skal have en modtager og tekst eller billede.');
+      if (text) assertContentAllowed(text, 'Besked');
 
       const db = readDb();
       const sender = db.users.find((candidate) => candidate.id === user.id);
       if (!sender || isBanned(sender)) throw new Error('Din konto har ikke tilladelse til at sende beskeder.');
-      const spamError = applyChatAntiSpam(db, sender, text, 'private-chat');
+      const spamError = applyChatAntiSpam(db, sender, text || '[billede]', 'private-chat');
       if (spamError) {
         await writeDb(db);
         throw new Error(spamError);
@@ -3360,9 +3748,10 @@ io.on('connection', (socket) => {
         ...encryptedTextObject('text', text),
         createdAt: new Date().toISOString()
       };
+      setMessageAttachment(message, attachment);
       db.messages.push(message);
-      createNotification(db, recipient.id, 'private-message', `Ny privat besked fra ${getUserField(sender, 'name')}`, text.slice(0, 180), { type: 'direct-message', userId: sender.id, messageId: message.id });
-      notifyMentions(db, text, sender, { type: 'direct-message', userId: sender.id, messageId: message.id });
+      createNotification(db, recipient.id, 'private-message', `Ny privat besked fra ${getUserField(sender, 'name')}`, attachment && !text ? 'Sendte et billede.' : text.slice(0, 180), { type: 'direct-message', userId: sender.id, messageId: message.id, hasImage: Boolean(attachment) });
+      if (text) notifyMentions(db, text, sender, { type: 'direct-message', userId: sender.id, messageId: message.id });
       awardXp(db, sender.id, XP_PRIVATE_MESSAGE, 'privat besked', { messageId: message.id });
       addActivity(db, 'private-chat', `${getUserField(sender, 'name')} sendte en privat besked`, 'Privat aktivitet tæller til TSN-aktivitet uden at vise indholdet.', sender.id, { messageId: message.id });
       await writeDb(db);
@@ -3378,6 +3767,65 @@ io.on('connection', (socket) => {
   socket.on('typing', (payload) => {
     const to = String(payload.to || '');
     if (to) socket.to(to).emit('typing', { from: user.id });
+  });
+
+  socket.on('call-user', (payload = {}, callback) => {
+    try {
+      const to = String(payload.to || '');
+      const kind = payload.kind === 'video' ? 'video' : 'voice';
+      const callId = cleanText(payload.callId || id('call'), 80);
+      const offer = payload.offer || null;
+      if (!to || to === user.id) throw new Error('Vælg en anden bruger at ringe til.');
+      const db = readDb();
+      const caller = db.users.find((candidate) => candidate.id === user.id);
+      const recipient = db.users.find((candidate) => candidate.id === to);
+      if (!caller || isBanned(caller)) throw new Error('Din konto kan ikke starte opkald.');
+      if (!recipient || isBanned(recipient)) throw new Error('Brugeren blev ikke fundet.');
+      const recipientOnline = onlineUsers.has(recipient.id);
+      if (!recipientOnline) throw new Error('Brugeren er ikke online.');
+      socket.to(recipient.id).emit('incoming-call', {
+        callId,
+        from: publicUser(caller),
+        kind,
+        offer,
+        createdAt: new Date().toISOString()
+      });
+      if (typeof callback === 'function') callback({ ok: true, callId });
+    } catch (error) {
+      if (typeof callback === 'function') callback({ ok: false, error: error.message });
+    }
+  });
+
+  socket.on('call-response', (payload = {}) => {
+    const to = String(payload.to || '');
+    if (!to || to === user.id) return;
+    socket.to(to).emit('call-response', {
+      callId: String(payload.callId || ''),
+      from: user.id,
+      accepted: Boolean(payload.accepted),
+      answer: payload.answer || null,
+      reason: cleanText(payload.reason || '', 140)
+    });
+  });
+
+  socket.on('call-signal', (payload = {}) => {
+    const to = String(payload.to || '');
+    if (!to || to === user.id) return;
+    socket.to(to).emit('call-signal', {
+      callId: String(payload.callId || ''),
+      from: user.id,
+      signal: payload.signal || null
+    });
+  });
+
+  socket.on('call-ended', (payload = {}) => {
+    const to = String(payload.to || '');
+    if (!to || to === user.id) return;
+    socket.to(to).emit('call-ended', {
+      callId: String(payload.callId || ''),
+      from: user.id,
+      reason: cleanText(payload.reason || '', 140)
+    });
   });
 
   socket.on('disconnect', () => {
@@ -3420,7 +3868,7 @@ async function startServer() {
       console.log(`Backup directory: ${DB_BACKUP_DIR}`);
       const warning = storagePersistenceWarning();
       if (warning) console.warn(`Persistence warning: ${warning}`);
-      console.log('TSN V1.5.0 mode: activity hub, XP, streaks, leaderboard, events, polls, TSN-S widget, manual badges, friends, notifications, mentions, reactions and warnings.');
+      console.log('TSN V1.5.3 mode: activity hub, XP, streaks, safe media library, leaderboard, events, polls, TSN-S widget, manual badges, friends, notifications, mentions, reactions and warnings.');
       console.log('Admin rights can be claimed inside the app with TSN_ADMIN_SETUP_PASSWORD or TSN_ADMIN_SETUP_PASSWORD_HASH.');
 
       if (process.env.NODE_ENV === 'production' && JWT_SECRET === DEFAULT_JWT_SECRET) {

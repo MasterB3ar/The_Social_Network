@@ -104,7 +104,7 @@ TSN_DEFAULT_ADMIN_MUTE_MINUTES=10
 - Admins still cannot browse every private conversation from the admin message archive.
 - Existing saved report evidence is reused, so messages remain visible in the report even if the original message is deleted later.
 
-## TSN V1.4.0 — Growth Update
+## TSN V1.5.1 — Growth Update
 
 This version adds the next community-growth features:
 
@@ -168,8 +168,69 @@ No new environment variables were added.
 - Leaving the badge prompt empty removes all special badges and leaves only `Member`.
 
 
-## TSN V1.5.0 - Activity + Events Update
+## TSN V1.5.1 - Activity + Events Update
 
 Adds an activity homepage, TSN-S mini widget, XP/levels, daily login streaks, activity leaderboard, events, polls, activity feed, and admin event/poll creation tools.
 
 TSNM is still removed from normal TSN. Admins still cannot browse all private messages; reported private-message evidence remains visible only inside reports.
+
+
+## TSN V1.5.1 — Picture Messages
+
+Users can now send pictures in both Global Chat and Private Chat.
+
+- Supported image types: PNG, JPG/JPEG, GIF and WebP.
+- Default max image size: 2 MB.
+- Server validates image type and size before saving.
+- Image messages can include optional text/caption.
+- Admin privacy rules stay the same: admins cannot browse all private chats, but reported private-message evidence remains visible in reports.
+
+Optional environment variable:
+
+```txt
+TSN_IMAGE_MAX_BYTES=2097152
+```
+
+
+## TSN V1.5.2 — Safe Picture/GIF Library
+
+Random image uploads are blocked. Users can only send pre-approved safe pictures/GIF-style media from the built-in TSN library, similar to choosing a safe sticker/GIF instead of uploading anything from their device.
+
+- Global Chat supports safe library pictures/GIFs.
+- Private Chat supports safe library pictures/GIFs.
+- The server rejects custom `dataUrl` uploads and only accepts known `libraryId` values.
+- Existing old image messages can still display, but new messages must use the safe library.
+- `/api/media-library` returns the allowed items.
+
+## TSN V1.5.3 — Website Media Search
+
+TSN can now search approved external websites for GIFs/photos while still blocking random user uploads.
+
+- Users can search Tenor for GIFs when `TSN_TENOR_API_KEY` is set.
+- Users can search Pixabay for photos when `TSN_PIXABAY_API_KEY` is set.
+- Custom uploads, custom URLs, base64, and arbitrary data URLs are still rejected by the server.
+- Messages only accept media IDs returned by `/api/media-library` or `/api/media-search`.
+- Web search results are cached for a short time; if a user waits too long, they must search again before sending.
+
+Optional environment variables:
+
+```txt
+TSN_MEDIA_WEB_SEARCH_ENABLED=true
+TSN_MEDIA_WEB_PROVIDERS=tenor,pixabay
+TSN_MEDIA_WEB_SEARCH_LIMIT=18
+TSN_MEDIA_WEB_CACHE_TTL_MS=900000
+TSN_TENOR_API_KEY=
+TSN_TENOR_CLIENT_KEY=tsn
+TSN_TENOR_CONTENT_FILTER=high
+TSN_TENOR_LOCALE=da_DK
+TSN_PIXABAY_API_KEY=
+```
+
+If no API keys are set, the built-in safe TSN media library still works.
+
+
+## TSN V1.5.4 — Voice/Video Calls
+
+Private chats now include voice and video call buttons. Users can call each other when both users are online. Calls use WebRTC in the browser and Socket.IO only for signalling.
+
+Important: calls require HTTPS and microphone/camera permission. No new environment variables are needed.

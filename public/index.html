@@ -239,9 +239,12 @@
             <button id="globalNewMessagesBtn" class="new-messages-button hidden" type="button">Nye beskeder ↓</button>
           </div>
 
-          <form id="globalMessageForm" class="message-form global-message-form">
-            <input id="globalMessageInput" maxlength="600" placeholder="Skriv en global chatbesked..." autocomplete="off" />
+          <form id="globalMessageForm" class="message-form global-message-form image-message-form">
+            <button id="globalMediaPickerBtn" class="image-picker-button" type="button" title="Søg/vælg billede eller GIF">📷</button>
+            <input id="globalMessageInput" maxlength="600" placeholder="Skriv en global chatbesked eller find et billede/GIF..." autocomplete="off" />
             <button class="primary" type="submit">Send</button>
+            <div id="globalImagePreview" class="image-send-preview hidden" aria-live="polite"></div>
+            <div id="globalMediaPicker" class="safe-media-picker hidden" aria-label="TSN mediesøgning"></div>
           </form>
         </section>
 
@@ -383,6 +386,8 @@
         </div>
       </div>
       <div class="chat-header-actions">
+        <button id="startVoiceCallBtn" class="ghost tiny call-action" type="button" title="Start stemmeopkald">📞</button>
+        <button id="startVideoCallBtn" class="ghost tiny call-action" type="button" title="Start videoopkald">🎥</button>
         <button id="deleteConversationBtn" class="ghost tiny danger" type="button">Slet chat</button>
         <button id="chatFriendBtn" class="ghost tiny" type="button">Ven</button>
         <button id="reportChatUserBtn" class="ghost tiny" type="button">Rapportér</button>
@@ -391,17 +396,55 @@
     </header>
     <div id="messagesList" class="messages"></div>
     <div id="typingLabel" class="typing hidden">skriver...</div>
-    <form id="messageForm" class="message-form">
-      <input id="messageInput" placeholder="Skriv en privat besked..." autocomplete="off" />
+    <form id="messageForm" class="message-form image-message-form">
+      <button id="privateMediaPickerBtn" class="image-picker-button" type="button" title="Søg/vælg billede eller GIF">📷</button>
+      <input id="messageInput" placeholder="Skriv en privat besked eller find et billede/GIF..." autocomplete="off" />
       <button class="primary" type="submit">Send</button>
+      <div id="privateImagePreview" class="image-send-preview hidden" aria-live="polite"></div>
+      <div id="privateMediaPicker" class="safe-media-picker hidden" aria-label="TSN mediesøgning"></div>
     </form>
+  </section>
+
+  <section id="callOverlay" class="call-overlay hidden" aria-modal="true" role="dialog">
+    <div class="call-card card">
+      <div class="call-header">
+        <div>
+          <p id="callEyebrow" class="eyebrow mini">TSN Call</p>
+          <h2 id="callTitle">Opkald</h2>
+          <p id="callStatusText">Forbinder...</p>
+        </div>
+        <button id="closeCallBtn" class="icon-button" type="button" aria-label="Luk opkald">×</button>
+      </div>
+      <div class="call-video-grid">
+        <div class="call-video-box remote">
+          <video id="remoteVideo" autoplay playsinline></video>
+          <div id="remoteAudioAvatar" class="call-audio-avatar">?</div>
+          <span>Den anden person</span>
+        </div>
+        <div class="call-video-box local">
+          <video id="localVideo" autoplay playsinline muted></video>
+          <div id="localAudioAvatar" class="call-audio-avatar small">Mig</div>
+          <span>Dig</span>
+        </div>
+      </div>
+      <div id="incomingCallActions" class="call-actions hidden">
+        <button id="acceptCallBtn" class="primary" type="button">Accepter</button>
+        <button id="declineCallBtn" class="secondary danger" type="button">Afvis</button>
+      </div>
+      <div id="activeCallActions" class="call-actions hidden">
+        <button id="muteCallBtn" class="secondary" type="button">Mute mic</button>
+        <button id="cameraCallBtn" class="secondary" type="button">Slå kamera fra</button>
+        <button id="endCallBtn" class="primary danger" type="button">Læg på</button>
+      </div>
+      <p class="call-help">Opkald virker bedst på HTTPS/Render og kræver, at browseren får adgang til mikrofon/kamera.</p>
+    </div>
   </section>
 
   <section id="rulesPanel" class="rules-panel hidden" aria-modal="true" role="dialog">
     <div class="rules-card card">
       <div class="section-heading">
         <div>
-          <p class="eyebrow mini">TSN V1.5.0</p>
+          <p class="eyebrow mini">TSN V1.5.1</p>
           <h2>Regler og sikkerhed</h2>
         </div>
         <button id="closeRulesBtn" class="icon-button" type="button" aria-label="Luk regler">×</button>

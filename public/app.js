@@ -22,7 +22,18 @@ const state = {
   unreadNotifications: 0,
   globalNewMessageCount: 0,
   globalChatHasOpened: false,
-  globalChatNeedsBottomScroll: false
+  globalChatNeedsBottomScroll: false,
+  mediaLibrary: [],
+  mediaSearchResults: [],
+  mediaSearchWarnings: [],
+  mediaSearchQuery: '',
+  mediaSearchKind: 'all',
+  mediaSearchLoading: false,
+  mediaWebSearchEnabled: false,
+  mediaWebProviders: [],
+  selectedGlobalMediaId: '',
+  selectedPrivateMediaId: '',
+  call: null
 };
 state.home = null;
 state.leaderboard = [];
@@ -31,6 +42,7 @@ state.polls = [];
 
 
 const PRIVATE_MESSAGE_DELETE_FOR_EVERYONE_MS = 15 * 60 * 1000;
+const IMAGE_MAX_BYTES = 2 * 1024 * 1024; // Legacy limit for old uploaded image messages only. New messages use the safe media library.
 
 const $ = (selector) => document.querySelector(selector);
 const authScreen = $('#authScreen');
@@ -67,6 +79,30 @@ const homePollBox = $('#homePollBox');
 const eventsPanel = $('#eventsPanel');
 const eventsList = $('#eventsList');
 const pollsList = $('#pollsList');
+const globalImagePreview = $('#globalImagePreview');
+const privateImagePreview = $('#privateImagePreview');
+const globalMediaPickerBtn = $('#globalMediaPickerBtn');
+const privateMediaPickerBtn = $('#privateMediaPickerBtn');
+const globalMediaPicker = $('#globalMediaPicker');
+const privateMediaPicker = $('#privateMediaPicker');
+const startVoiceCallBtn = $('#startVoiceCallBtn');
+const startVideoCallBtn = $('#startVideoCallBtn');
+const callOverlay = $('#callOverlay');
+const callEyebrow = $('#callEyebrow');
+const callTitle = $('#callTitle');
+const callStatusText = $('#callStatusText');
+const localVideo = $('#localVideo');
+const remoteVideo = $('#remoteVideo');
+const remoteAudioAvatar = $('#remoteAudioAvatar');
+const localAudioAvatar = $('#localAudioAvatar');
+const incomingCallActions = $('#incomingCallActions');
+const activeCallActions = $('#activeCallActions');
+const acceptCallBtn = $('#acceptCallBtn');
+const declineCallBtn = $('#declineCallBtn');
+const endCallBtn = $('#endCallBtn');
+const muteCallBtn = $('#muteCallBtn');
+const cameraCallBtn = $('#cameraCallBtn');
+const closeCallBtn = $('#closeCallBtn');
 
 function escapeHtml(value) {
   return String(value || '')
@@ -96,8 +132,28 @@ function applyAvatarElement(element, userOrName, size = '') {
   element.textContent = initials(name);
 }
 
+function imageAttachmentHtml(attachment, extraClass = '') {
+  if (!attachment || attachment.type !== 'image') return '';
+  const src = attachment.url || attachment.dataUrl || attachment.thumbnailUrl;
+  if (!src) return '';
+  const name = attachment.name || 'Billede';
+  const provider = attachment.provider || attachment.attribution || '';
+  return `
+    <figure class="message-image ${escapeHtml(extraClass)}">
+      <img src="${escapeHtml(src)}" alt="${escapeHtml(name)}" loading="lazy" referrerpolicy="no-referrer" />
+      <figcaption>${escapeHtml(name)}${provider ? ` · ${escapeHtml(provider)}` : ''}</figcaption>
+    </figure>
+  `;
+}
+
+function messageBodyHtml(message) {
+  const text = message?.text ? `<span>${renderTextWithMentions(message.text)}</span>` : '';
+  const image = imageAttachmentHtml(message?.attachment);
+  return `${text}${image}` || '<span></span>';
+}
+
 function directMessageBodyHtml(message) {
-  return message?.text ? `<span>${renderTextWithMentions(message.text)}</span>` : '<span></span>';
+  return messageBodyHtml(message);
 }
 
 function joinedDaysLabel(user) {
@@ -115,6 +171,148 @@ function badgeHtml(user) {
 
 function renderTextWithMentions(text) {
   return escapeHtml(text).replace(/(^|\s)@([a-zA-Z0-9_.-]{2,32})/g, '$1<span class="mention">@$2</span>');
+}
+
+function selectedSafeMediaId(kind) {
+  return kind === 'private' ? state.selectedPrivateMediaId : state.selectedGlobalMediaId;
+}
+
+function allMediaItems() {
+  const byId = new Map();
+  [...(state.mediaLibrary || []), ...(state.mediaSearchResults || [])].forEach((item) => {
+    if (item?.id) byId.set(item.id, item);
+  });
+  return [...byId.values()];
+}
+
+function selectedSafeMedia(kind) {
+  const selectedId = selectedSafeMediaId(kind);
+  return allMediaItems().find((item) => item.id === selectedId) || null;
+}
+
+function buildImageAttachment(kind) {
+  const selected = selectedSafeMedia(kind);
+  if (!selected) return null;
+  return {
+    type: 'image',
+    libraryId: selected.id,
+    name: selected.name,
+    kind: selected.kind
+  };
+}
+
+function mediaItemButtonHtml(item, kind) {
+  const selectedId = selectedSafeMediaId(kind);
+  const thumb = item.thumbnailUrl || item.dataUrl || item.url || '';
+  const label = item.label || item.name || 'Medie';
+  const provider = item.provider || (String(item.source || '').includes('tsn-safe') ? 'TSN' : 'Web');
+  return `
+    <button class="safe-media-item ${item.id === selectedId ? 'selected' : ''}" type="button" data-safe-media-kind="${escapeHtml(kind)}" data-safe-media-id="${escapeHtml(item.id)}">
+      <img src="${escapeHtml(thumb)}" alt="${escapeHtml(label)}" loading="lazy" referrerpolicy="no-referrer" />
+      <span>${escapeHtml(label)}</span>
+      <small>${item.kind === 'gif' ? 'GIF' : 'Billede'} · ${escapeHtml(provider)}</small>
+    </button>
+  `;
+}
+
+function renderSafeMediaPicker(kind) {
+  const picker = kind === 'private' ? privateMediaPicker : globalMediaPicker;
+  if (!picker) return;
+  const localItems = Array.isArray(state.mediaLibrary) ? state.mediaLibrary : [];
+  const webItems = Array.isArray(state.mediaSearchResults) ? state.mediaSearchResults : [];
+  const warnings = Array.isArray(state.mediaSearchWarnings) ? state.mediaSearchWarnings : [];
+  const webProviderLabel = state.mediaWebProviders?.length ? state.mediaWebProviders.join(' + ') : 'Tenor/Pixabay';
+  picker.innerHTML = `
+    <div class="media-search-panel">
+      <div class="media-search-title">
+        <strong>Find GIFs/fotos fra website</strong>
+        <span>${state.mediaWebSearchEnabled ? `Aktiv: ${escapeHtml(webProviderLabel)}` : 'Websøgning ikke sat op endnu'}</span>
+      </div>
+      <form class="media-search-form" data-media-search-form="${escapeHtml(kind)}">
+        <input name="q" value="${escapeHtml(state.mediaSearchQuery || '')}" placeholder="Søg fx: funny, cat, gg, party..." autocomplete="off" />
+        <select name="kind">
+          <option value="all" ${state.mediaSearchKind === 'all' ? 'selected' : ''}>Alt</option>
+          <option value="gif" ${state.mediaSearchKind === 'gif' ? 'selected' : ''}>GIFs</option>
+          <option value="picture" ${state.mediaSearchKind === 'picture' ? 'selected' : ''}>Fotos</option>
+        </select>
+        <button class="secondary tiny" type="submit" ${state.mediaSearchLoading ? 'disabled' : ''}>${state.mediaSearchLoading ? 'Søger...' : 'Søg'}</button>
+      </form>
+      <p class="media-search-note">Brugere kan stadig ikke uploade egne billeder. De kan kun sende medier valgt fra TSN-listen eller en godkendt websøgning.</p>
+      ${warnings.length ? `<div class="media-search-warning">${warnings.map(escapeHtml).join('<br>')}</div>` : ''}
+    </div>
+    ${webItems.length ? `
+      <div class="safe-media-section-title">Web-resultater</div>
+      <div class="safe-media-grid">${webItems.map((item) => mediaItemButtonHtml(item, kind)).join('')}</div>
+    ` : `
+      <div class="safe-media-empty">Søg efter GIFs/fotos for at hente web-resultater.</div>
+    `}
+    <div class="safe-media-section-title">TSN sikre medier</div>
+    <div class="safe-media-grid">${localItems.map((item) => mediaItemButtonHtml(item, kind)).join('') || '<p class="muted">Ingen sikre billeder/GIFs kunne indlæses.</p>'}</div>
+  `;
+}
+function renderSafeMediaPickers() {
+  renderSafeMediaPicker('global');
+  renderSafeMediaPicker('private');
+}
+
+function updateImagePreview(kind) {
+  const preview = kind === 'private' ? privateImagePreview : globalImagePreview;
+  if (!preview) return;
+  const selected = selectedSafeMedia(kind);
+  if (!selected) {
+    preview.classList.add('hidden');
+    preview.innerHTML = '';
+    return;
+  }
+  preview.classList.remove('hidden');
+  preview.innerHTML = `
+    <span>📷 ${escapeHtml(selected.label || selected.name)} · ${selected.kind === 'gif' ? 'GIF' : 'Billede'}${selected.provider ? ` · ${escapeHtml(selected.provider)}` : ''}</span>
+    <button type="button" class="image-remove-button" data-clear-image="${escapeHtml(kind)}">Fjern</button>
+  `;
+}
+
+function clearImageSelection(kind) {
+  if (kind === 'private') state.selectedPrivateMediaId = '';
+  else state.selectedGlobalMediaId = '';
+  updateImagePreview(kind);
+  renderSafeMediaPicker(kind);
+}
+
+async function loadMediaLibrary() {
+  try {
+    const data = await api('/api/media-library');
+    state.mediaLibrary = Array.isArray(data.items) ? data.items : [];
+    state.mediaWebSearchEnabled = Boolean(data.webSearchEnabled);
+    state.mediaWebProviders = Array.isArray(data.webProviders) ? data.webProviders : [];
+    renderSafeMediaPickers();
+  } catch (error) {
+    console.warn('Safe media library failed to load:', error.message);
+    state.mediaLibrary = [];
+    renderSafeMediaPickers();
+  }
+}
+
+async function searchWebMedia(kind, formData) {
+  const query = String(formData.get('q') || '').trim();
+  const selectedKind = String(formData.get('kind') || 'all');
+  state.mediaSearchQuery = query;
+  state.mediaSearchKind = ['gif', 'picture', 'all'].includes(selectedKind) ? selectedKind : 'all';
+  state.mediaSearchLoading = true;
+  renderSafeMediaPicker(kind);
+  try {
+    const data = await api(`/api/media-search?q=${encodeURIComponent(query)}&kind=${encodeURIComponent(state.mediaSearchKind)}`);
+    state.mediaSearchResults = Array.isArray(data.items) ? data.items : [];
+    state.mediaSearchWarnings = Array.isArray(data.warnings) ? data.warnings.filter(Boolean) : [];
+    if (!state.mediaSearchResults.length && !state.mediaSearchWarnings.length) {
+      state.mediaSearchWarnings = ['Ingen resultater. Prøv et andet søgeord.'];
+    }
+  } catch (error) {
+    state.mediaSearchResults = [];
+    state.mediaSearchWarnings = [error.message];
+  } finally {
+    state.mediaSearchLoading = false;
+    renderSafeMediaPicker(kind);
+  }
 }
 
 const REACTION_EMOJIS = ['👍', '😂', '🔥', '💀', '❤️'];
@@ -626,6 +824,7 @@ if (mobileMenuBtn) {
 }
 
 function forceLocalLogout(message = 'Du er blevet logget ud.') {
+  cleanupCall();
   if (state.socket) {
     state.socket.disconnect();
     state.socket = null;
@@ -1196,7 +1395,7 @@ function openMessageActionPopup(type, messageId) {
       </div>
 
       <div class="message-action-preview">
-        ${type === 'global' ? renderTextWithMentions(message.text) : directMessageBodyHtml(message)}
+        ${messageBodyHtml(message)}
       </div>
 
       <div class="message-action-section-title">Vælg en reaktion</div>
@@ -1298,14 +1497,16 @@ $('#globalMessageForm').addEventListener('submit', async (event) => {
   event.preventDefault();
   const input = $('#globalMessageInput');
   const text = input.value.trim();
-  if (!text) return;
 
   try {
+    const attachment = buildImageAttachment('global');
+    if (!text && !attachment) return;
     const data = await api('/api/global/messages', {
       method: 'POST',
-      body: JSON.stringify({ text })
+      body: JSON.stringify({ text, attachment })
     });
     input.value = '';
+    clearImageSelection('global');
     upsertGlobalMessage(data.message);
     renderGlobalMessages({ forceBottom: true });
   } catch (error) {
@@ -1390,6 +1591,36 @@ if (messagesList) {
   });
 }
 
+if (globalMediaPickerBtn) globalMediaPickerBtn.addEventListener('click', () => {
+  globalMediaPicker?.classList.toggle('hidden');
+  renderSafeMediaPicker('global');
+});
+if (privateMediaPickerBtn) privateMediaPickerBtn.addEventListener('click', () => {
+  privateMediaPicker?.classList.toggle('hidden');
+  renderSafeMediaPicker('private');
+});
+document.addEventListener('submit', (event) => {
+  const form = event.target.closest('[data-media-search-form]');
+  if (!form) return;
+  event.preventDefault();
+  const kind = form.dataset.mediaSearchForm === 'private' ? 'private' : 'global';
+  searchWebMedia(kind, new FormData(form));
+});
+
+document.addEventListener('click', (event) => {
+  const mediaButton = event.target.closest('[data-safe-media-id]');
+  if (mediaButton) {
+    const kind = mediaButton.dataset.safeMediaKind === 'private' ? 'private' : 'global';
+    if (kind === 'private') state.selectedPrivateMediaId = mediaButton.dataset.safeMediaId || '';
+    else state.selectedGlobalMediaId = mediaButton.dataset.safeMediaId || '';
+    updateImagePreview(kind);
+    renderSafeMediaPicker(kind);
+    (kind === 'private' ? privateMediaPicker : globalMediaPicker)?.classList.add('hidden');
+    return;
+  }
+  const clearButton = event.target.closest('[data-clear-image]');
+  if (clearButton) clearImageSelection(clearButton.dataset.clearImage);
+});
 
 let userSearchTimer = null;
 $('#userSearch').addEventListener('input', () => {
@@ -1404,6 +1635,7 @@ $('#closeChatBtn').addEventListener('click', () => {
     input.dataset.chatUserId = '';
     input.value = '';
   }
+  clearImageSelection('private');
 
   state.activeChatUser = null;
   state.activeMessages = [];
@@ -1418,15 +1650,24 @@ $('#messageInput').addEventListener('input', () => {
   if (state.socket) state.socket.emit('typing', { to: state.activeChatUser.id });
 });
 
-function sendPrivateMessage(text = '') {
+async function sendPrivateMessage(text = '') {
   const input = $('#messageInput');
   const cleanMessageText = String(text || '').trim();
-  if (!cleanMessageText || !state.socket || !state.activeChatUser) return;
+  if (!state.socket || !state.activeChatUser) return;
+
+  let attachment = null;
+  try {
+    attachment = buildImageAttachment('private');
+  } catch (error) {
+    showToast(error.message);
+    return;
+  }
+  if (!cleanMessageText && !attachment) return;
 
   const to = state.activeChatUser.id;
   if (input) state.chatDrafts[to] = input.value;
 
-  state.socket.emit('private-message', { to, text: cleanMessageText }, (response) => {
+  state.socket.emit('private-message', { to, text: cleanMessageText, attachment }, (response) => {
     if (!response?.ok) {
       showToast(response?.error || 'Kunne ikke sende beskeden.');
       return;
@@ -1434,13 +1675,14 @@ function sendPrivateMessage(text = '') {
 
     if (state.activeChatUser?.id === to && input) input.value = '';
     state.chatDrafts[to] = '';
+    clearImageSelection('private');
   });
 }
 
 $('#messageForm').addEventListener('submit', (event) => {
   event.preventDefault();
   const input = $('#messageInput');
-  sendPrivateMessage(input.value);
+  sendPrivateMessage(input.value).catch((error) => showToast(error.message));
 });
 
 if (messagesList) {
@@ -1639,7 +1881,7 @@ function renderGlobalChatMessage(message) {
           <strong>${escapeHtml(authorName)}</strong>
           <span>@${escapeHtml(message.author?.username || 'ukendt')} · ${escapeHtml(formatTime(message.createdAt))}</span>
         </div>
-        <p>${renderTextWithMentions(message.text)}</p>
+        <div class="message-body">${messageBodyHtml(message)}</div>
         ${renderReactionSummary(message.reactions)}
       </div>
     </article>
@@ -2362,13 +2604,221 @@ async function loadGlobalMessages() {
 }
 
 async function loadEverything() {
-  await Promise.all([loadGlobalMessages(), loadUsers($('#userSearch').value), loadNotifications().catch(() => {}), loadFriends().catch(() => {}), loadHome().catch(() => {}), loadLeaderboard().catch(() => {}), loadEvents().catch(() => {}), loadPolls().catch(() => {})]);
+  await Promise.all([loadMediaLibrary().catch(() => {}), loadGlobalMessages(), loadUsers($('#userSearch').value), loadNotifications().catch(() => {}), loadFriends().catch(() => {}), loadHome().catch(() => {}), loadLeaderboard().catch(() => {}), loadEvents().catch(() => {}), loadPolls().catch(() => {})]);
   if (state.me?.isAdmin) {
     await loadAdminDashboard();
     renderAdminMessageViewer();
     renderAdminReportViewer();
   }
 }
+
+const CALL_ICE_SERVERS = [{ urls: 'stun:stun.l.google.com:19302' }];
+
+function callPeerName(peerIdOrUser) {
+  if (!peerIdOrUser) return 'Ukendt bruger';
+  if (typeof peerIdOrUser === 'object') return peerIdOrUser.name || peerIdOrUser.username || 'Ukendt bruger';
+  const id = String(peerIdOrUser);
+  if (state.activeChatUser?.id === id) return state.activeChatUser.name;
+  return state.users.find((user) => user.id === id)?.name || 'Ukendt bruger';
+}
+
+function setCallUi({ title, status, incoming = false, active = false, kind = 'voice', peerName = '' } = {}) {
+  if (!callOverlay) return;
+  callOverlay.classList.remove('hidden');
+  if (callEyebrow) callEyebrow.textContent = kind === 'video' ? 'TSN videoopkald' : 'TSN stemmeopkald';
+  if (callTitle) callTitle.textContent = title || 'Opkald';
+  if (callStatusText) callStatusText.textContent = status || '';
+  if (incomingCallActions) incomingCallActions.classList.toggle('hidden', !incoming);
+  if (activeCallActions) activeCallActions.classList.toggle('hidden', !active);
+  if (remoteAudioAvatar) remoteAudioAvatar.textContent = initials(peerName || 'TSN');
+  if (localAudioAvatar) localAudioAvatar.textContent = initials(state.me?.name || 'Mig');
+  callOverlay.classList.toggle('is-video-call', kind === 'video');
+}
+
+function closeCallUi() {
+  if (callOverlay) callOverlay.classList.add('hidden');
+  if (incomingCallActions) incomingCallActions.classList.add('hidden');
+  if (activeCallActions) activeCallActions.classList.add('hidden');
+  if (callStatusText) callStatusText.textContent = '';
+}
+
+async function getCallMedia(kind) {
+  if (!navigator.mediaDevices?.getUserMedia) throw new Error('Din browser understøtter ikke opkald.');
+  return navigator.mediaDevices.getUserMedia({ audio: true, video: kind === 'video' });
+}
+
+function setLocalStream(stream) {
+  if (localVideo) {
+    localVideo.srcObject = stream || null;
+    localVideo.classList.toggle('hidden', !stream || !stream.getVideoTracks().some((track) => track.enabled));
+  }
+}
+
+function setRemoteStream(stream) {
+  if (remoteVideo) {
+    remoteVideo.srcObject = stream || null;
+    remoteVideo.classList.toggle('hidden', !stream || !stream.getVideoTracks().length);
+  }
+}
+
+function cleanupCall({ notify = false, reason = 'Opkald afsluttet.' } = {}) {
+  const current = state.call;
+  if (notify && current?.peerId && state.socket) {
+    state.socket.emit('call-ended', { to: current.peerId, callId: current.callId, reason });
+  }
+  try { current?.pc?.close(); } catch {}
+  current?.localStream?.getTracks().forEach((track) => track.stop());
+  setLocalStream(null);
+  setRemoteStream(null);
+  state.call = null;
+  closeCallUi();
+}
+
+function createCallPeer(peerId, callId) {
+  const pc = new RTCPeerConnection({ iceServers: CALL_ICE_SERVERS });
+  pc.onicecandidate = (event) => {
+    if (event.candidate && state.socket) {
+      state.socket.emit('call-signal', { to: peerId, callId, signal: { candidate: event.candidate } });
+    }
+  };
+  pc.ontrack = (event) => {
+    const stream = event.streams?.[0];
+    if (stream) setRemoteStream(stream);
+  };
+  pc.onconnectionstatechange = () => {
+    if (!state.call || state.call.callId !== callId) return;
+    const stateText = pc.connectionState;
+    if (callStatusText && stateText) callStatusText.textContent = stateText === 'connected' ? 'Forbundet' : `Status: ${stateText}`;
+    if (['failed', 'closed', 'disconnected'].includes(stateText)) {
+      if (stateText === 'failed') showToast('Opkaldet mistede forbindelsen.');
+    }
+  };
+  return pc;
+}
+
+async function startCall(kind = 'voice') {
+  if (!state.socket || !state.activeChatUser) return showToast('Åbn en privat chat først.');
+  if (!state.activeChatUser.online) return showToast('Brugeren skal være online for at ringe.');
+  cleanupCall();
+  const peer = state.activeChatUser;
+  const callId = `call_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+  try {
+    const localStream = await getCallMedia(kind);
+    setLocalStream(localStream);
+    const pc = createCallPeer(peer.id, callId);
+    localStream.getTracks().forEach((track) => pc.addTrack(track, localStream));
+    state.call = { callId, kind, peerId: peer.id, peer, pc, localStream, incoming: false, active: false };
+    setCallUi({ title: `Ringer til ${peer.name}`, status: 'Venter på svar...', kind, peerName: peer.name, active: true });
+    const offer = await pc.createOffer();
+    await pc.setLocalDescription(offer);
+    state.socket.emit('call-user', { to: peer.id, kind, callId, offer }, (response) => {
+      if (!response?.ok) {
+        showToast(response?.error || 'Kunne ikke starte opkald.');
+        cleanupCall();
+      }
+    });
+  } catch (error) {
+    showToast(error?.message || 'Kunne ikke starte opkald.');
+    cleanupCall();
+  }
+}
+
+function showIncomingCall(payload) {
+  if (!payload?.from?.id || !payload.callId) return;
+  if (state.call) {
+    state.socket?.emit('call-response', { to: payload.from.id, callId: payload.callId, accepted: false, reason: 'Optaget' });
+    return;
+  }
+  state.call = { callId: payload.callId, kind: payload.kind || 'voice', peerId: payload.from.id, peer: payload.from, offer: payload.offer, incoming: true, active: false, pc: null, localStream: null };
+  setCallUi({ title: `${payload.from.name || 'En bruger'} ringer`, status: 'Indgående opkald', incoming: true, kind: payload.kind || 'voice', peerName: payload.from.name });
+}
+
+async function acceptIncomingCall() {
+  const current = state.call;
+  if (!current?.incoming || !current.offer) return;
+  try {
+    const localStream = await getCallMedia(current.kind);
+    setLocalStream(localStream);
+    const pc = createCallPeer(current.peerId, current.callId);
+    localStream.getTracks().forEach((track) => pc.addTrack(track, localStream));
+    current.pc = pc;
+    current.localStream = localStream;
+    current.active = true;
+    await pc.setRemoteDescription(new RTCSessionDescription(current.offer));
+    const answer = await pc.createAnswer();
+    await pc.setLocalDescription(answer);
+    state.socket.emit('call-response', { to: current.peerId, callId: current.callId, accepted: true, answer });
+    setCallUi({ title: `Opkald med ${callPeerName(current.peer)}`, status: 'Forbinder...', active: true, kind: current.kind, peerName: callPeerName(current.peer) });
+  } catch (error) {
+    showToast(error?.message || 'Kunne ikke acceptere opkald.');
+    state.socket?.emit('call-response', { to: current.peerId, callId: current.callId, accepted: false, reason: 'Kunne ikke starte medie' });
+    cleanupCall();
+  }
+}
+
+function declineIncomingCall() {
+  const current = state.call;
+  if (current?.incoming && current.peerId) {
+    state.socket?.emit('call-response', { to: current.peerId, callId: current.callId, accepted: false, reason: 'Afvist' });
+  }
+  cleanupCall();
+}
+
+async function handleCallResponse(payload) {
+  const current = state.call;
+  if (!current || current.callId !== payload?.callId) return;
+  if (!payload.accepted) {
+    showToast(payload.reason || 'Opkaldet blev afvist.');
+    cleanupCall();
+    return;
+  }
+  try {
+    if (payload.answer && current.pc) {
+      await current.pc.setRemoteDescription(new RTCSessionDescription(payload.answer));
+      current.active = true;
+      setCallUi({ title: `Opkald med ${callPeerName(current.peerId)}`, status: 'Forbinder...', active: true, kind: current.kind, peerName: callPeerName(current.peerId) });
+    }
+  } catch (error) {
+    showToast('Kunne ikke forbinde opkaldet.');
+    cleanupCall({ notify: true, reason: 'Teknisk fejl' });
+  }
+}
+
+async function handleCallSignal(payload) {
+  const current = state.call;
+  if (!current || current.callId !== payload?.callId || !current.pc || !payload.signal) return;
+  try {
+    if (payload.signal.candidate) await current.pc.addIceCandidate(new RTCIceCandidate(payload.signal.candidate));
+  } catch (error) {
+    console.warn('Call signal failed:', error);
+  }
+}
+
+function toggleCallMute() {
+  const current = state.call;
+  const audio = current?.localStream?.getAudioTracks?.()[0];
+  if (!audio) return;
+  audio.enabled = !audio.enabled;
+  if (muteCallBtn) muteCallBtn.textContent = audio.enabled ? 'Mute mic' : 'Unmute mic';
+}
+
+function toggleCallCamera() {
+  const current = state.call;
+  const video = current?.localStream?.getVideoTracks?.()[0];
+  if (!video) return;
+  video.enabled = !video.enabled;
+  if (cameraCallBtn) cameraCallBtn.textContent = video.enabled ? 'Slå kamera fra' : 'Slå kamera til';
+  setLocalStream(current.localStream);
+}
+
+if (startVoiceCallBtn) startVoiceCallBtn.addEventListener('click', () => startCall('voice'));
+if (startVideoCallBtn) startVideoCallBtn.addEventListener('click', () => startCall('video'));
+if (acceptCallBtn) acceptCallBtn.addEventListener('click', acceptIncomingCall);
+if (declineCallBtn) declineCallBtn.addEventListener('click', declineIncomingCall);
+if (endCallBtn) endCallBtn.addEventListener('click', () => cleanupCall({ notify: true, reason: 'Opkald afsluttet' }));
+if (closeCallBtn) closeCallBtn.addEventListener('click', () => cleanupCall({ notify: true, reason: 'Opkald lukket' }));
+if (muteCallBtn) muteCallBtn.addEventListener('click', toggleCallMute);
+if (cameraCallBtn) cameraCallBtn.addEventListener('click', toggleCallCamera);
 
 function connectSocket() {
   if (state.socket) state.socket.disconnect();
@@ -2527,6 +2977,23 @@ function connectSocket() {
       loadPolls().catch(() => {});
       loadLeaderboard().catch(() => {});
     }
+  });
+
+  state.socket.on('incoming-call', (payload) => {
+    showIncomingCall(payload);
+  });
+
+  state.socket.on('call-response', (payload) => {
+    handleCallResponse(payload).catch(() => showToast('Opkaldet kunne ikke forbindes.'));
+  });
+
+  state.socket.on('call-signal', (payload) => {
+    handleCallSignal(payload).catch(() => {});
+  });
+
+  state.socket.on('call-ended', ({ reason }) => {
+    if (state.call) showToast(reason || 'Opkaldet blev afsluttet.');
+    cleanupCall();
   });
 
   state.socket.on('connect_error', (error) => {
