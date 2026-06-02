@@ -326,3 +326,8 @@ TSN_GIPHY_RATING=pg-13
 TSN_GIPHY_LANG=da
 TSN_PIXABAY_API_KEY=your-pixabay-key
 ```
+
+
+## TSN V1.5.16 — Private Message db Fix
+
+Fixes `ReferenceError: db is not defined` in the private-message route. The `/api/messages/:userId` route now uses `const db = req.db` consistently, so GIF/photo search and private chat refreshes no longer crash the server after using the media picker.

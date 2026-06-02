@@ -3612,13 +3612,14 @@ app.all(['/api/posts', '/api/posts/*', '/api/rooms', '/api/rooms/*'], requireAut
 });
 
 app.get('/api/messages/:userId', requireAuth, async (req, res) => {
-  const other = req.db.users.find((user) => user.id === req.params.userId);
+  const db = req.db;
+  const other = db.users.find((user) => user.id === req.params.userId);
   if (!other) return res.status(404).json({ error: 'Brugeren blev ikke fundet.' });
 
   const key = conversationId(req.user.id, other.id);
   await markConversationRead(req.db, req.user.id, other.id);
 
-  const messages = req.db.messages
+  const messages = db.messages
     .filter((message) => message.conversationId === key && !isMessageHiddenFor(message, req.user.id))
     .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt))
     .map((message) => publicMessage(message, req.user.id, db.users));
