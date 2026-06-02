@@ -1742,15 +1742,39 @@ if (privateMediaPickerBtn) privateMediaPickerBtn.addEventListener('click', () =>
   privateMediaPicker?.classList.toggle('hidden');
   renderSafeMediaPicker('private');
 });
+function runMediaSearchFromPanel(panel) {
+  if (!panel) return;
+  const kind = panel.dataset.mediaSearchForm === 'private' ? 'private' : 'global';
+  const data = new FormData();
+  const queryInput = panel.querySelector('input[name="q"]');
+  const kindSelect = panel.querySelector('select[name="kind"]');
+  data.set('q', queryInput?.value || '');
+  data.set('kind', kindSelect?.value || 'all');
+  searchWebMedia(kind, data);
+}
+
 document.addEventListener('submit', (event) => {
   const form = event.target.closest('[data-media-search-form]');
   if (!form) return;
   event.preventDefault();
-  const kind = form.dataset.mediaSearchForm === 'private' ? 'private' : 'global';
-  searchWebMedia(kind, new FormData(form));
+  runMediaSearchFromPanel(form);
+});
+
+document.addEventListener('keydown', (event) => {
+  if (event.key !== 'Enter') return;
+  const panel = event.target.closest('[data-media-search-form]');
+  if (!panel) return;
+  event.preventDefault();
+  runMediaSearchFromPanel(panel);
 });
 
 document.addEventListener('click', (event) => {
+  const searchButton = event.target.closest('[data-media-search-submit]');
+  if (searchButton) {
+    event.preventDefault();
+    runMediaSearchFromPanel(searchButton.closest('[data-media-search-form]'));
+    return;
+  }
   const mediaButton = event.target.closest('[data-safe-media-id]');
   if (mediaButton) {
     const kind = mediaButton.dataset.safeMediaKind === 'private' ? 'private' : 'global';

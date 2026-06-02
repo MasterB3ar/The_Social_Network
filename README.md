@@ -331,3 +331,10 @@ TSN_PIXABAY_API_KEY=your-pixabay-key
 ## TSN V1.5.16 — Private Message db Fix
 
 Fixes `ReferenceError: db is not defined` in the private-message route. The `/api/messages/:userId` route now uses `const db = req.db` consistently, so GIF/photo search and private chat refreshes no longer crash the server after using the media picker.
+
+
+## TSN V1.5.17 — Media Search Button Fix
+
+- Fixed the `Søg` button in the GIF/photo media picker.
+- The picker no longer uses a nested form inside the chat send form.
+- Pressing `Søg` or Enter now correctly searches GIPHY/Pixabay.

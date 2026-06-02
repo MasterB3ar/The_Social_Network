@@ -1,6 +1,6 @@
 {
   "name": "the-social-network-tsn",
-  "version": "1.5.16",
+  "version": "1.5.17",
   "description": "TSN Activity + Events update with larger safe media pictures and Verified AI admin visibility and private voice/video calls.",
   "main": "server.js",
   "scripts": {
