@@ -234,3 +234,27 @@ If no API keys are set, the built-in safe TSN media library still works.
 Private chats now include voice and video call buttons. Users can call each other when both users are online. Calls use WebRTC in the browser and Socket.IO only for signalling.
 
 Important: calls require HTTPS and microphone/camera permission. No new environment variables are needed.
+
+
+## TSN V1.5.5 — Media Display + Click Fix
+
+- Fixed `WarnButton is not defined` when clicking chat/private messages.
+- Fixed picture/GIF display sizing in chat bubbles and message popups.
+- Fixed media picker thumbnails so safe media and web media look cleaner.
+- No new environment variables are required.
+
+
+## TSN V1.5.6 — Call Fallback Fix
+
+- Opkald lukker ikke længere automatisk, når getUserMedia() fejler.
+- Videoopkald falder tilbage til lyd, hvis kameraet fejler.
+- Hvis både mikrofon/kamera fejler, fortsætter opkaldet i fallback-mode uden lokal lyd/video.
+- Opkaldsvinduet viser nu den rigtige bruger i stedet for “Den anden person”.
+
+
+## TSN V1.5.7 — WarnButton Picture Click Fix
+
+- Fixed the remaining `warnButton is not defined` / `Can't find variable: warnButton` error when clicking picture/media messages.
+- Added a defensive fallback for older click-handler paths.
+- Added a versioned `/app.js?v=1.5.7` script URL so browsers do not keep using an old cached frontend file.
+- No new environment variables.

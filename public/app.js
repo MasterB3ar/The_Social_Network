@@ -1,3 +1,6 @@
+// Defensive fallback for older/cached click-handler code paths.
+var warnButton = null;
+
 const state = {
   token: localStorage.getItem('tsn_token'),
   me: null,
@@ -94,6 +97,7 @@ const callStatusText = $('#callStatusText');
 const localVideo = $('#localVideo');
 const remoteVideo = $('#remoteVideo');
 const remoteAudioAvatar = $('#remoteAudioAvatar');
+const remoteCallName = $('#remoteCallName');
 const localAudioAvatar = $('#localAudioAvatar');
 const incomingCallActions = $('#incomingCallActions');
 const activeCallActions = $('#activeCallActions');
@@ -1204,7 +1208,7 @@ if (adminUsersList) {
     const muteButton = event.target.closest('[data-admin-mute]');
     const unmuteButton = event.target.closest('[data-admin-unmute]');
     const deleteButton = event.target.closest('[data-admin-delete-user]');
-    const warnButton = event.target.closest('[data-admin-warn]');
+    const adminWarnButton = event.target.closest('[data-admin-warn]');
     const badgesButton = event.target.closest('[data-admin-badges]');
 
     try {
@@ -1280,8 +1284,8 @@ if (adminUsersList) {
         showToast('Mute fjernet');
       }
 
-      if (warnButton) {
-        const userId = warnButton.dataset.adminWarn;
+      if (adminWarnButton) {
+        const userId = adminWarnButton.dataset.adminWarn;
         const user = state.adminUsers.find((candidate) => candidate.id === userId);
         const reason = prompt(`Advar ${user?.name || 'denne bruger'}? Skriv grund:`, 'Regelbrud');
         if (reason === null) return;
@@ -1708,49 +1712,6 @@ if (messagesList) {
       if (reportButton) {
         await createReport('direct-message', { messageId: reportButton.dataset.reportDirectMessage });
         return;
-      }
-
-      if (warnButton) {
-        const userId = warnButton.dataset.adminWarn;
-        const user = state.adminUsers.find((candidate) => candidate.id === userId);
-        const reason = prompt(`Advar ${user?.name || 'denne bruger'}? Skriv grund:`, 'Regelbrud');
-        if (reason === null) return;
-        const data = await api(`/api/admin/users/${userId}/warn`, {
-          method: 'POST',
-          body: JSON.stringify({ reason })
-        });
-        upsertAdminUser(data.user);
-        if (data.stats) state.adminStats = data.stats;
-        renderAdminUsers();
-        renderAdminStats();
-        await loadUsers($('#userSearch').value);
-        showToast('Advarsel sendt');
-      }
-
-      if (badgesButton) {
-        const userId = badgesButton.dataset.adminBadges;
-        const user = state.adminUsers.find((candidate) => candidate.id === userId);
-        const customBadges = (Array.isArray(user?.badges) ? user.badges : [])
-          .map((badge) => badge.label)
-          .filter((label) => label && label.toLowerCase() !== 'member');
-        const value = prompt(
-          `Særlige badges til ${user?.name || 'denne bruger'} (komma-separeret). Lad feltet være tomt for kun Member:`,
-          customBadges.join(', ')
-        );
-        if (value === null) return;
-        const badges = value.split(',').map((badge) => badge.trim()).filter(Boolean);
-        const data = await api(`/api/admin/users/${userId}/badges`, {
-          method: 'PUT',
-          body: JSON.stringify({ badges })
-        });
-        upsertAdminUser(data.user);
-        if (data.stats) state.adminStats = data.stats;
-        renderAdminUsers();
-        renderAdminStats();
-        await loadUsers($('#userSearch').value);
-        if (data.user?.id === state.me?.id) state.me = { ...state.me, ...data.user };
-        renderMe();
-        showToast('Badges opdateret');
       }
 
       if (deleteButton) {
@@ -2631,6 +2592,7 @@ function setCallUi({ title, status, incoming = false, active = false, kind = 'vo
   if (incomingCallActions) incomingCallActions.classList.toggle('hidden', !incoming);
   if (activeCallActions) activeCallActions.classList.toggle('hidden', !active);
   if (remoteAudioAvatar) remoteAudioAvatar.textContent = initials(peerName || 'TSN');
+  if (remoteCallName) remoteCallName.textContent = peerName || 'Ukendt bruger';
   if (localAudioAvatar) localAudioAvatar.textContent = initials(state.me?.name || 'Mig');
   callOverlay.classList.toggle('is-video-call', kind === 'video');
 }
@@ -2642,9 +2604,47 @@ function closeCallUi() {
   if (callStatusText) callStatusText.textContent = '';
 }
 
+function emptyCallMediaResult(reason) {
+  return {
+    stream: new MediaStream(),
+    fallback: true,
+    fallbackReason: reason || 'Mikrofon/kamera kunne ikke åbnes. Opkaldet fortsætter uden lokal lyd/video.',
+    hasAudio: false,
+    hasVideo: false
+  };
+}
+
 async function getCallMedia(kind) {
-  if (!navigator.mediaDevices?.getUserMedia) throw new Error('Din browser understøtter ikke opkald.');
-  return navigator.mediaDevices.getUserMedia({ audio: true, video: kind === 'video' });
+  const wantsVideo = kind === 'video';
+  if (!navigator.mediaDevices?.getUserMedia) {
+    return emptyCallMediaResult('Din browser gav ikke adgang til mikrofon/kamera. Opkaldet fortsætter i fallback-mode.');
+  }
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: wantsVideo });
+    return {
+      stream,
+      fallback: false,
+      fallbackReason: '',
+      hasAudio: stream.getAudioTracks().length > 0,
+      hasVideo: stream.getVideoTracks().length > 0
+    };
+  } catch (firstError) {
+    if (wantsVideo) {
+      try {
+        const audioOnly = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+        return {
+          stream: audioOnly,
+          fallback: true,
+          fallbackReason: 'Kameraet kunne ikke åbnes. Opkaldet fortsætter som lydopkald.',
+          hasAudio: audioOnly.getAudioTracks().length > 0,
+          hasVideo: false
+        };
+      } catch (secondError) {
+        return emptyCallMediaResult('Mikrofon/kamera blev blokeret eller kunne ikke åbnes. Opkaldet fortsætter uden lokal lyd/video.');
+      }
+    }
+    return emptyCallMediaResult('Mikrofonen blev blokeret eller kunne ikke åbnes. Opkaldet fortsætter uden lokal lyd.');
+  }
 }
 
 function setLocalStream(stream) {
@@ -2674,8 +2674,21 @@ function cleanupCall({ notify = false, reason = 'Opkald afsluttet.' } = {}) {
   closeCallUi();
 }
 
-function createCallPeer(peerId, callId) {
+function createCallPeer(peerId, callId, { initiator = false } = {}) {
   const pc = new RTCPeerConnection({ iceServers: CALL_ICE_SERVERS });
+  if (initiator) {
+    try {
+      const channel = pc.createDataChannel('tsn-call-control');
+      channel.onopen = () => {};
+      channel.onerror = () => {};
+    } catch {}
+  }
+  pc.ondatachannel = (event) => {
+    if (event.channel) {
+      event.channel.onmessage = () => {};
+      event.channel.onerror = () => {};
+    }
+  };
   pc.onicecandidate = (event) => {
     if (event.candidate && state.socket) {
       state.socket.emit('call-signal', { to: peerId, callId, signal: { candidate: event.candidate } });
@@ -2703,12 +2716,14 @@ async function startCall(kind = 'voice') {
   const peer = state.activeChatUser;
   const callId = `call_${Date.now()}_${Math.random().toString(16).slice(2)}`;
   try {
-    const localStream = await getCallMedia(kind);
+    const media = await getCallMedia(kind);
+    const localStream = media.stream;
     setLocalStream(localStream);
-    const pc = createCallPeer(peer.id, callId);
+    const pc = createCallPeer(peer.id, callId, { initiator: true });
     localStream.getTracks().forEach((track) => pc.addTrack(track, localStream));
-    state.call = { callId, kind, peerId: peer.id, peer, pc, localStream, incoming: false, active: false };
-    setCallUi({ title: `Ringer til ${peer.name}`, status: 'Venter på svar...', kind, peerName: peer.name, active: true });
+    state.call = { callId, kind, peerId: peer.id, peer, pc, localStream, mediaFallback: media.fallback, incoming: false, active: false };
+    if (media.fallback) showToast(media.fallbackReason);
+    setCallUi({ title: `Ringer til ${peer.name}`, status: media.fallback ? `${media.fallbackReason} Venter på svar...` : 'Venter på svar...', kind, peerName: peer.name, active: true });
     const offer = await pc.createOffer();
     await pc.setLocalDescription(offer);
     state.socket.emit('call-user', { to: peer.id, kind, callId, offer }, (response) => {
@@ -2737,21 +2752,24 @@ async function acceptIncomingCall() {
   const current = state.call;
   if (!current?.incoming || !current.offer) return;
   try {
-    const localStream = await getCallMedia(current.kind);
+    const media = await getCallMedia(current.kind);
+    const localStream = media.stream;
     setLocalStream(localStream);
     const pc = createCallPeer(current.peerId, current.callId);
     localStream.getTracks().forEach((track) => pc.addTrack(track, localStream));
     current.pc = pc;
     current.localStream = localStream;
+    current.mediaFallback = media.fallback;
     current.active = true;
+    if (media.fallback) showToast(media.fallbackReason);
     await pc.setRemoteDescription(new RTCSessionDescription(current.offer));
     const answer = await pc.createAnswer();
     await pc.setLocalDescription(answer);
-    state.socket.emit('call-response', { to: current.peerId, callId: current.callId, accepted: true, answer });
-    setCallUi({ title: `Opkald med ${callPeerName(current.peer)}`, status: 'Forbinder...', active: true, kind: current.kind, peerName: callPeerName(current.peer) });
+    state.socket.emit('call-response', { to: current.peerId, callId: current.callId, accepted: true, answer, mediaFallback: media.fallback });
+    setCallUi({ title: `Opkald med ${callPeerName(current.peer)}`, status: media.fallback ? `${media.fallbackReason} Forbinder...` : 'Forbinder...', active: true, kind: current.kind, peerName: callPeerName(current.peer) });
   } catch (error) {
     showToast(error?.message || 'Kunne ikke acceptere opkald.');
-    state.socket?.emit('call-response', { to: current.peerId, callId: current.callId, accepted: false, reason: 'Kunne ikke starte medie' });
+    state.socket?.emit('call-response', { to: current.peerId, callId: current.callId, accepted: false, reason: 'Teknisk fejl' });
     cleanupCall();
   }
 }
@@ -2776,7 +2794,7 @@ async function handleCallResponse(payload) {
     if (payload.answer && current.pc) {
       await current.pc.setRemoteDescription(new RTCSessionDescription(payload.answer));
       current.active = true;
-      setCallUi({ title: `Opkald med ${callPeerName(current.peerId)}`, status: 'Forbinder...', active: true, kind: current.kind, peerName: callPeerName(current.peerId) });
+      setCallUi({ title: `Opkald med ${callPeerName(current.peer)}`, status: payload.mediaFallback ? `${callPeerName(current.peer)} bruger fallback uden fuld mikrofon/kamera. Forbinder...` : 'Forbinder...', active: true, kind: current.kind, peerName: callPeerName(current.peer) });
     }
   } catch (error) {
     showToast('Kunne ikke forbinde opkaldet.');
@@ -2797,7 +2815,7 @@ async function handleCallSignal(payload) {
 function toggleCallMute() {
   const current = state.call;
   const audio = current?.localStream?.getAudioTracks?.()[0];
-  if (!audio) return;
+  if (!audio) return showToast('Der er ingen mikrofon aktiv i dette opkald.');
   audio.enabled = !audio.enabled;
   if (muteCallBtn) muteCallBtn.textContent = audio.enabled ? 'Mute mic' : 'Unmute mic';
 }
@@ -2805,7 +2823,7 @@ function toggleCallMute() {
 function toggleCallCamera() {
   const current = state.call;
   const video = current?.localStream?.getVideoTracks?.()[0];
-  if (!video) return;
+  if (!video) return showToast('Der er intet kamera aktivt i dette opkald.');
   video.enabled = !video.enabled;
   if (cameraCallBtn) cameraCallBtn.textContent = video.enabled ? 'Slå kamera fra' : 'Slå kamera til';
   setLocalStream(current.localStream);
