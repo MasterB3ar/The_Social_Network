@@ -85,13 +85,15 @@
           <span class="nav-icon">👤</span>
           <span class="nav-label">Din profil</span>
         </button>
-        <button class="app-nav-button" type="button" data-app-nav="global">
+        <button class="app-nav-button nav-button-with-badge" type="button" data-app-nav="global">
           <span class="nav-icon">🌐</span>
           <span class="nav-label">Global chat</span>
+          <span id="globalMentionBadge" class="nav-badge hidden">0</span>
         </button>
-        <button class="app-nav-button" type="button" data-app-nav="private">
+        <button class="app-nav-button nav-button-with-badge" type="button" data-app-nav="private">
           <span class="nav-icon">💬</span>
           <span class="nav-label">Privat chat</span>
+          <span id="privateUnreadBadge" class="nav-badge hidden">0</span>
         </button>
         <button class="app-nav-button" type="button" data-app-nav="friends">
           <span class="nav-icon">🤝</span>
@@ -100,11 +102,6 @@
         <button class="app-nav-button" type="button" data-app-nav="events">
           <span class="nav-icon">🏆</span>
           <span class="nav-label">Aktivitet</span>
-        </button>
-        <button class="app-nav-button nav-button-with-badge" type="button" data-app-nav="notifications">
-          <span class="nav-icon">🔔</span>
-          <span class="nav-label">Notifikationer</span>
-          <span id="notificationBadge" class="nav-badge hidden">0</span>
         </button>
         <button id="adminNavButton" class="app-nav-button hidden" type="button" data-app-nav="admin">
           <span class="nav-icon">🛡️</span>
@@ -287,7 +284,7 @@
           </div>
         </section>
 
-        <section id="notificationsPanel" class="growth-panel card hidden">
+        <section id="notificationsPanel" class="growth-panel card hidden legacy-notifications-panel" aria-hidden="true">
           <div class="section-heading compact-heading">
             <div>
               <p class="eyebrow mini">Notifikationer</p>
@@ -406,7 +403,7 @@
     </form>
   </section>
 
-  <section id="callOverlay" class="call-overlay hidden" aria-modal="true" role="dialog">
+  <section id="callOverlay" class="call-overlay hidden" role="dialog">
     <div class="call-card card">
       <div class="call-header">
         <div>
@@ -462,9 +459,10 @@
     </div>
   </section>
 
+  <div id="globalPingBanner" class="ping-banner hidden"></div>
   <div id="toast" class="toast hidden"></div>
 
   <script src="/socket.io/socket.io.js"></script>
-  <script src="/app.js?v=1.5.11"></script>
+  <script src="/app.js?v=1.5.13"></script>
 </body>
 </html>

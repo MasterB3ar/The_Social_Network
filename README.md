@@ -292,3 +292,13 @@ Admins can read private messages sent by users with the custom badge `Verified A
 - Privat chat går til bunden, når du selv sender en besked.
 - Hvis du læser ældre private beskeder, bliver din scroll-position bevaret, når nye beskeder/statusser opdateres.
 - Billeder/GIFs i privat chat stabiliserer scroll-positionen, når de loader færdigt.
+
+
+## TSN V1.5.13 — Call + Context Notifications Update
+
+- Incoming calls now play a small ringtone while the call is ringing.
+- Outgoing and incoming calls time out automatically after 10 seconds if no one answers.
+- The call window is now a floating overlay, so users can continue using TSN while in a call.
+- The old Notifications navigation tab has been removed.
+- Private-message notifications now appear as a red badge on Privat chat.
+- Global @mentions now appear as a red badge on Global chat and as a bottom banner saying who pinged you.

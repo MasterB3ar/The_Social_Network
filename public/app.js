@@ -23,6 +23,9 @@ const state = {
   friendOutgoing: [],
   notifications: [],
   unreadNotifications: 0,
+  privateUnreadTotal: 0,
+  globalMentionCount: 0,
+  lastGlobalPingBy: '',
   globalNewMessageCount: 0,
   globalChatHasOpened: false,
   globalChatNeedsBottomScroll: false,
@@ -38,7 +41,10 @@ const state = {
   mediaWebProviders: [],
   selectedGlobalMediaId: '',
   selectedPrivateMediaId: '',
-  call: null
+  call: null,
+  ringtone: null,
+  outgoingCallTimeout: null,
+  incomingCallTimeout: null
 };
 state.home = null;
 state.leaderboard = [];
@@ -75,6 +81,9 @@ const friendOutgoingList = $('#friendOutgoingList');
 const notificationsPanel = $('#notificationsPanel');
 const notificationsList = $('#notificationsList');
 const notificationBadge = $('#notificationBadge');
+const privateUnreadBadge = $('#privateUnreadBadge');
+const globalMentionBadge = $('#globalMentionBadge');
+const globalPingBanner = $('#globalPingBanner');
 const homePanel = $('#homePanel');
 const leaderboardList = $('#leaderboardList');
 const activityFeedList = $('#activityFeedList');
@@ -402,11 +411,60 @@ function friendActionForStatus(status) {
   return 'request';
 }
 
+function updateBadgeElement(element, count) {
+  if (!element) return;
+  const number = Math.max(0, Number(count) || 0);
+  element.classList.toggle('hidden', number <= 0);
+  element.textContent = number > 99 ? '99+' : String(number);
+}
+
+function calculatePrivateUnreadTotal() {
+  return state.users.reduce((sum, user) => sum + (Number(user.unreadCount) || 0), 0);
+}
+
+function updateContextBadges() {
+  state.privateUnreadTotal = calculatePrivateUnreadTotal();
+  updateBadgeElement(privateUnreadBadge, state.privateUnreadTotal);
+  updateBadgeElement(globalMentionBadge, state.globalMentionCount);
+  updateBadgeElement(notificationBadge, state.unreadNotifications);
+}
+
 function updateNotificationBadge() {
-  if (!notificationBadge) return;
-  const count = Math.max(0, Number(state.unreadNotifications) || 0);
-  notificationBadge.classList.toggle('hidden', count <= 0);
-  notificationBadge.textContent = count > 99 ? '99+' : String(count);
+  updateContextBadges();
+}
+
+function mentionsCurrentUser(message) {
+  if (!message || !state.me?.username) return false;
+  if (message.authorId === state.me.id) return false;
+  const text = String(message.text || message.body || '');
+  const username = String(state.me.username || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`(^|\\s)@${username}(?=\\b|$)`, 'i').test(text);
+}
+
+function showGlobalPingBanner(authorName) {
+  if (!globalPingBanner) {
+    showToast(`Du blev pinget i global chat af: ${authorName || 'en bruger'}`);
+    return;
+  }
+  globalPingBanner.innerHTML = `
+    <button class="ping-banner-button" type="button" data-open-pinged-global>
+      <span>🔔</span>
+      <strong>Du blev pinget i global chat af: ${escapeHtml(authorName || 'en bruger')}</strong>
+      <em>Tryk for at åbne</em>
+    </button>
+  `;
+  globalPingBanner.classList.remove('hidden');
+}
+
+function clearGlobalMentionBadge({ scroll = false } = {}) {
+  state.globalMentionCount = 0;
+  state.lastGlobalPingBy = '';
+  updateContextBadges();
+  if (globalPingBanner) globalPingBanner.classList.add('hidden');
+  if (scroll) {
+    switchAppView('global');
+    requestGlobalChatBottomOnOpen();
+  }
 }
 
 function renderProfilePreview() {
@@ -792,7 +850,7 @@ function showApp() {
 
 
 function switchAppView(view) {
-  const allowedViews = new Set(['home', 'profile', 'global', 'private', 'friends', 'events', 'notifications', 'admin']);
+  const allowedViews = new Set(['home', 'profile', 'global', 'private', 'friends', 'events', 'admin']);
   const previousView = appScreen.dataset.view || '';
   const nextView = allowedViews.has(view) ? view : 'global';
 
@@ -813,6 +871,7 @@ function switchAppView(view) {
   }
 
   if (activeView === 'global') {
+    clearGlobalMentionBadge();
     const firstOpen = !state.globalChatHasOpened;
     const enteringGlobal = previousView !== 'global';
     if (firstOpen || enteringGlobal) {
@@ -834,9 +893,6 @@ function switchAppView(view) {
     loadFriends().catch((error) => showToast(error.message));
   }
 
-  if (activeView === 'notifications') {
-    loadNotifications().catch((error) => showToast(error.message));
-  }
 
   if (activeView === 'admin' && state.me?.isAdmin) {
     loadAdminDashboard().catch((error) => showToast(error.message));
@@ -1615,6 +1671,12 @@ if (globalNewMessagesBtn) {
   globalNewMessagesBtn.addEventListener('click', () => clearGlobalNewMessages({ scroll: true }));
 }
 
+if (globalPingBanner) {
+  globalPingBanner.addEventListener('click', (event) => {
+    if (event.target.closest('[data-open-pinged-global]')) clearGlobalMentionBadge({ scroll: true });
+  });
+}
+
 if (globalMessagesList) {
   globalMessagesList.addEventListener('keydown', (event) => {
     if (event.key !== 'Enter' && event.key !== ' ') return;
@@ -1959,6 +2021,7 @@ function renderUsers() {
       await performFriendAction(button.dataset.friendUser, button.dataset.friendAction).catch((error) => showToast(error.message));
     });
   });
+  updateContextBadges();
 }
 
 function messageReadStatus(message) {
@@ -2619,12 +2682,80 @@ async function loadGlobalMessages() {
 }
 
 async function loadEverything() {
-  await Promise.all([loadMediaLibrary().catch(() => {}), loadGlobalMessages(), loadUsers($('#userSearch').value), loadNotifications().catch(() => {}), loadFriends().catch(() => {}), loadHome().catch(() => {}), loadLeaderboard().catch(() => {}), loadEvents().catch(() => {}), loadPolls().catch(() => {})]);
+  await Promise.all([loadMediaLibrary().catch(() => {}), loadGlobalMessages(), loadUsers($('#userSearch').value), loadFriends().catch(() => {}), loadHome().catch(() => {}), loadLeaderboard().catch(() => {}), loadEvents().catch(() => {}), loadPolls().catch(() => {})]);
   if (state.me?.isAdmin) {
     await loadAdminDashboard();
     renderAdminMessageViewer();
     renderAdminReportViewer();
   }
+}
+
+function stopRingtone() {
+  const tone = state.ringtone;
+  if (!tone) return;
+  try { clearInterval(tone.interval); } catch {}
+  try { tone.oscillator?.stop?.(); } catch {}
+  try { tone.gain?.disconnect?.(); } catch {}
+  state.ringtone = null;
+}
+
+function startRingtone() {
+  stopRingtone();
+  try {
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContextClass) return;
+    const audioContext = new AudioContextClass();
+    const gain = audioContext.createGain();
+    gain.gain.value = 0;
+    gain.connect(audioContext.destination);
+    const oscillator = audioContext.createOscillator();
+    oscillator.type = 'sine';
+    oscillator.frequency.value = 880;
+    oscillator.connect(gain);
+    oscillator.start();
+    const pulse = () => {
+      const now = audioContext.currentTime;
+      gain.gain.cancelScheduledValues(now);
+      gain.gain.setValueAtTime(0.0001, now);
+      gain.gain.exponentialRampToValueAtTime(0.12, now + 0.05);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.32);
+      oscillator.frequency.setValueAtTime(880, now);
+      oscillator.frequency.setValueAtTime(660, now + 0.16);
+    };
+    pulse();
+    const interval = setInterval(pulse, 900);
+    state.ringtone = { audioContext, oscillator, gain, interval };
+  } catch (error) {
+    console.warn('Ringtone unavailable:', error);
+  }
+}
+
+function clearCallTimers() {
+  clearTimeout(state.outgoingCallTimeout);
+  clearTimeout(state.incomingCallTimeout);
+  state.outgoingCallTimeout = null;
+  state.incomingCallTimeout = null;
+}
+
+function armOutgoingCallTimeout(callId) {
+  clearTimeout(state.outgoingCallTimeout);
+  state.outgoingCallTimeout = setTimeout(() => {
+    const current = state.call;
+    if (!current || current.callId !== callId || current.active || current.incoming) return;
+    showToast(`${callPeerName(current.peer)} svarede ikke.`);
+    cleanupCall({ notify: true, reason: 'Opkaldet udløb efter 10 sekunder uden svar.' });
+  }, 10000);
+}
+
+function armIncomingCallTimeout(callId) {
+  clearTimeout(state.incomingCallTimeout);
+  state.incomingCallTimeout = setTimeout(() => {
+    const current = state.call;
+    if (!current || current.callId !== callId || !current.incoming || current.active) return;
+    state.socket?.emit('call-response', { to: current.peerId, callId: current.callId, accepted: false, reason: 'Intet svar' });
+    showToast('Opkaldet udløb efter 10 sekunder.');
+    cleanupCall();
+  }, 10000);
 }
 
 const CALL_ICE_SERVERS = [{ urls: 'stun:stun.l.google.com:19302' }];
@@ -2778,6 +2909,7 @@ async function startCall(kind = 'voice') {
     state.call = { callId, kind, peerId: peer.id, peer, pc, localStream, mediaFallback: media.fallback, incoming: false, active: false };
     if (media.fallback) showToast(media.fallbackReason);
     setCallUi({ title: `Ringer til ${peer.name}`, status: media.fallback ? `${media.fallbackReason} Venter på svar...` : 'Venter på svar...', kind, peerName: peer.name, active: true });
+    armOutgoingCallTimeout(callId);
     const offer = await pc.createOffer();
     await pc.setLocalDescription(offer);
     state.socket.emit('call-user', { to: peer.id, kind, callId, offer }, (response) => {
@@ -2799,10 +2931,15 @@ function showIncomingCall(payload) {
     return;
   }
   state.call = { callId: payload.callId, kind: payload.kind || 'voice', peerId: payload.from.id, peer: payload.from, offer: payload.offer, incoming: true, active: false, pc: null, localStream: null };
-  setCallUi({ title: `${payload.from.name || 'En bruger'} ringer`, status: 'Indgående opkald', incoming: true, kind: payload.kind || 'voice', peerName: payload.from.name });
+  setCallUi({ title: `${payload.from.name || payload.from.username || 'En bruger'} ringer`, status: 'Indgående opkald · svar inden 10 sekunder', incoming: true, kind: payload.kind || 'voice', peerName: callPeerName(payload.from) });
+  startRingtone();
+  armIncomingCallTimeout(payload.callId);
 }
 
 async function acceptIncomingCall() {
+  stopRingtone();
+  clearTimeout(state.incomingCallTimeout);
+  state.incomingCallTimeout = null;
   const current = state.call;
   if (!current?.incoming || !current.offer) return;
   try {
@@ -2829,6 +2966,9 @@ async function acceptIncomingCall() {
 }
 
 function declineIncomingCall() {
+  stopRingtone();
+  clearTimeout(state.incomingCallTimeout);
+  state.incomingCallTimeout = null;
   const current = state.call;
   if (current?.incoming && current.peerId) {
     state.socket?.emit('call-response', { to: current.peerId, callId: current.callId, accepted: false, reason: 'Afvist' });
@@ -2845,6 +2985,8 @@ async function handleCallResponse(payload) {
     return;
   }
   try {
+    clearTimeout(state.outgoingCallTimeout);
+    state.outgoingCallTimeout = null;
     if (payload.answer && current.pc) {
       await current.pc.setRemoteDescription(new RTCSessionDescription(payload.answer));
       current.active = true;
@@ -2923,6 +3065,12 @@ function connectSocket() {
 
   state.socket.on('global-message', (message) => {
     handleIncomingGlobalMessage(message);
+    if (mentionsCurrentUser(message)) {
+      state.globalMentionCount += 1;
+      state.lastGlobalPingBy = message.author?.name || message.author?.username || 'en bruger';
+      updateContextBadges();
+      showGlobalPingBanner(state.lastGlobalPingBy);
+    }
     queueAdminMessagesRefresh();
     if (state.me?.isAdmin && state.adminReports.length) loadAdminReports().catch(() => {});
   });
@@ -2967,6 +3115,7 @@ function connectSocket() {
       } else {
         renderUsers();
       }
+      updateContextBadges();
       showToast(`Ny privat besked fra ${sender?.name || 'en person'}`);
     }
   });
@@ -2975,6 +3124,7 @@ function connectSocket() {
     setUnreadForUser(userId, unreadCount || 0);
     const changed = markMessagesReadLocally({ conversationId, readByUserId, readMessageIds });
     renderUsers();
+    updateContextBadges();
     if (changed) renderChat();
   });
 
@@ -3023,8 +3173,12 @@ function connectSocket() {
     if (!notification?.id) return;
     state.notifications = [notification, ...state.notifications.filter((item) => item.id !== notification.id)].slice(0, 80);
     state.unreadNotifications = state.notifications.filter((item) => !item.read).length;
-    renderNotifications();
-    showToast(notification.title || 'Ny notifikation');
+    updateContextBadges();
+    if (notification.type === 'mention') {
+      showGlobalPingBanner(notification.actor?.name || notification.from?.name || notification.title || 'en bruger');
+    } else if (notification.type === 'private') {
+      showToast(notification.title || 'Ny privat besked');
+    }
   });
 
   state.socket.on('user-profile-updated', (user) => {

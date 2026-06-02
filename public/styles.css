@@ -5188,3 +5188,153 @@ body.is-admin .growth-admin-tools { display:grid; }
     max-block-size: min(62vh, 560px);
   }
 }
+
+
+/* TSN V1.5.13 — call + contextual notifications */
+.legacy-notifications-panel {
+  display: none !important;
+}
+
+.nav-button-with-badge {
+  position: relative;
+}
+
+.nav-badge {
+  position: absolute;
+  right: 0.55rem;
+  top: 0.45rem;
+  min-width: 1.25rem;
+  height: 1.25rem;
+  padding: 0 0.32rem;
+  border-radius: 999px;
+  display: inline-grid;
+  place-items: center;
+  background: #ff335f;
+  color: #fff;
+  border: 2px solid rgba(10, 16, 28, 0.98);
+  font-size: 0.72rem;
+  font-weight: 900;
+  line-height: 1;
+  box-shadow: 0 10px 20px rgba(255, 51, 95, 0.25);
+}
+
+.nav-badge.hidden {
+  display: none !important;
+}
+
+.ping-banner {
+  position: fixed;
+  left: 50%;
+  bottom: 1rem;
+  transform: translateX(-50%);
+  z-index: 1900;
+  width: min(560px, calc(100vw - 1.4rem));
+}
+
+.ping-banner.hidden {
+  display: none !important;
+}
+
+.ping-banner-button {
+  width: 100%;
+  border: 1px solid rgba(111, 233, 255, 0.34);
+  background: linear-gradient(135deg, rgba(16, 27, 47, 0.96), rgba(25, 47, 80, 0.96));
+  color: #f4fbff;
+  border-radius: 18px;
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.35);
+  padding: 0.9rem 1rem;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 0.8rem;
+  align-items: center;
+  text-align: left;
+  cursor: pointer;
+}
+
+.ping-banner-button span {
+  width: 2.1rem;
+  height: 2.1rem;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  background: rgba(111, 233, 255, 0.16);
+}
+
+.ping-banner-button strong {
+  font-size: 0.95rem;
+}
+
+.ping-banner-button em {
+  color: rgba(244, 251, 255, 0.68);
+  font-style: normal;
+  font-size: 0.78rem;
+}
+
+.call-overlay {
+  inset: auto 1rem 1rem auto !important;
+  width: min(420px, calc(100vw - 1.4rem));
+  display: block !important;
+  place-items: unset !important;
+  padding: 0 !important;
+  background: transparent !important;
+  backdrop-filter: none !important;
+  pointer-events: none;
+}
+
+.call-overlay.hidden {
+  display: none !important;
+}
+
+.call-overlay .call-card {
+  pointer-events: auto;
+  max-height: min(82vh, 720px);
+  overflow: auto;
+  border: 1px solid rgba(111, 233, 255, 0.22);
+  box-shadow: 0 22px 70px rgba(0, 0, 0, 0.46);
+}
+
+.call-overlay .call-video-grid {
+  grid-template-columns: 1fr 0.46fr;
+  gap: 0.65rem;
+}
+
+.call-overlay .call-video-box {
+  min-height: 160px;
+}
+
+.call-overlay .call-video-box.local {
+  min-height: 96px;
+}
+
+.call-overlay .call-help {
+  margin-bottom: 0;
+}
+
+@media (max-width: 720px) {
+  .call-overlay {
+    left: 0.7rem !important;
+    right: 0.7rem !important;
+    bottom: 0.7rem !important;
+    width: auto;
+  }
+
+  .call-overlay .call-card {
+    border-radius: 20px;
+  }
+
+  .call-overlay .call-video-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .ping-banner {
+    bottom: 0.75rem;
+  }
+
+  .ping-banner-button {
+    grid-template-columns: auto 1fr;
+  }
+
+  .ping-banner-button em {
+    grid-column: 2;
+  }
+}
