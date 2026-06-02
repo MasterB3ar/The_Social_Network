@@ -263,3 +263,18 @@ Important: calls require HTTPS and microphone/camera permission. No new environm
 ## TSN V1.5.8 — Private Media Picker Scroll Fix
 
 Fixed the private-chat media picker so users can scroll down and choose pictures/GIFs when the picker contains many safe media or web-search results. The picker now has its own scroll area inside the private chat window, with mobile-safe height limits.
+
+
+## TSN V1.5.9 — Media Picker Fixed Header
+
+Fixed the GIF/photo website search box inside the media picker.
+
+- The box with “Find GIFs/fotos fra website” now stays in its own fixed header area.
+- Only the media results/list scrolls below it.
+- The search box no longer follows the scroll down through the image list.
+- Works in global chat and private chat.
+
+
+## TSN V1.5.10 — Bigger Pictures
+
+Pictures and GIFs now display much larger in global chat, private chat, message popups, and the media picker. No new environment variables are required.

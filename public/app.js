@@ -244,14 +244,16 @@ function renderSafeMediaPicker(kind) {
       <p class="media-search-note">Brugere kan stadig ikke uploade egne billeder. De kan kun sende medier valgt fra TSN-listen eller en godkendt websøgning.</p>
       ${warnings.length ? `<div class="media-search-warning">${warnings.map(escapeHtml).join('<br>')}</div>` : ''}
     </div>
-    ${webItems.length ? `
-      <div class="safe-media-section-title">Web-resultater</div>
-      <div class="safe-media-grid">${webItems.map((item) => mediaItemButtonHtml(item, kind)).join('')}</div>
-    ` : `
-      <div class="safe-media-empty">Søg efter GIFs/fotos for at hente web-resultater.</div>
-    `}
-    <div class="safe-media-section-title">TSN sikre medier</div>
-    <div class="safe-media-grid">${localItems.map((item) => mediaItemButtonHtml(item, kind)).join('') || '<p class="muted">Ingen sikre billeder/GIFs kunne indlæses.</p>'}</div>
+    <div class="safe-media-scroll-area">
+      ${webItems.length ? `
+        <div class="safe-media-section-title">Web-resultater</div>
+        <div class="safe-media-grid">${webItems.map((item) => mediaItemButtonHtml(item, kind)).join('')}</div>
+      ` : `
+        <div class="safe-media-empty">Søg efter GIFs/fotos for at hente web-resultater.</div>
+      `}
+      <div class="safe-media-section-title">TSN sikre medier</div>
+      <div class="safe-media-grid">${localItems.map((item) => mediaItemButtonHtml(item, kind)).join('') || '<p class="muted">Ingen sikre billeder/GIFs kunne indlæses.</p>'}</div>
+    </div>
   `;
 }
 function renderSafeMediaPickers() {

@@ -1,7 +1,7 @@
 {
   "name": "the-social-network-tsn",
-  "version": "1.5.8",
-  "description": "TSN Activity + Events update with safe media search and private voice/video calls.",
+  "version": "1.5.10",
+  "description": "TSN Activity + Events update with larger safe media pictures and private voice/video calls.",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
