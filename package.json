@@ -1,7 +1,7 @@
 {
   "name": "the-social-network-tsn",
-  "version": "1.5.22",
-  "description": "TSN private chat UI refresh with improved media picker and picture display.",
+  "version": "1.5.23",
+  "description": "TSN media picker locked header fix.",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",

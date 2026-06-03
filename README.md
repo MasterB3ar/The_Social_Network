@@ -376,3 +376,11 @@ Fixes a regression from V1.5.21 where the private chat panel could appear as a l
 - The private chat box is smaller and less intrusive on desktop.
 - Mobile chat is still large enough to use, but no longer forces a broken full-screen box.
 - Private chat pictures/GIFs keep the improved layout, but are capped to a more reasonable height.
+
+
+## TSN V1.5.23 — Media Picker Locked Header Fix
+
+- Fixed the media picker layout so the `Find GIFs/fotos` search/header bar stays in place.
+- Only the GIF/photo result grid scrolls now.
+- Applies to Global Chat and Private Chat.
+- No new environment variables.

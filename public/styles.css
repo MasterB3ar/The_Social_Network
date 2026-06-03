@@ -6351,3 +6351,82 @@ body.is-admin .growth-admin-tools { display:grid; }
     min-block-size: min(300px, 44dvh) !important;
   }
 }
+
+
+/* TSN V1.5.23 — Media picker locked header fix
+   The search/header area must stay fixed. Only media results scroll. */
+.image-message-form,
+.chat-panel .image-message-form,
+.global-message-form {
+  overflow: visible !important;
+  max-block-size: none !important;
+}
+
+.safe-media-picker:not(.hidden),
+.global-message-form .safe-media-picker:not(.hidden),
+.chat-panel .safe-media-picker:not(.hidden) {
+  display: grid !important;
+  grid-template-rows: auto minmax(0, 1fr) !important;
+  overflow: hidden !important;
+  align-items: stretch !important;
+  contain: layout paint !important;
+}
+
+.global-message-form .safe-media-picker:not(.hidden) {
+  block-size: min(68dvh, 680px) !important;
+  max-block-size: min(68dvh, 680px) !important;
+  min-block-size: min(500px, 64dvh) !important;
+}
+
+.chat-panel .safe-media-picker:not(.hidden) {
+  block-size: min(54dvh, 500px) !important;
+  max-block-size: min(54dvh, 500px) !important;
+  min-block-size: min(390px, 50dvh) !important;
+}
+
+.safe-media-picker .media-search-panel,
+.global-message-form .safe-media-picker .media-search-panel,
+.chat-panel .safe-media-picker .media-search-panel {
+  position: relative !important;
+  top: auto !important;
+  z-index: 10 !important;
+  grid-row: 1 !important;
+  margin: 0 !important;
+  flex: none !important;
+  transform: none !important;
+  overflow: visible !important;
+}
+
+.safe-media-picker .safe-media-scroll-area,
+.global-message-form .safe-media-picker .safe-media-scroll-area,
+.chat-panel .safe-media-picker .safe-media-scroll-area {
+  grid-row: 2 !important;
+  min-block-size: 0 !important;
+  block-size: auto !important;
+  max-block-size: none !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  overscroll-behavior: contain !important;
+  -webkit-overflow-scrolling: touch !important;
+  padding-block-start: 0.85rem !important;
+}
+
+.safe-media-picker .safe-media-grid,
+.chat-panel .safe-media-picker .safe-media-grid,
+.global-message-form .safe-media-picker .safe-media-grid {
+  align-content: start !important;
+}
+
+@media (max-width: 760px) {
+  .chat-panel .safe-media-picker:not(.hidden) {
+    block-size: min(55dvh, 460px) !important;
+    max-block-size: min(55dvh, 460px) !important;
+    min-block-size: min(360px, 50dvh) !important;
+  }
+
+  .global-message-form .safe-media-picker:not(.hidden) {
+    block-size: min(68dvh, 600px) !important;
+    max-block-size: min(68dvh, 600px) !important;
+    min-block-size: min(440px, 62dvh) !important;
+  }
+}
