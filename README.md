@@ -1,4 +1,7 @@
-# TSN V1.5.29 — Danish Recovery Text
+# TSN V1.5.30 — Recovery Notifications + Message Merge Fix
+
+Denne version retter admin-notifikationer ved kontogendannelse og private beskeder ved kontosammenlægning, så beskeder fra den midlertidige konto bliver flyttet til den gamle konto med dansk transfer-markering.
+
 
 Hele kontogendannelses- og kontosammenlægningsflowet er nu skrevet på dansk.
 

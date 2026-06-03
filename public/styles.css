@@ -6809,3 +6809,23 @@ body.is-admin .growth-admin-tools { display:grid; }
 .muted-small { color: rgba(226,232,240,.72); font-size: .84rem; }
 .recovery-merge-modal { display: grid; place-items: center; z-index: 99999; }
 .recovery-merge-card { max-width: 520px; }
+
+/* V1.5.30 recovery merge message transfer note */
+.message-transfer-note {
+  display: block;
+  margin-top: 6px;
+  font-style: normal;
+  font-size: 0.72rem;
+  font-weight: 800;
+  line-height: 1.35;
+  color: rgba(255,255,255,0.76);
+}
+
+.transferred-message .message-content {
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.message.mine .message-transfer-note {
+  color: rgba(255,255,255,0.82);
+}

@@ -1988,6 +1988,9 @@ function publicMessage(message, viewerId = '', users = []) {
     text: getEncryptedObjectField(message, 'text'),
     attachment: publicMessageAttachment(message),
     createdAt: message.createdAt,
+    transferNote: getEncryptedObjectField(message, 'transferNote'),
+    transferredFromUserId: message.transferredFromUserId || '',
+    transferredByMergeId: message.transferredByMergeId || '',
     reactions: publicReactions(message, viewerId, users),
     readBy,
     isReadByRecipient: Boolean(message.to && readBy.includes(message.to))
@@ -2609,8 +2612,8 @@ app.get('/api/health', (req, res) => {
     const storage = getStorageStatus();
     res.json({
       ok: true,
-      app: 'TSN V1.5.28',
-      shortName: 'TSN V1.5.28',
+      app: 'TSN V1.5.30',
+      shortName: 'TSN V1.5.30',
       environment: process.env.NODE_ENV || 'development',
       storage: {
         ok: storage.ok,
@@ -2639,8 +2642,8 @@ app.get('/api/health', (req, res) => {
   } catch (error) {
     res.status(503).json({
       ok: false,
-      app: 'TSN V1.5.28',
-      shortName: 'TSN V1.5.28',
+      app: 'TSN V1.5.30',
+      shortName: 'TSN V1.5.30',
       error: 'Lageret er ikke klar.',
       detail: error.message
     });
@@ -2650,7 +2653,7 @@ app.get('/api/health', (req, res) => {
 app.get('/api/ping', (req, res) => {
   res.json({
     ok: true,
-    app: 'TSN V1.5.28',
+    app: 'TSN V1.5.30',
     message: 'pong',
     now: new Date().toISOString()
   });
@@ -2704,6 +2707,46 @@ function replaceUserIdEverywhere(value, fromId, toId) {
   return value;
 }
 
+function remapPrivateMessagesForAccountMerge(db, { primaryId, secondaryId, secondaryUsername, mergeId }) {
+  const affectedUserIds = new Set();
+  let movedMessages = 0;
+  let transferredSentMessages = 0;
+  const transferNote = `Overført besked fra den gamle konto ${secondaryUsername || 'User02'}`;
+
+  db.messages = (Array.isArray(db.messages) ? db.messages : []).map((message) => {
+    if (!message || typeof message !== 'object') return message;
+    const fromSecondary = message.from === secondaryId;
+    const toSecondary = message.to === secondaryId;
+    if (!fromSecondary && !toSecondary) return message;
+
+    const otherUserId = fromSecondary ? message.to : message.from;
+    if (otherUserId && otherUserId !== primaryId && otherUserId !== secondaryId) affectedUserIds.add(otherUserId);
+
+    message.from = fromSecondary ? primaryId : message.from;
+    message.to = toSecondary ? primaryId : message.to;
+    message.readBy = uniqueStringArray(uniqueStringArray(message.readBy).map((idValue) => idValue === secondaryId ? primaryId : idValue).filter(Boolean));
+    if (message.from && !message.readBy.includes(message.from)) message.readBy.push(message.from);
+    if (message.deletedFor) {
+      // Do not carry the temporary account's local hide-state into the recovered account;
+      // otherwise User01 may still be unable to see messages originally written as User02.
+      message.deletedFor = uniqueStringArray(message.deletedFor).filter((idValue) => idValue !== secondaryId);
+    }
+    if (message.from && message.to) message.conversationId = conversationId(message.from, message.to);
+
+    if (fromSecondary) {
+      Object.assign(message, encryptedTextObject('transferNote', transferNote));
+      message.transferredFromUserId = secondaryId;
+      message.transferredByMergeId = mergeId;
+      message.transferredAt = new Date().toISOString();
+      transferredSentMessages += 1;
+    }
+    movedMessages += 1;
+    return message;
+  }).filter((message) => message && message.from && message.to && message.from !== message.to);
+
+  return { movedMessages, transferredSentMessages, affectedUserIds: [...affectedUserIds] };
+}
+
 function mergeUserAccounts(db, merge) {
   const primary = db.users.find((user) => user.id === merge.primaryUserId);
   const secondaryIndex = db.users.findIndex((user) => user.id === merge.secondaryUserId);
@@ -2711,6 +2754,7 @@ function mergeUserAccounts(db, merge) {
   const secondary = db.users[secondaryIndex];
   const primaryId = primary.id;
   const secondaryId = secondary.id;
+  const secondaryUsername = getUserField(secondary, 'username') || 'User02';
 
   // Transfer visible account stats/status.
   primary.xp = Math.max(0, Math.floor(Number(primary.xp) || 0)) + Math.max(0, Math.floor(Number(secondary.xp) || 0));
@@ -2723,8 +2767,18 @@ function mergeUserAccounts(db, merge) {
   primary.friendRequestsIn = uniqueStringArray([...(primary.friendRequestsIn || []), ...(secondary.friendRequestsIn || [])]).filter((idValue) => idValue !== primaryId && idValue !== secondaryId && !primary.friends.includes(idValue));
   primary.friendRequestsOut = uniqueStringArray([...(primary.friendRequestsOut || []), ...(secondary.friendRequestsOut || [])]).filter((idValue) => idValue !== primaryId && idValue !== secondaryId && !primary.friends.includes(idValue));
 
-  // Transfer every reference from the temporary account to the recovered account.
-  ['messages', 'globalMessages', 'roomMessages', 'reports', 'notifications', 'warnings', 'activityFeed', 'events', 'polls', 'recoveryRequests', 'accountMerges'].forEach((collectionName) => {
+  // Private messages need special handling because the conversationId contains both user IDs.
+  // Messages written by the temporary account become messages from the recovered account,
+  // and the other person sees a Danish transfer note under those bubbles.
+  const messageTransfer = remapPrivateMessagesForAccountMerge(db, {
+    primaryId,
+    secondaryId,
+    secondaryUsername,
+    mergeId: merge.id
+  });
+
+  // Transfer every other reference from the temporary account to the recovered account.
+  ['globalMessages', 'roomMessages', 'reports', 'notifications', 'warnings', 'activityFeed', 'events', 'polls', 'recoveryRequests'].forEach((collectionName) => {
     if (Array.isArray(db[collectionName])) replaceUserIdEverywhere(db[collectionName], secondaryId, primaryId);
   });
   db.users.forEach((user) => {
@@ -2736,10 +2790,18 @@ function mergeUserAccounts(db, merge) {
   db.users.splice(secondaryIndex, 1);
   merge.status = 'completed';
   merge.completedAt = new Date().toISOString();
-  merge.summary = { secondaryDeleted: true, messagesTransferred: true, statsTransferred: true };
+  merge.summary = {
+    secondaryDeleted: true,
+    messagesTransferred: true,
+    statsTransferred: true,
+    movedMessages: messageTransfer.movedMessages,
+    transferredSentMessages: messageTransfer.transferredSentMessages,
+    secondaryUsername
+  };
   primary.sessionVersion = Number(primary.sessionVersion || 0) + 1;
+  createNotification(db, primaryId, 'account-recovery', 'Konti sammenlagt', `Beskeder og stats fra ${secondaryUsername} er nu overført til din gamle konto.`, { mergeId: merge.id });
   addActivity(db, 'account-merge', `${getUserField(primary, 'name')} fik to konti sammenlagt`, 'Kontogendannelse gennemført sikkert uden at vise gamle adgangskoder.', primaryId, { mergeId: merge.id });
-  return { primary, secondary };
+  return { primary, secondary, affectedUserIds: messageTransfer.affectedUserIds, movedMessages: messageTransfer.movedMessages, transferredSentMessages: messageTransfer.transferredSentMessages };
 }
 
 function findPendingMergeForPrimary(db, userId) {
@@ -2864,7 +2926,7 @@ app.post('/api/recovery/request', requireAuth, async (req, res) => {
   db.recoveryRequests = Array.isArray(db.recoveryRequests) ? db.recoveryRequests : [];
   db.recoveryRequests.push(request);
   db.users.filter((user) => user.role === 'admin').forEach((admin) => {
-    createNotification(db, admin.id, 'account-recovery', 'Ny kontogendannelsesanmodning', `${getUserField(req.user, 'name')} vil gendanne @${oldUsername}`, { requestId: request.id });
+    createNotification(db, admin.id, 'account-recovery', 'Ny anmodning om kontogendannelse', `${getUserField(req.user, 'name')} vil genoprette kontoen @${oldUsername}.`, { requestId: request.id, requesterId: req.user.id, oldUserId: oldUser.id });
   });
   await writeDb(db);
   res.status(201).json({ request: recoveryRequestPublic(db, request, req.user) });
@@ -2915,7 +2977,17 @@ app.post('/api/recovery/merge/confirm', requireAuth, async (req, res) => {
   if (!merge) return res.status(404).json({ error: 'Ingen kontosammenlægning venter.' });
   const result = mergeUserAccounts(db, merge);
   await writeDb(db);
-  res.json({ ok: true, user: publicUser(result.primary), merge: pendingMergePublic(db, merge) });
+  const payload = {
+    primaryUser: publicUser(result.primary),
+    secondaryUserId: result.secondary.id,
+    secondaryUsername: getUserField(result.secondary, 'username'),
+    movedMessages: result.movedMessages,
+    transferredSentMessages: result.transferredSentMessages
+  };
+  uniqueStringArray([result.primary.id, ...(result.affectedUserIds || [])]).forEach((userId) => {
+    io.to(userId).emit('account-merged', payload);
+  });
+  res.json({ ok: true, user: publicUser(result.primary), merge: pendingMergePublic(db, merge), movedMessages: result.movedMessages, transferredSentMessages: result.transferredSentMessages });
 });
 
 app.get('/api/admin/recovery-requests', requireAuth, requireAdmin, (req, res) => {

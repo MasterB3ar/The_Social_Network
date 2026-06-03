@@ -171,7 +171,9 @@ function messageBodyHtml(message) {
 }
 
 function directMessageBodyHtml(message) {
-  return messageBodyHtml(message);
+  const body = messageBodyHtml(message);
+  const transferNote = String(message?.transferNote || '').trim();
+  return `${body}${transferNote ? `<em class="message-transfer-note">${escapeHtml(transferNote)}</em>` : ''}`;
 }
 
 function joinedDaysLabel(user) {
@@ -449,7 +451,8 @@ function notificationTypeIcon(type) {
     reaction: '✨',
     friend: '🤝',
     warning: '⚠️',
-    admin: '🛡️'
+    admin: '🛡️',
+    'account-recovery': '🔐'
   };
   return icons[String(type || '').toLowerCase()] || '🔔';
 }
@@ -461,7 +464,8 @@ function notificationTypeLabel(type) {
     reaction: 'Reaktion',
     friend: 'Venner',
     warning: 'Advarsel',
-    admin: 'Admin'
+    admin: 'Admin',
+    'account-recovery': 'Kontogendannelse'
   };
   return labels[String(type || '').toLowerCase()] || 'Info';
 }
@@ -1174,7 +1178,7 @@ document.addEventListener('click', async (event) => {
       await loadEverything();
       if (state.pendingRecoveryMerge) showRecoveryMergeModal(state.pendingRecoveryMerge);
       else await checkPendingRecoveryMerge();
-      showToast('Kontiene er sammenlagt.');
+      showToast(`Kontiene er sammenlagt. ${Number(data.movedMessages || 0)} beskeder blev overført.`);
     } catch (error) { showToast(error.message); }
   }
 });
@@ -2426,7 +2430,7 @@ function renderChat({ forceBottom = false } = {}) {
     messagesList.innerHTML = '<div class="empty">Der er ingen private beskeder endnu. Start samtalen.</div>';
   } else {
     messagesList.innerHTML = state.activeMessages.map((message) => `
-      <div class="message ${message.from === state.me.id ? 'mine' : ''}" data-open-direct-message-menu="${escapeHtml(message.id)}" tabindex="0" role="button" aria-label="Åbn beskedmenu">
+      <div class="message ${message.from === state.me.id ? 'mine' : ''} ${message.transferNote ? 'transferred-message' : ''}" data-open-direct-message-menu="${escapeHtml(message.id)}" tabindex="0" role="button" aria-label="Åbn beskedmenu">
         <div class="message-content">
           ${directMessageBodyHtml(message)}
           ${renderReactionSummary(message.reactions)}
@@ -3534,6 +3538,9 @@ function connectSocket() {
       showGlobalPingBanner(notification.actor?.name || notification.from?.name || notification.title || 'en bruger');
     } else if (notification.type === 'private') {
       showToast(notification.title || 'Ny privat besked');
+    } else if (notification.type === 'account-recovery') {
+      showToast(notification.title || 'Ny kontogendannelsesanmodning');
+      if (state.me?.isAdmin) loadAdminRecoveryRequests().catch(() => {});
     }
   });
 
@@ -3541,6 +3548,25 @@ function connectSocket() {
     mergeUpdatedPublicUser(user);
     rerenderAfterProfileUpdate();
     loadFriends().catch(() => {});
+  });
+
+  state.socket.on('account-merged', async ({ primaryUser, secondaryUserId, secondaryUsername, movedMessages } = {}) => {
+    if (primaryUser) mergeUpdatedPublicUser(primaryUser);
+    if (state.activeChatUser?.id === secondaryUserId && primaryUser) {
+      state.activeChatUser = primaryUser;
+      state.activeMessages = [];
+      requestPrivateChatBottomOnOpen();
+      try {
+        const data = await api(`/api/messages/${primaryUser.id}`);
+        state.activeChatUser = data.user || primaryUser;
+        state.activeMessages = data.messages || [];
+      } catch {}
+    }
+    await loadUsers($('#userSearch')?.value || '').catch(() => {});
+    renderChat({ forceBottom: true });
+    if (secondaryUserId !== state.me?.id) {
+      showToast(`${secondaryUsername || 'En konto'} er sammenlagt. ${Number(movedMessages || 0)} beskeder er flyttet.`);
+    }
   });
 
   state.socket.on('private-message-updated', (message) => {

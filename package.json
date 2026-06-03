@@ -1,7 +1,7 @@
 {
   "name": "the-social-network-tsn",
-  "version": "1.5.29",
-  "description": "TSN V1.5.29 Danish recovery and account-merge text.",
+  "version": "1.5.30",
+  "description": "TSN V1.5.30 recovery notifications and message merge transfer fix.",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
