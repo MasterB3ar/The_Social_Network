@@ -240,6 +240,7 @@ function mediaItemButtonHtml(item, kind) {
 function renderSafeMediaPicker(kind) {
   const picker = kind === 'private' ? privateMediaPicker : globalMediaPicker;
   if (!picker) return;
+  picker.classList.remove('media-search-collapsed');
   const webItems = Array.isArray(state.mediaSearchResults) ? state.mediaSearchResults : [];
   const warnings = Array.isArray(state.mediaSearchWarnings) ? state.mediaSearchWarnings : [];
   const webProviderLabel = state.mediaWebProviders?.length ? state.mediaWebProviders.join(' + ') : 'GIPHY/Pixabay';
@@ -1801,6 +1802,22 @@ document.addEventListener('keydown', (event) => {
   event.preventDefault();
   runMediaSearchFromPanel(panel);
 });
+
+document.addEventListener('scroll', (event) => {
+  const area = event.target?.closest?.('.safe-media-scroll-area');
+  if (!area) return;
+  const picker = area.closest('.safe-media-picker');
+  if (!picker) return;
+  const current = area.scrollTop || 0;
+  const last = Number(area.dataset.lastScrollTop || '0');
+  const delta = current - last;
+  if (current <= 16 || delta < -8) {
+    picker.classList.remove('media-search-collapsed');
+  } else if (current > 40 && delta > 10) {
+    picker.classList.add('media-search-collapsed');
+  }
+  area.dataset.lastScrollTop = String(current);
+}, true);
 
 document.addEventListener('click', (event) => {
   const searchButton = event.target.closest('[data-media-search-submit]');

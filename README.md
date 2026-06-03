@@ -384,3 +384,10 @@ Fixes a regression from V1.5.21 where the private chat panel could appear as a l
 - Only the GIF/photo result grid scrolls now.
 - Applies to Global Chat and Private Chat.
 - No new environment variables.
+
+## TSN V1.5.24 — Media Picker Auto-Hide Header Fix
+
+- The “Find GIFs/fotos” bar is no longer permanently locked while browsing media.
+- When users scroll down through GIF/photo results, the search/header bar slides away.
+- When users scroll back up, the search/header bar returns.
+- Only the media picker UI changed; no environment variables changed.

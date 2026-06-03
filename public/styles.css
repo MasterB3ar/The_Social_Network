@@ -6430,3 +6430,37 @@ body.is-admin .growth-admin-tools { display:grid; }
     min-block-size: min(440px, 62dvh) !important;
   }
 }
+
+/* V1.5.24: media picker header auto-hides while scrolling down and returns while scrolling up. */
+.safe-media-picker:not(.hidden) {
+  transition: grid-template-rows 180ms ease !important;
+}
+
+.safe-media-picker .media-search-panel {
+  transition: opacity 160ms ease, transform 160ms ease, max-block-size 160ms ease, padding 160ms ease, border-width 160ms ease !important;
+  max-block-size: 420px !important;
+}
+
+.safe-media-picker.media-search-collapsed:not(.hidden),
+.global-message-form .safe-media-picker.media-search-collapsed:not(.hidden),
+.chat-panel .safe-media-picker.media-search-collapsed:not(.hidden) {
+  grid-template-rows: 0 minmax(0, 1fr) !important;
+}
+
+.safe-media-picker.media-search-collapsed .media-search-panel,
+.global-message-form .safe-media-picker.media-search-collapsed .media-search-panel,
+.chat-panel .safe-media-picker.media-search-collapsed .media-search-panel {
+  opacity: 0 !important;
+  transform: translateY(-16px) !important;
+  pointer-events: none !important;
+  max-block-size: 0 !important;
+  min-block-size: 0 !important;
+  padding-block: 0 !important;
+  margin-block: 0 !important;
+  border-width: 0 !important;
+  overflow: hidden !important;
+}
+
+.safe-media-picker.media-search-collapsed .safe-media-scroll-area {
+  padding-block-start: 0 !important;
+}
