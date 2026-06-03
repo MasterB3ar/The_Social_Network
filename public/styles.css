@@ -5824,3 +5824,68 @@ body.is-admin .growth-admin-tools { display:grid; }
     width: 100%;
   }
 }
+
+/* TSN V1.5.20 — Media picker spacing + fixed search bar */
+.image-message-form {
+  max-block-size: none !important;
+  overflow: visible !important;
+}
+
+.safe-media-picker:not(.hidden) {
+  display: grid !important;
+  grid-template-rows: auto minmax(320px, 1fr) !important;
+  gap: 0.9rem;
+  block-size: min(72vh, 700px);
+  max-block-size: min(72vh, 700px) !important;
+  min-block-size: min(560px, 68vh);
+  overflow: hidden !important;
+  align-self: stretch;
+}
+
+.media-search-panel,
+.chat-panel .media-search-panel,
+.safe-media-picker .media-search-panel {
+  position: relative !important;
+  top: auto !important;
+  z-index: 4;
+  flex: 0 0 auto;
+  margin: 0;
+  backdrop-filter: blur(16px);
+}
+
+.safe-media-scroll-area {
+  min-block-size: 0;
+  block-size: 100%;
+  max-block-size: none;
+  overflow-y: auto !important;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  padding: 0 0.25rem 0.8rem 0;
+  align-content: start;
+}
+
+.safe-media-scroll-area .safe-media-grid {
+  align-content: start;
+}
+
+.global-message-form .safe-media-picker,
+.chat-panel .safe-media-picker {
+  inline-size: 100%;
+}
+
+@media (max-width: 720px) {
+  .safe-media-picker:not(.hidden) {
+    block-size: min(74vh, 620px);
+    max-block-size: min(74vh, 620px) !important;
+    min-block-size: min(520px, 70vh);
+    grid-template-rows: auto minmax(300px, 1fr) !important;
+  }
+
+  .media-search-panel {
+    padding: 0.78rem;
+  }
+
+  .safe-media-scroll-area {
+    padding-right: 0.1rem;
+  }
+}

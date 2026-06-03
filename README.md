@@ -350,3 +350,14 @@ Also updates the app.js cache-busting version to `1.5.18`, so browsers load the 
 ## TSN V1.5.19 — Better Media Send Layout
 
 Improves the GIF/photo sending UI in global and private chat. The media picker now has a cleaner header, provider/safety badge, better search controls, a selected-media card, larger result cards, better spacing, clearer selected state, and improved mobile layout. It still only allows approved GIPHY/Pixabay media and does not allow random uploads.
+
+
+## TSN V1.5.20 — Media Picker Spacing Fix
+
+This update fixes the GIF/photo media picker layout:
+
+- The search/info bar stays fixed at the top of the media picker.
+- Only the GIF/photo result grid scrolls.
+- The picker has much more vertical space.
+- Global Chat and Private Chat both use the improved layout.
+- Mobile keeps a taller, cleaner picker without the search bar sliding into the results.
