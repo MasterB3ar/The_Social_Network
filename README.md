@@ -361,3 +361,7 @@ This update fixes the GIF/photo media picker layout:
 - The picker has much more vertical space.
 - Global Chat and Private Chat both use the improved layout.
 - Mobile keeps a taller, cleaner picker without the search bar sliding into the results.
+
+## TSN V1.5.21 — Private Chat UI Refresh
+
+Private chat has been visually refreshed with a larger desktop panel, full-screen mobile view, better input/media picker spacing, and improved picture/GIF rendering inside private messages.

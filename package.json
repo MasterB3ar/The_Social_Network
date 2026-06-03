@@ -1,7 +1,7 @@
 {
   "name": "the-social-network-tsn",
-  "version": "1.5.20",
-  "description": "TSN Activity + Events update with improved fixed media picker header and more room for GIF/photo results.",
+  "version": "1.5.21",
+  "description": "TSN private chat UI refresh with improved media picker and picture display.",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
