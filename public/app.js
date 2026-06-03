@@ -298,6 +298,7 @@ function renderSafeMediaPicker(kind) {
       `}
     </div>
   `;
+  requestAnimationFrame(() => resetMediaSearchHeader(picker));
 }
 function renderSafeMediaPickers() {
   renderSafeMediaPicker('global');
@@ -1803,19 +1804,51 @@ document.addEventListener('keydown', (event) => {
   runMediaSearchFromPanel(panel);
 });
 
+function applyMediaSearchHeaderOffset(picker, area, nextOffset) {
+  if (!picker || !area) return;
+  const panel = picker.querySelector('.media-search-panel');
+  if (!panel) return;
+  const height = Math.max(90, Math.ceil(panel.scrollHeight || panel.offsetHeight || 180));
+  const offset = Math.max(0, Math.min(height, Number(nextOffset || 0)));
+  const progress = height ? Math.max(0, Math.min(1, offset / height)) : 0;
+  picker.style.setProperty('--media-search-height', `${height}px`);
+  picker.style.setProperty('--media-search-shift', `${offset}px`);
+  picker.style.setProperty('--media-search-progress', String(progress));
+  panel.style.opacity = String(Math.max(0, Math.min(1, 1 - progress * 1.25)));
+  panel.style.pointerEvents = progress > 0.88 ? 'none' : '';
+  picker.classList.toggle('media-search-follow-hidden', progress > 0.88);
+  area.dataset.mediaHeaderOffset = String(offset);
+}
+
+function resetMediaSearchHeader(picker) {
+  if (!picker) return;
+  const area = picker.querySelector('.safe-media-scroll-area');
+  if (!area) return;
+  applyMediaSearchHeaderOffset(picker, area, 0);
+}
+
 document.addEventListener('scroll', (event) => {
   const area = event.target?.closest?.('.safe-media-scroll-area');
   if (!area) return;
   const picker = area.closest('.safe-media-picker');
   if (!picker) return;
+  picker.classList.remove('media-search-collapsed');
   const current = area.scrollTop || 0;
   const last = Number(area.dataset.lastScrollTop || '0');
   const delta = current - last;
-  if (current <= 16 || delta < -8) {
-    picker.classList.remove('media-search-collapsed');
-  } else if (current > 40 && delta > 10) {
-    picker.classList.add('media-search-collapsed');
+  const panel = picker.querySelector('.media-search-panel');
+  const height = Math.max(90, Math.ceil(panel?.scrollHeight || panel?.offsetHeight || 180));
+  let offset = Number(area.dataset.mediaHeaderOffset || '0');
+
+  if (current <= 4) {
+    offset = 0;
+  } else if (Math.abs(delta) > 0.5) {
+    // Follow the scroll movement: faster/larger scrolls move the header farther.
+    offset += delta;
   }
+
+  offset = Math.max(0, Math.min(height, offset));
+  applyMediaSearchHeaderOffset(picker, area, offset);
   area.dataset.lastScrollTop = String(current);
 }, true);
 

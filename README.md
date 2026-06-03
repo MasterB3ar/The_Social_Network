@@ -391,3 +391,7 @@ Fixes a regression from V1.5.21 where the private chat panel could appear as a l
 - When users scroll down through GIF/photo results, the search/header bar slides away.
 - When users scroll back up, the search/header bar returns.
 - Only the media picker UI changed; no environment variables changed.
+
+## TSN V1.5.25 — Media Picker Fluid Header
+
+The GIF/photo picker header now follows scroll movement more naturally: scrolling down moves it up proportionally, and scrolling up brings it back proportionally. This replaces the previous snap-like auto-hide behavior.

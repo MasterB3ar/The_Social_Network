@@ -6464,3 +6464,54 @@ body.is-admin .growth-admin-tools { display:grid; }
 .safe-media-picker.media-search-collapsed .safe-media-scroll-area {
   padding-block-start: 0 !important;
 }
+
+/* V1.5.25: media picker header follows scroll speed/direction fluidly. */
+.safe-media-picker:not(.hidden),
+.global-message-form .safe-media-picker:not(.hidden),
+.chat-panel .safe-media-picker:not(.hidden) {
+  --media-search-height: 190px;
+  --media-search-shift: 0px;
+  --media-search-progress: 0;
+  grid-template-rows: max(0px, calc(var(--media-search-height) - var(--media-search-shift))) minmax(0, 1fr) !important;
+  transition: none !important;
+}
+
+.safe-media-picker .media-search-panel,
+.global-message-form .safe-media-picker .media-search-panel,
+.chat-panel .safe-media-picker .media-search-panel {
+  max-block-size: var(--media-search-height) !important;
+  transform: translateY(calc(-1 * var(--media-search-shift))) !important;
+  transition: opacity 80ms linear !important;
+  will-change: transform, opacity;
+}
+
+.safe-media-picker.media-search-follow-hidden .media-search-panel,
+.global-message-form .safe-media-picker.media-search-follow-hidden .media-search-panel,
+.chat-panel .safe-media-picker.media-search-follow-hidden .media-search-panel {
+  pointer-events: none !important;
+}
+
+.safe-media-picker .safe-media-scroll-area,
+.global-message-form .safe-media-picker .safe-media-scroll-area,
+.chat-panel .safe-media-picker .safe-media-scroll-area {
+  overscroll-behavior: contain;
+}
+
+/* Disable the older all-or-nothing collapsed behavior; JS now drives a fluid offset. */
+.safe-media-picker.media-search-collapsed:not(.hidden),
+.global-message-form .safe-media-picker.media-search-collapsed:not(.hidden),
+.chat-panel .safe-media-picker.media-search-collapsed:not(.hidden) {
+  grid-template-rows: max(0px, calc(var(--media-search-height) - var(--media-search-shift))) minmax(0, 1fr) !important;
+}
+
+.safe-media-picker.media-search-collapsed .media-search-panel,
+.global-message-form .safe-media-picker.media-search-collapsed .media-search-panel,
+.chat-panel .safe-media-picker.media-search-collapsed .media-search-panel {
+  opacity: inherit !important;
+  max-block-size: var(--media-search-height) !important;
+  min-block-size: initial !important;
+  padding-block: initial !important;
+  margin-block: initial !important;
+  border-width: initial !important;
+  overflow: initial !important;
+}
