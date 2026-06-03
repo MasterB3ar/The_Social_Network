@@ -221,11 +221,18 @@ function mediaItemButtonHtml(item, kind) {
   const thumb = item.thumbnailUrl || item.dataUrl || item.url || '';
   const label = item.label || item.name || 'Medie';
   const provider = item.provider || 'Web';
+  const mediaKind = item.kind === 'gif' ? 'GIF' : 'Foto';
   return `
-    <button class="safe-media-item ${item.id === selectedId ? 'selected' : ''}" type="button" data-safe-media-kind="${escapeHtml(kind)}" data-safe-media-id="${escapeHtml(item.id)}">
-      <img src="${escapeHtml(thumb)}" alt="${escapeHtml(label)}" loading="lazy" referrerpolicy="no-referrer" />
-      <span>${escapeHtml(label)}</span>
-      <small>${item.kind === 'gif' ? 'GIF' : 'Billede'} · ${escapeHtml(provider)}</small>
+    <button class="safe-media-item ${item.id === selectedId ? 'selected' : ''}" type="button" data-safe-media-kind="${escapeHtml(kind)}" data-safe-media-id="${escapeHtml(item.id)}" aria-label="Vælg ${escapeHtml(label)}">
+      <span class="safe-media-thumb">
+        <img src="${escapeHtml(thumb)}" alt="${escapeHtml(label)}" loading="lazy" referrerpolicy="no-referrer" />
+        <span class="safe-media-kind-pill">${escapeHtml(mediaKind)}</span>
+      </span>
+      <span class="safe-media-meta">
+        <span class="safe-media-name">${escapeHtml(label)}</span>
+        <span class="safe-media-provider">${escapeHtml(provider)}</span>
+      </span>
+      <span class="safe-media-select-label">${item.id === selectedId ? 'Valgt ✓' : 'Vælg'}</span>
     </button>
   `;
 }
@@ -236,30 +243,57 @@ function renderSafeMediaPicker(kind) {
   const webItems = Array.isArray(state.mediaSearchResults) ? state.mediaSearchResults : [];
   const warnings = Array.isArray(state.mediaSearchWarnings) ? state.mediaSearchWarnings : [];
   const webProviderLabel = state.mediaWebProviders?.length ? state.mediaWebProviders.join(' + ') : 'GIPHY/Pixabay';
+  const selected = selectedSafeMedia(kind);
+  const selectedThumb = selected ? (selected.thumbnailUrl || selected.dataUrl || selected.url || '') : '';
   picker.innerHTML = `
-    <div class="media-search-panel">
+    <div class="media-search-panel media-search-panel-polished">
       <div class="media-search-title">
-        <strong>Find GIFs/fotos fra GIPHY/Pixabay</strong>
-        <span>${state.mediaWebSearchEnabled ? `Aktiv: ${escapeHtml(webProviderLabel)}` : 'Websøgning ikke sat op endnu'}</span>
+        <div class="media-search-title-main">
+          <span class="media-search-icon">🖼️</span>
+          <div>
+            <strong>Find GIFs/fotos</strong>
+            <span>${state.mediaWebSearchEnabled ? `Aktiv: ${escapeHtml(webProviderLabel)}` : 'Websøgning ikke sat op endnu'}</span>
+          </div>
+        </div>
+        <span class="media-search-safety-pill">Kun godkendte kilder</span>
       </div>
       <div class="media-search-form" data-media-search-form="${escapeHtml(kind)}">
-        <input name="q" value="${escapeHtml(state.mediaSearchQuery || '')}" placeholder="Søg fx: funny, cat, gg, party..." autocomplete="off" />
-        <select name="kind">
-          <option value="all" ${state.mediaSearchKind === 'all' ? 'selected' : ''}>Alt</option>
-          <option value="gif" ${state.mediaSearchKind === 'gif' ? 'selected' : ''}>GIFs</option>
-          <option value="picture" ${state.mediaSearchKind === 'picture' ? 'selected' : ''}>Fotos</option>
-        </select>
-        <button class="secondary tiny" type="button" data-media-search-submit="1" ${state.mediaSearchLoading ? 'disabled' : ''}>${state.mediaSearchLoading ? 'Søger...' : 'Søg'}</button>
+        <label class="media-search-input-wrap">
+          <span>Søg</span>
+          <input name="q" value="${escapeHtml(state.mediaSearchQuery || '')}" placeholder="Søg fx: funny, cat, gg, party..." autocomplete="off" />
+        </label>
+        <label class="media-search-select-wrap">
+          <span>Type</span>
+          <select name="kind">
+            <option value="all" ${state.mediaSearchKind === 'all' ? 'selected' : ''}>Alt</option>
+            <option value="gif" ${state.mediaSearchKind === 'gif' ? 'selected' : ''}>GIFs</option>
+            <option value="picture" ${state.mediaSearchKind === 'picture' ? 'selected' : ''}>Fotos</option>
+          </select>
+        </label>
+        <button class="primary media-search-submit" type="button" data-media-search-submit="1" ${state.mediaSearchLoading ? 'disabled' : ''}>${state.mediaSearchLoading ? 'Søger...' : 'Søg'}</button>
       </div>
-      <p class="media-search-note">Brugere kan stadig ikke uploade egne billeder. De kan kun sende medier valgt fra GIPHY eller Pixabay.</p>
+      ${selected ? `
+        <div class="media-selected-card">
+          <img src="${escapeHtml(selectedThumb)}" alt="${escapeHtml(selected.label || selected.name || 'Valgt medie')}" referrerpolicy="no-referrer" />
+          <div>
+            <strong>${escapeHtml(selected.label || selected.name || 'Valgt medie')}</strong>
+            <span>${selected.kind === 'gif' ? 'GIF' : 'Foto'} · ${escapeHtml(selected.provider || 'Web')}</span>
+          </div>
+          <button type="button" class="ghost tiny" data-clear-image="${escapeHtml(kind)}">Fjern</button>
+        </div>
+      ` : ''}
+      <p class="media-search-note">Brugere kan ikke uploade egne billeder. Vælg et resultat fra GIPHY/Pixabay, og tryk derefter Send.</p>
       ${warnings.length ? `<div class="media-search-warning">${warnings.map(escapeHtml).join('<br>')}</div>` : ''}
     </div>
     <div class="safe-media-scroll-area">
       ${webItems.length ? `
-        <div class="safe-media-section-title">Web-resultater</div>
+        <div class="safe-media-section-title"><span>Web-resultater</span><strong>${webItems.length}</strong></div>
         <div class="safe-media-grid">${webItems.map((item) => mediaItemButtonHtml(item, kind)).join('')}</div>
       ` : `
-        <div class="safe-media-empty">Søg efter GIFs/fotos fra GIPHY eller Pixabay.</div>
+        <div class="safe-media-empty media-empty-polished">
+          <strong>Ingen medier endnu</strong>
+          <span>Søg efter GIFs eller fotos fra GIPHY/Pixabay for at vælge noget at sende.</span>
+        </div>
       `}
     </div>
   `;

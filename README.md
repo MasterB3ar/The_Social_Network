@@ -345,3 +345,8 @@ Fixes `ReferenceError: db is not defined` in the private-message route. The `/ap
 Fixes the GIF/photo search button in the media picker. The search UI is no longer rendered as a nested form inside the chat send form; it is now a normal control panel with a real button. This prevents the browser from silently swallowing the click or submitting the chat form instead.
 
 Also updates the app.js cache-busting version to `1.5.18`, so browsers load the corrected frontend script after deployment.
+
+
+## TSN V1.5.19 — Better Media Send Layout
+
+Improves the GIF/photo sending UI in global and private chat. The media picker now has a cleaner header, provider/safety badge, better search controls, a selected-media card, larger result cards, better spacing, clearer selected state, and improved mobile layout. It still only allows approved GIPHY/Pixabay media and does not allow random uploads.
