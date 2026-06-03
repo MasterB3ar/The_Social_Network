@@ -1,3 +1,15 @@
+# TSN V1.5.29 — Danish Recovery Text
+
+Hele kontogendannelses- og kontosammenlægningsflowet er nu skrevet på dansk.
+
+Ændret:
+
+- Gendannelsespanelet bruger nu danske tekster som Kontogendannelse, gendannelsesanmodning og gendannelseskode.
+- Admin-panelet viser danske statusser: Afventer, Godkendt, Afvist og Brugt.
+- Den afsluttende sammenlægnings-popup er nu fuldt dansk og forklarer, at beskeder og stats flyttes til den gamle konto.
+- Serverbeskeder, fejlbeskeder, notifikationer og aktivitetsfeed for kontogendannelse/sammenlægning er oversat til dansk.
+- Sikkerheden er uændret: gamle adgangskoder bliver stadig aldrig vist.
+
 # TSN V1.4.4 — Manual Badges Update
 
 TSN is now a chat-first social network with manual admin badges, a default Member badge, better profiles, friend requests, notifications, @mentions, emoji reactions, admin warnings, and mobile polish.
@@ -411,3 +423,19 @@ The GIF/photo picker header now follows scroll movement more naturally: scrollin
 - The incoming call modal no longer uses the small bottom-corner active-call layout.
 - Accept/decline buttons stay visible and easy to press.
 - Updated app.js cache version to `1.5.27` so browsers load the fixed frontend.
+
+
+## TSN V1.5.28 — Sikker kontogendannelse + sammenlægning
+
+Denne opdatering tillader **ikke**, at gamle adgangskoder kan vises. Adgangskoder bliver stadig gemt som bcrypt-hashes og kan ikke læses.
+
+I stedet kan brugere gendanne konti sikkert med dette flow:
+
+1. User2 logger ind og sender en gendannelsesanmodning for den gamle konto User1.
+2. Admin gennemgår anmodningen under Admin → Kontogendannelse.
+3. Admin godkender, og TSN opretter en engangs-gendannelseskode.
+4. User2 bruger koden til at sætte en ny adgangskode på User1.
+5. Brugeren logger ind på User1 og får en dansk sammenlægnings-popup.
+6. Når brugeren trykker Fortsæt, flyttes beskeder, stats, venner, badges, notifikationer og aktivitet fra User2 til User1. Derefter fjernes User2.
+
+Det fjerner cyberrisikoen ved at gemme eller vise adgangskoder i klartekst.

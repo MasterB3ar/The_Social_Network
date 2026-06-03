@@ -44,7 +44,10 @@ const state = {
   call: null,
   ringtone: null,
   outgoingCallTimeout: null,
-  incomingCallTimeout: null
+  incomingCallTimeout: null,
+  recoveryRequests: [],
+  adminRecoveryRequests: [],
+  pendingRecoveryMerge: null
 };
 state.home = null;
 state.leaderboard = [];
@@ -1105,6 +1108,77 @@ registerForm.addEventListener('submit', async (event) => {
 });
 
 
+
+document.addEventListener('submit', async (event) => {
+  if (event.target?.id === 'recoveryRequestForm') {
+    event.preventDefault();
+    const form = event.target;
+    try {
+      await api('/api/recovery/request', { method: 'POST', body: JSON.stringify({ oldUsername: form.elements.oldUsername.value, note: form.elements.note.value }) });
+      form.reset();
+      await loadRecoveryRequests();
+      showToast('Gendannelsesanmodning sendt til admin.');
+    } catch (error) { showToast(error.message); }
+  }
+  if (event.target?.id === 'recoveryResetForm') {
+    event.preventDefault();
+    const form = event.target;
+    try {
+      const data = await api('/api/recovery/reset', { method: 'POST', body: JSON.stringify({ requestId: form.elements.requestId.value, resetCode: form.elements.resetCode.value, newPassword: form.elements.newPassword.value }) });
+      form.reset();
+      showToast(data.message || 'Adgangskoden er nulstillet. Log ind på den gamle konto.');
+    } catch (error) { showToast(error.message); }
+  }
+});
+
+document.addEventListener('click', async (event) => {
+  const fill = event.target.closest('[data-fill-recovery]');
+  if (fill) {
+    const request = state.recoveryRequests.find((candidate) => candidate.id === fill.dataset.fillRecovery);
+    const form = $('#recoveryResetForm');
+    if (request && form) {
+      form.elements.requestId.value = request.id;
+      form.elements.resetCode.value = request.resetCode || '';
+      showToast('Gendannelseskoden er sat ind. Vælg en ny adgangskode til den gamle konto.');
+    }
+    return;
+  }
+  if (event.target?.id === 'refreshRecoveryBtn') {
+    loadRecoveryRequests().catch((error) => showToast(error.message));
+    return;
+  }
+  if (event.target?.id === 'refreshAdminRecoveryBtn') {
+    loadAdminRecoveryRequests().catch((error) => showToast(error.message));
+    return;
+  }
+  const approve = event.target.closest('[data-admin-recovery-approve]');
+  const deny = event.target.closest('[data-admin-recovery-deny]');
+  if (approve || deny) {
+    const requestId = approve?.dataset.adminRecoveryApprove || deny?.dataset.adminRecoveryDeny;
+    const action = approve ? 'approve' : 'deny';
+    const adminNote = action === 'deny' ? (prompt('Hvorfor afvises anmodningen?') || '') : '';
+    try {
+      await api(`/api/admin/recovery-requests/${requestId}`, { method: 'PATCH', body: JSON.stringify({ action, adminNote }) });
+      await loadAdminRecoveryRequests();
+      showToast(action === 'approve' ? 'Gendannelse godkendt' : 'Gendannelse afvist');
+    } catch (error) { showToast(error.message); }
+    return;
+  }
+  if (event.target?.id === 'confirmRecoveryMergeBtn') {
+    try {
+      const data = await api('/api/recovery/merge/confirm', { method: 'POST' });
+      state.me = data.user || state.me;
+      state.pendingRecoveryMerge = data.merge || null;
+      document.getElementById('recoveryMergeModal')?.remove();
+      renderMe();
+      await loadEverything();
+      if (state.pendingRecoveryMerge) showRecoveryMergeModal(state.pendingRecoveryMerge);
+      else await checkPendingRecoveryMerge();
+      showToast('Kontiene er sammenlagt.');
+    } catch (error) { showToast(error.message); }
+  }
+});
+
 $('#logoutBtn').addEventListener('click', () => forceLocalLogout('Logget ud'));
 
 $('#refreshBtn').addEventListener('click', async () => {
@@ -2042,6 +2116,132 @@ async function markConversationRead(userId) {
   }
 }
 
+
+function ensureRecoveryUi() {
+  const profileSidebar = document.querySelector('.sidebar[data-route-view="profile"]');
+  if (profileSidebar && !$('#accountRecoveryPanel')) {
+    const panel = document.createElement('section');
+    panel.id = 'accountRecoveryPanel';
+    panel.className = 'account-recovery card mini-panel';
+    panel.innerHTML = `
+      <div class="section-heading compact-heading"><div><p class="eyebrow mini">Kontogendannelse</p><h3>Glemt adgangskode?</h3><p>Admins kan ikke vise gamle adgangskoder. De kan godkende en sikker engangskode, så du kan nulstille den gamle konto og sammenlægge dine to konti.</p></div><button id="refreshRecoveryBtn" class="ghost tiny" type="button">Opdater</button></div>
+      <form id="recoveryRequestForm" class="mini-admin-form">
+        <input name="oldUsername" placeholder="Gammelt brugernavn, fx user1" autocomplete="off" />
+        <textarea name="note" rows="2" maxlength="300" placeholder="Skriv kort, hvorfor det er din gamle konto"></textarea>
+        <button class="secondary tiny" type="submit">Send gendannelsesanmodning</button>
+      </form>
+      <form id="recoveryResetForm" class="mini-admin-form">
+        <strong>Når admin har godkendt</strong>
+        <input name="requestId" placeholder="Anmodnings-ID" autocomplete="off" />
+        <input name="resetCode" placeholder="Gendannelseskode" autocomplete="one-time-code" />
+        <input name="newPassword" type="password" placeholder="Ny adgangskode til den gamle konto" autocomplete="new-password" />
+        <button class="primary tiny" type="submit">Nulstil den gamle konto sikkert</button>
+      </form>
+      <div id="recoveryRequestsList" class="recovery-list"></div>
+    `;
+    const dangerZone = profileSidebar.querySelector('.danger-zone');
+    profileSidebar.insertBefore(panel, dangerZone || profileSidebar.querySelector('#adminBox') || null);
+  }
+  const adminPanel = $('#adminModerationPanel');
+  if (adminPanel && !$('#adminRecoveryPanel')) {
+    const panel = document.createElement('div');
+    panel.id = 'adminRecoveryPanel';
+    panel.className = 'admin-recovery-panel admin-subpanel';
+    panel.innerHTML = `
+      <div class="admin-moderation-head"><div><strong>Kontogendannelse</strong><span>Godkend sikre engangskoder. Gamle adgangskoder kan aldrig ses.</span></div><button id="refreshAdminRecoveryBtn" class="secondary tiny" type="button">Opdater gendannelse</button></div>
+      <div id="adminRecoveryList" class="admin-recovery-list"></div>
+    `;
+    adminPanel.appendChild(panel);
+  }
+}
+
+function recoveryStatusLabel(status) {
+  const value = String(status || 'pending').toLowerCase();
+  if (value === 'pending') return 'Afventer';
+  if (value === 'approved') return 'Godkendt';
+  if (value === 'denied') return 'Afvist';
+  if (value === 'used') return 'Brugt';
+  if (value === 'completed') return 'Gennemført';
+  return value;
+}
+
+function renderRecoveryRequests() {
+  ensureRecoveryUi();
+  const list = $('#recoveryRequestsList');
+  if (!list) return;
+  if (!state.recoveryRequests.length) {
+    list.innerHTML = '<div class="empty small-empty">Ingen gendannelsesanmodninger endnu.</div>';
+    return;
+  }
+  list.innerHTML = state.recoveryRequests.map((request) => `
+    <article class="recovery-card status-${escapeHtml(request.status)}">
+      <div><strong>@${escapeHtml(request.oldUsername || request.oldUser?.username || 'ukendt')}</strong><span>${escapeHtml(recoveryStatusLabel(request.status))}</span></div>
+      <p>${escapeHtml(request.note || '')}</p>
+      ${request.resetCode ? `<div class="recovery-code"><small>Gendannelseskode</small><code>${escapeHtml(request.resetCode)}</code><button class="ghost tiny" type="button" data-fill-recovery="${escapeHtml(request.id)}">Brug kode</button></div>` : ''}
+      ${request.adminNote ? `<p class="muted-small">Admin: ${escapeHtml(request.adminNote)}</p>` : ''}
+    </article>
+  `).join('');
+}
+
+function renderAdminRecoveryRequests() {
+  ensureRecoveryUi();
+  const list = $('#adminRecoveryList');
+  if (!list) return;
+  if (!state.adminRecoveryRequests.length) {
+    list.innerHTML = '<div class="empty small-empty">Ingen gendannelsesanmodninger.</div>';
+    return;
+  }
+  list.innerHTML = state.adminRecoveryRequests.map((request) => `
+    <article class="admin-user recovery-admin-card status-${escapeHtml(request.status)}">
+      <div class="admin-user-main"><strong>${escapeHtml(request.requester?.name || 'Ukendt')} vil gendanne @${escapeHtml(request.oldUsername || request.oldUser?.username || 'ukendt')}</strong><span>${escapeHtml(recoveryStatusLabel(request.status))} · ${escapeHtml(formatTime(request.createdAt))}</span></div>
+      <p>${escapeHtml(request.note || 'Ingen note')}</p>
+      ${request.resetCode ? `<p class="muted-small">Koden er oprettet og synlig for brugeren, der sendte anmodningen.</p>` : ''}
+      <div class="admin-user-actions">
+        <button class="secondary tiny" type="button" data-admin-recovery-approve="${escapeHtml(request.id)}">Godkend</button>
+        <button class="ghost tiny danger" type="button" data-admin-recovery-deny="${escapeHtml(request.id)}">Afvis</button>
+      </div>
+    </article>
+  `).join('');
+}
+
+async function loadRecoveryRequests() {
+  if (!state.me) return;
+  const data = await api('/api/recovery/my-requests');
+  state.recoveryRequests = data.requests || [];
+  renderRecoveryRequests();
+}
+
+async function loadAdminRecoveryRequests() {
+  if (!state.me?.isAdmin) return;
+  const data = await api('/api/admin/recovery-requests?status=all');
+  state.adminRecoveryRequests = data.requests || [];
+  renderAdminRecoveryRequests();
+}
+
+async function checkPendingRecoveryMerge() {
+  if (!state.me) return;
+  try {
+    const data = await api('/api/recovery/pending-merge');
+    state.pendingRecoveryMerge = data.recoveryMerge || null;
+    if (state.pendingRecoveryMerge) showRecoveryMergeModal(state.pendingRecoveryMerge);
+  } catch {}
+}
+
+function showRecoveryMergeModal(merge) {
+  if (!merge || $('#recoveryMergeModal')) return;
+  const modal = document.createElement('section');
+  modal.id = 'recoveryMergeModal';
+  modal.className = 'rules-panel recovery-merge-modal';
+  modal.innerHTML = `
+    <div class="rules-card card recovery-merge-card">
+      <p class="eyebrow mini">Kontosammenlægning</p>
+      <h2>Dine to konti bliver sammenlagt nu</h2>
+      <p>Alle beskeder fra din nye konto (${escapeHtml(merge.secondaryUser?.username || 'User2')}) bliver flyttet til din gamle konto (${escapeHtml(merge.primaryUser?.username || 'User1')}). Alle stats bliver også overført til den gamle konto (${escapeHtml(merge.primaryUser?.username || 'User1')}).</p><p class="muted-small">Når du trykker Fortsæt, bliver den nye midlertidige konto fjernet, og du fortsætter på den gamle konto.</p>
+      <button id="confirmRecoveryMergeBtn" class="primary" type="button">Fortsæt</button>
+    </div>`;
+  document.body.appendChild(modal);
+}
+
 function renderStats() {
   const online = state.users.filter((user) => user.online).length;
   $('#globalCount').textContent = String(state.globalMessages.length);
@@ -2075,6 +2275,9 @@ function renderMe() {
   applyAvatarElement($('#myAvatar'), state.me, 'large');
   renderProfilePreview();
   renderAdminTools();
+  ensureRecoveryUi();
+  renderRecoveryRequests();
+  renderAdminRecoveryRequests();
 }
 
 
@@ -2688,7 +2891,7 @@ async function loadAdminUsers() {
 
 async function loadAdminDashboard() {
   if (!state.me?.isAdmin) return;
-  await Promise.all([loadAdminUsers(), loadAdminReports(), loadAdminStats()]);
+  await Promise.all([loadAdminUsers(), loadAdminReports(), loadAdminStats(), loadAdminRecoveryRequests().catch(() => {})]);
 }
 
 async function loadAdminMessages(options = {}) {
@@ -2827,7 +3030,7 @@ async function loadGlobalMessages() {
 }
 
 async function loadEverything() {
-  await Promise.all([loadMediaLibrary().catch(() => {}), loadGlobalMessages(), loadUsers($('#userSearch').value), loadFriends().catch(() => {}), loadHome().catch(() => {}), loadLeaderboard().catch(() => {}), loadEvents().catch(() => {}), loadPolls().catch(() => {})]);
+  await Promise.all([loadMediaLibrary().catch(() => {}), loadGlobalMessages(), loadUsers($('#userSearch').value), loadFriends().catch(() => {}), loadHome().catch(() => {}), loadLeaderboard().catch(() => {}), loadEvents().catch(() => {}), loadPolls().catch(() => {}), loadRecoveryRequests().catch(() => {})]);
   if (state.me?.isAdmin) {
     await loadAdminDashboard();
     renderAdminMessageViewer();
@@ -3390,6 +3593,7 @@ async function initApp() {
   try {
     const meData = await api('/api/me');
     state.me = meData.user;
+    state.pendingRecoveryMerge = meData.recoveryMerge || null;
     renderMe();
     showApp();
     connectSocket();
@@ -3401,6 +3605,8 @@ async function initApp() {
 
   try {
     await loadEverything();
+    if (state.pendingRecoveryMerge) showRecoveryMergeModal(state.pendingRecoveryMerge);
+    else await checkPendingRecoveryMerge();
   } catch (error) {
     console.error('TSN blev indlæst, men noget appdata kunne ikke indlæses:', error);
     showToast(error?.message ? `Logget ind. Noget data kunne ikke indlæses: ${error.message}` : 'Logget ind. Noget data kunne ikke indlæses.');

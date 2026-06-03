@@ -120,7 +120,7 @@ app.use(express.static(PUBLIC_DIR, {
 }));
 
 function emptyDatabase() {
-  return { users: [], posts: [], messages: [], globalMessages: [], rooms: [], roomMessages: [], reports: [], notifications: [], warnings: [], activityFeed: [], events: [], polls: [], tsnStock: null };
+  return { users: [], posts: [], messages: [], globalMessages: [], rooms: [], roomMessages: [], reports: [], notifications: [], warnings: [], activityFeed: [], events: [], polls: [], recoveryRequests: [], accountMerges: [], tsnStock: null };
 }
 
 function databaseHasUserData(db) {
@@ -158,6 +158,8 @@ function normalizeDatabaseShape(db) {
     activityFeed: Array.isArray(db?.activityFeed) ? db.activityFeed : [],
     events: Array.isArray(db?.events) ? db.events : [],
     polls: Array.isArray(db?.polls) ? db.polls : [],
+    recoveryRequests: Array.isArray(db?.recoveryRequests) ? db.recoveryRequests : [],
+    accountMerges: Array.isArray(db?.accountMerges) ? db.accountMerges : [],
     tsnStock: normalizeTsnStockState(db?.tsnStock)
   };
   ensureGrowthDatabaseShape(normalized);
@@ -1409,6 +1411,8 @@ function ensureGrowthDatabaseShape(db) {
   db.activityFeed = (Array.isArray(db.activityFeed) ? db.activityFeed : []).filter((item) => item && item.type).slice(-ACTIVITY_FEED_LIMIT);
   db.events = (Array.isArray(db.events) ? db.events : []).filter((event) => event && event.id).slice(-EVENTS_LIMIT);
   db.polls = (Array.isArray(db.polls) ? db.polls : []).filter((poll) => poll && poll.id).slice(-POLLS_LIMIT);
+  db.recoveryRequests = (Array.isArray(db.recoveryRequests) ? db.recoveryRequests : []).filter((request) => request && request.id);
+  db.accountMerges = (Array.isArray(db.accountMerges) ? db.accountMerges : []).filter((merge) => merge && merge.id);
   return db;
 }
 
@@ -2605,8 +2609,8 @@ app.get('/api/health', (req, res) => {
     const storage = getStorageStatus();
     res.json({
       ok: true,
-      app: 'TSN V1.5.1',
-      shortName: 'TSN V1.5.1',
+      app: 'TSN V1.5.28',
+      shortName: 'TSN V1.5.28',
       environment: process.env.NODE_ENV || 'development',
       storage: {
         ok: storage.ok,
@@ -2620,7 +2624,7 @@ app.get('/api/health', (req, res) => {
         persistenceWarning: storage.persistenceWarning
       },
       security: {
-        accountPasswords: 'bcrypt-hashed',
+        accountPasswords: 'bcrypt-hashed, never readable; recovery uses one-time reset codes',
         userIdentityFields: 'aes-256-gcm encrypted',
         globalMessages: 'aes-256-gcm encrypted at rest',
         privateMessages: 'aes-256-gcm encrypted at rest',
@@ -2635,8 +2639,8 @@ app.get('/api/health', (req, res) => {
   } catch (error) {
     res.status(503).json({
       ok: false,
-      app: 'TSN V1.5.1',
-      shortName: 'TSN V1.5.1',
+      app: 'TSN V1.5.28',
+      shortName: 'TSN V1.5.28',
       error: 'Lageret er ikke klar.',
       detail: error.message
     });
@@ -2646,11 +2650,101 @@ app.get('/api/health', (req, res) => {
 app.get('/api/ping', (req, res) => {
   res.json({
     ok: true,
-    app: 'TSN V1.5.1',
+    app: 'TSN V1.5.28',
     message: 'pong',
     now: new Date().toISOString()
   });
 });
+
+
+function generateRecoveryCode() {
+  return crypto.randomBytes(18).toString('base64url');
+}
+
+function recoveryRequestPublic(db, request, viewer = null) {
+  const oldUser = db.users.find((user) => user.id === request.oldUserId);
+  const requester = db.users.find((user) => user.id === request.requesterId);
+  const canSeeCode = viewer && (viewer.role === 'admin' || viewer.id === request.requesterId);
+  return {
+    id: request.id,
+    status: request.status || 'pending',
+    oldUsername: request.oldUsername || (oldUser ? getUserField(oldUser, 'username') : ''),
+    oldUser: oldUser ? publicUser(oldUser) : null,
+    requester: requester ? publicUser(requester) : null,
+    note: getEncryptedObjectField(request, 'note'),
+    adminNote: getEncryptedObjectField(request, 'adminNote'),
+    createdAt: request.createdAt,
+    reviewedAt: request.reviewedAt || null,
+    usedAt: request.usedAt || null,
+    resetCode: canSeeCode && request.status === 'approved' && !request.usedAt ? request.resetCode : ''
+  };
+}
+
+function pendingMergePublic(db, merge) {
+  if (!merge || merge.status !== 'pending') return null;
+  const primary = db.users.find((user) => user.id === merge.primaryUserId);
+  const secondary = db.users.find((user) => user.id === merge.secondaryUserId);
+  return {
+    id: merge.id,
+    primaryUser: primary ? publicUser(primary) : null,
+    secondaryUser: secondary ? publicUser(secondary) : null,
+    createdAt: merge.createdAt
+  };
+}
+
+function replaceUserIdEverywhere(value, fromId, toId) {
+  if (!value || !fromId || !toId) return value;
+  if (typeof value === 'string') return value === fromId ? toId : value;
+  if (Array.isArray(value)) return uniqueStringArray(value.map((item) => replaceUserIdEverywhere(item, fromId, toId)));
+  if (typeof value === 'object') {
+    Object.keys(value).forEach((key) => {
+      value[key] = replaceUserIdEverywhere(value[key], fromId, toId);
+    });
+  }
+  return value;
+}
+
+function mergeUserAccounts(db, merge) {
+  const primary = db.users.find((user) => user.id === merge.primaryUserId);
+  const secondaryIndex = db.users.findIndex((user) => user.id === merge.secondaryUserId);
+  if (!primary || secondaryIndex < 0) throw new Error('Kontiene til sammenlægning blev ikke fundet.');
+  const secondary = db.users[secondaryIndex];
+  const primaryId = primary.id;
+  const secondaryId = secondary.id;
+
+  // Transfer visible account stats/status.
+  primary.xp = Math.max(0, Math.floor(Number(primary.xp) || 0)) + Math.max(0, Math.floor(Number(secondary.xp) || 0));
+  primary.level = levelFromXp(primary.xp);
+  primary.loginStreak = Math.max(Number(primary.loginStreak) || 0, Number(secondary.loginStreak) || 0);
+  primary.bestLoginStreak = Math.max(Number(primary.bestLoginStreak) || 0, Number(secondary.bestLoginStreak) || 0);
+  primary.warningCount = Math.max(Number(primary.warningCount) || 0, Number(secondary.warningCount) || 0);
+  primary.customBadges = normalizeCustomBadges([...(primary.customBadges || []), ...(secondary.customBadges || [])]);
+  primary.friends = uniqueStringArray([...(primary.friends || []), ...(secondary.friends || [])]).filter((idValue) => idValue !== primaryId && idValue !== secondaryId);
+  primary.friendRequestsIn = uniqueStringArray([...(primary.friendRequestsIn || []), ...(secondary.friendRequestsIn || [])]).filter((idValue) => idValue !== primaryId && idValue !== secondaryId && !primary.friends.includes(idValue));
+  primary.friendRequestsOut = uniqueStringArray([...(primary.friendRequestsOut || []), ...(secondary.friendRequestsOut || [])]).filter((idValue) => idValue !== primaryId && idValue !== secondaryId && !primary.friends.includes(idValue));
+
+  // Transfer every reference from the temporary account to the recovered account.
+  ['messages', 'globalMessages', 'roomMessages', 'reports', 'notifications', 'warnings', 'activityFeed', 'events', 'polls', 'recoveryRequests', 'accountMerges'].forEach((collectionName) => {
+    if (Array.isArray(db[collectionName])) replaceUserIdEverywhere(db[collectionName], secondaryId, primaryId);
+  });
+  db.users.forEach((user) => {
+    user.friends = uniqueStringArray(user.friends).map((idValue) => idValue === secondaryId ? primaryId : idValue).filter((idValue) => idValue !== user.id);
+    user.friendRequestsIn = uniqueStringArray(user.friendRequestsIn).map((idValue) => idValue === secondaryId ? primaryId : idValue).filter((idValue) => idValue !== user.id && !user.friends.includes(idValue));
+    user.friendRequestsOut = uniqueStringArray(user.friendRequestsOut).map((idValue) => idValue === secondaryId ? primaryId : idValue).filter((idValue) => idValue !== user.id && !user.friends.includes(idValue));
+  });
+
+  db.users.splice(secondaryIndex, 1);
+  merge.status = 'completed';
+  merge.completedAt = new Date().toISOString();
+  merge.summary = { secondaryDeleted: true, messagesTransferred: true, statsTransferred: true };
+  primary.sessionVersion = Number(primary.sessionVersion || 0) + 1;
+  addActivity(db, 'account-merge', `${getUserField(primary, 'name')} fik to konti sammenlagt`, 'Kontogendannelse gennemført sikkert uden at vise gamle adgangskoder.', primaryId, { mergeId: merge.id });
+  return { primary, secondary };
+}
+
+function findPendingMergeForPrimary(db, userId) {
+  return (Array.isArray(db.accountMerges) ? db.accountMerges : []).find((merge) => merge.primaryUserId === userId && merge.status === 'pending');
+}
 
 app.post('/api/auth/register', async (req, res) => {
   const name = cleanText(req.body.name, 60);
@@ -2729,14 +2823,134 @@ app.post('/api/auth/login', async (req, res) => {
   updateLoginStreak(db, user);
   await writeDb(db);
 
-  res.json({ token: signToken(user), user: publicUser(user) });
+  res.json({ token: signToken(user), user: publicUser(user), recoveryMerge: pendingMergePublic(db, findPendingMergeForPrimary(db, user.id)) });
 });
 
 app.get('/api/me', requireAuth, async (req, res) => {
   const user = req.db.users.find((candidate) => candidate.id === req.user.id);
   updateLoginStreak(req.db, user);
   await writeDb(req.db);
-  res.json({ user: publicUser(user || req.user) });
+  res.json({ user: publicUser(user || req.user), recoveryMerge: pendingMergePublic(req.db, findPendingMergeForPrimary(req.db, (user || req.user).id)) });
+});
+
+
+app.get('/api/recovery/my-requests', requireAuth, (req, res) => {
+  const requests = (req.db.recoveryRequests || [])
+    .filter((request) => request.requesterId === req.user.id)
+    .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))
+    .map((request) => recoveryRequestPublic(req.db, request, req.user));
+  res.json({ requests });
+});
+
+app.post('/api/recovery/request', requireAuth, async (req, res) => {
+  const oldUsername = normalizeUsername(req.body.oldUsername || req.body.username || '');
+  const note = cleanText(req.body.note || '', 300);
+  if (!oldUsername) return res.status(400).json({ error: 'Skriv brugernavnet på den gamle konto.' });
+  const db = req.db;
+  const oldUser = db.users.find((user) => userMatchesUsername(user, oldUsername));
+  if (!oldUser) return res.status(404).json({ error: 'Den gamle konto blev ikke fundet.' });
+  if (oldUser.id === req.user.id) return res.status(400).json({ error: 'Du er allerede logget ind på den konto.' });
+  const existing = (db.recoveryRequests || []).find((request) => request.oldUserId === oldUser.id && request.requesterId === req.user.id && ['pending', 'approved'].includes(request.status) && !request.usedAt);
+  if (existing) return res.status(409).json({ error: 'Du har allerede en aktiv gendannelsesanmodning til den konto.' });
+  const request = {
+    id: id('recovery'),
+    requesterId: req.user.id,
+    oldUserId: oldUser.id,
+    oldUsername,
+    status: 'pending',
+    ...encryptedTextObject('note', note),
+    createdAt: new Date().toISOString()
+  };
+  db.recoveryRequests = Array.isArray(db.recoveryRequests) ? db.recoveryRequests : [];
+  db.recoveryRequests.push(request);
+  db.users.filter((user) => user.role === 'admin').forEach((admin) => {
+    createNotification(db, admin.id, 'account-recovery', 'Ny kontogendannelsesanmodning', `${getUserField(req.user, 'name')} vil gendanne @${oldUsername}`, { requestId: request.id });
+  });
+  await writeDb(db);
+  res.status(201).json({ request: recoveryRequestPublic(db, request, req.user) });
+});
+
+app.post('/api/recovery/reset', async (req, res) => {
+  const requestId = String(req.body.requestId || '').trim();
+  const resetCode = String(req.body.resetCode || '').trim();
+  const newPassword = String(req.body.newPassword || '');
+  const passwordError = validateAccountPassword(newPassword);
+  if (passwordError) return res.status(400).json({ error: passwordError });
+  const db = readDb();
+  const request = (db.recoveryRequests || []).find((candidate) => candidate.id === requestId);
+  if (!request || request.status !== 'approved' || request.usedAt) return res.status(404).json({ error: 'Gendannelseskoden er ikke aktiv.' });
+  if (!resetCode || !safeStringEqual(resetCode, request.resetCode || '')) return res.status(401).json({ error: 'Forkert gendannelseskode.' });
+  const oldUser = db.users.find((user) => user.id === request.oldUserId);
+  const requester = db.users.find((user) => user.id === request.requesterId);
+  if (!oldUser || !requester) return res.status(404).json({ error: 'En af kontoerne blev ikke fundet.' });
+  oldUser.passwordHash = await bcrypt.hash(newPassword, 12);
+  oldUser.sessionVersion = Number(oldUser.sessionVersion || 0) + 1;
+  request.usedAt = new Date().toISOString();
+  request.status = 'used';
+  db.accountMerges = Array.isArray(db.accountMerges) ? db.accountMerges : [];
+  let merge = db.accountMerges.find((candidate) => candidate.requestId === request.id);
+  if (!merge) {
+    merge = {
+      id: id('merge'),
+      requestId: request.id,
+      primaryUserId: oldUser.id,
+      secondaryUserId: requester.id,
+      status: 'pending',
+      createdAt: new Date().toISOString()
+    };
+    db.accountMerges.push(merge);
+  }
+  createNotification(db, oldUser.id, 'account-recovery', 'Konto klar til sammenlægning', 'Log ind på den gamle konto for at gennemføre sammenlægningen.', { mergeId: merge.id });
+  await writeDb(db);
+  res.json({ ok: true, message: 'Adgangskoden er nulstillet sikkert. Log nu ind på den gamle konto for at sammenlægge kontiene.' });
+});
+
+app.get('/api/recovery/pending-merge', requireAuth, (req, res) => {
+  res.json({ recoveryMerge: pendingMergePublic(req.db, findPendingMergeForPrimary(req.db, req.user.id)) });
+});
+
+app.post('/api/recovery/merge/confirm', requireAuth, async (req, res) => {
+  const db = req.db;
+  const merge = findPendingMergeForPrimary(db, req.user.id);
+  if (!merge) return res.status(404).json({ error: 'Ingen kontosammenlægning venter.' });
+  const result = mergeUserAccounts(db, merge);
+  await writeDb(db);
+  res.json({ ok: true, user: publicUser(result.primary), merge: pendingMergePublic(db, merge) });
+});
+
+app.get('/api/admin/recovery-requests', requireAuth, requireAdmin, (req, res) => {
+  const status = String(req.query.status || 'pending').toLowerCase();
+  let requests = [...(req.db.recoveryRequests || [])];
+  if (status !== 'all') requests = requests.filter((request) => (request.status || 'pending') === status);
+  requests.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+  res.json({ requests: requests.map((request) => recoveryRequestPublic(req.db, request, req.user)) });
+});
+
+app.patch('/api/admin/recovery-requests/:requestId', requireAuth, requireAdmin, async (req, res) => {
+  const db = req.db;
+  const request = (db.recoveryRequests || []).find((candidate) => candidate.id === req.params.requestId);
+  if (!request) return res.status(404).json({ error: 'Gendannelsesanmodningen blev ikke fundet.' });
+  if (request.usedAt) return res.status(400).json({ error: 'Denne gendannelsesanmodning er allerede brugt.' });
+  const action = String(req.body.action || '').toLowerCase();
+  const adminNote = cleanText(req.body.adminNote || '', 300);
+  if (action === 'approve') {
+    request.status = 'approved';
+    request.resetCode = generateRecoveryCode();
+    request.reviewedAt = new Date().toISOString();
+    request.reviewedBy = req.user.id;
+    Object.assign(request, encryptedTextObject('adminNote', adminNote));
+    createNotification(db, request.requesterId, 'account-recovery', 'Gendannelse godkendt', 'Din gendannelseskode er klar under Profil → Kontogendannelse.', { requestId: request.id });
+  } else if (action === 'deny' || action === 'reject') {
+    request.status = 'denied';
+    request.reviewedAt = new Date().toISOString();
+    request.reviewedBy = req.user.id;
+    Object.assign(request, encryptedTextObject('adminNote', adminNote));
+    createNotification(db, request.requesterId, 'account-recovery', 'Gendannelse afvist', adminNote || 'Admin afviste din gendannelsesanmodning.', { requestId: request.id });
+  } else {
+    return res.status(400).json({ error: 'Ugyldig handling. Brug godkend eller afvis.' });
+  }
+  await writeDb(db);
+  res.json({ request: recoveryRequestPublic(db, request, req.user) });
 });
 
 app.patch('/api/me', requireAuth, async (req, res) => {

@@ -1,7 +1,7 @@
 {
   "name": "the-social-network-tsn",
-  "version": "1.5.27",
-  "description": "TSN media picker auto-hide header fix.",
+  "version": "1.5.29",
+  "description": "TSN V1.5.29 Danish recovery and account-merge text.",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",

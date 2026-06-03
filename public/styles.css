@@ -6763,3 +6763,49 @@ body.is-admin .growth-admin-tools { display:grid; }
     max-height: min(88vh, 720px) !important;
   }
 }
+
+
+/* V1.5.28 secure account recovery */
+.account-recovery,
+.admin-recovery-panel {
+  margin-top: 16px;
+  padding: 14px;
+  border: 1px solid rgba(255,255,255,.10);
+  border-radius: 18px;
+  background: rgba(8, 12, 24, .62);
+}
+.recovery-list,
+.admin-recovery-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+}
+.recovery-card,
+.recovery-admin-card {
+  border: 1px solid rgba(255,255,255,.10);
+  border-radius: 14px;
+  padding: 12px;
+  background: rgba(255,255,255,.045);
+}
+.recovery-card > div:first-child {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: center;
+}
+.recovery-code {
+  display: grid;
+  gap: 6px;
+  margin-top: 8px;
+  padding: 10px;
+  border-radius: 12px;
+  background: rgba(0,0,0,.24);
+}
+.recovery-code code {
+  overflow-wrap: anywhere;
+  user-select: all;
+  color: #dbeafe;
+}
+.muted-small { color: rgba(226,232,240,.72); font-size: .84rem; }
+.recovery-merge-modal { display: grid; place-items: center; z-index: 99999; }
+.recovery-merge-card { max-width: 520px; }
