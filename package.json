@@ -1,6 +1,6 @@
 {
   "name": "the-social-network-tsn",
-  "version": "1.5.26",
+  "version": "1.5.27",
   "description": "TSN media picker auto-hide header fix.",
   "main": "server.js",
   "scripts": {

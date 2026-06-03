@@ -6707,3 +6707,59 @@ body.is-admin .growth-admin-tools { display:grid; }
     grid-template-columns: 1fr 0.36fr;
   }
 }
+
+
+/* TSN V1.5.27 — force incoming call modal to exact screen center */
+#callOverlay.call-overlay.call-is-incoming {
+  position: fixed !important;
+  top: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  left: 0 !important;
+  inset: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  min-width: 100vw !important;
+  min-height: 100vh !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  padding: clamp(0.85rem, 2.5vw, 1.5rem) !important;
+  margin: 0 !important;
+  background: rgba(3, 7, 18, 0.78) !important;
+  backdrop-filter: blur(20px) !important;
+  z-index: 9999 !important;
+  pointer-events: auto !important;
+}
+
+#callOverlay.call-overlay.call-is-incoming .call-card {
+  position: relative !important;
+  left: auto !important;
+  right: auto !important;
+  top: auto !important;
+  bottom: auto !important;
+  transform: none !important;
+  width: min(540px, calc(100vw - 1.5rem)) !important;
+  max-height: min(88vh, 690px) !important;
+  margin: auto !important;
+  overflow: auto !important;
+}
+
+#callOverlay.call-overlay.call-is-incoming .call-actions {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  background: linear-gradient(180deg, rgba(13, 22, 45, 0.06), rgba(13, 22, 45, 0.96) 35%);
+  padding-top: 0.7rem;
+}
+
+@media (max-width: 720px) {
+  #callOverlay.call-overlay.call-is-incoming {
+    padding: 0.9rem !important;
+  }
+
+  #callOverlay.call-overlay.call-is-incoming .call-card {
+    width: min(430px, calc(100vw - 1.1rem)) !important;
+    max-height: min(88vh, 720px) !important;
+  }
+}

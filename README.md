@@ -403,3 +403,11 @@ The GIF/photo picker header now follows scroll movement more naturally: scrollin
 - Accept/decline buttons are much larger and easier to press.
 - Active calls stay as a smaller floating overlay so users can keep using TSN.
 - Call layout is cleaner on mobile and desktop.
+
+
+## TSN V1.5.27 — Incoming Call Center Fix
+
+- Incoming call popup is now forced to the exact center of the screen.
+- The incoming call modal no longer uses the small bottom-corner active-call layout.
+- Accept/decline buttons stay visible and easy to press.
+- Updated app.js cache version to `1.5.27` so browsers load the fixed frontend.
