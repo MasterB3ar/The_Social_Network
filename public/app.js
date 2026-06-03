@@ -242,15 +242,15 @@ function renderSafeMediaPicker(kind) {
         <strong>Find GIFs/fotos fra GIPHY/Pixabay</strong>
         <span>${state.mediaWebSearchEnabled ? `Aktiv: ${escapeHtml(webProviderLabel)}` : 'Websøgning ikke sat op endnu'}</span>
       </div>
-      <form class="media-search-form" data-media-search-form="${escapeHtml(kind)}">
+      <div class="media-search-form" data-media-search-form="${escapeHtml(kind)}">
         <input name="q" value="${escapeHtml(state.mediaSearchQuery || '')}" placeholder="Søg fx: funny, cat, gg, party..." autocomplete="off" />
         <select name="kind">
           <option value="all" ${state.mediaSearchKind === 'all' ? 'selected' : ''}>Alt</option>
           <option value="gif" ${state.mediaSearchKind === 'gif' ? 'selected' : ''}>GIFs</option>
           <option value="picture" ${state.mediaSearchKind === 'picture' ? 'selected' : ''}>Fotos</option>
         </select>
-        <button class="secondary tiny" type="submit" ${state.mediaSearchLoading ? 'disabled' : ''}>${state.mediaSearchLoading ? 'Søger...' : 'Søg'}</button>
-      </form>
+        <button class="secondary tiny" type="button" data-media-search-submit="1" ${state.mediaSearchLoading ? 'disabled' : ''}>${state.mediaSearchLoading ? 'Søger...' : 'Søg'}</button>
+      </div>
       <p class="media-search-note">Brugere kan stadig ikke uploade egne billeder. De kan kun sende medier valgt fra GIPHY eller Pixabay.</p>
       ${warnings.length ? `<div class="media-search-warning">${warnings.map(escapeHtml).join('<br>')}</div>` : ''}
     </div>
