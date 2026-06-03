@@ -395,3 +395,11 @@ Fixes a regression from V1.5.21 where the private chat panel could appear as a l
 ## TSN V1.5.25 — Media Picker Fluid Header
 
 The GIF/photo picker header now follows scroll movement more naturally: scrolling down moves it up proportionally, and scrolling up brings it back proportionally. This replaces the previous snap-like auto-hide behavior.
+
+
+## TSN V1.5.26 — Call UI Fix
+
+- Incoming calls now show as a clear centered popup.
+- Accept/decline buttons are much larger and easier to press.
+- Active calls stay as a smaller floating overlay so users can keep using TSN.
+- Call layout is cleaner on mobile and desktop.

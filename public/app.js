@@ -2916,7 +2916,12 @@ function callPeerName(peerIdOrUser) {
 function setCallUi({ title, status, incoming = false, active = false, kind = 'voice', peerName = '' } = {}) {
   if (!callOverlay) return;
   callOverlay.classList.remove('hidden');
-  if (callEyebrow) callEyebrow.textContent = kind === 'video' ? 'TSN videoopkald' : 'TSN stemmeopkald';
+  callOverlay.classList.toggle('call-is-incoming', Boolean(incoming));
+  callOverlay.classList.toggle('call-is-active', Boolean(active));
+  callOverlay.classList.toggle('call-is-outgoing', !incoming && !active);
+  if (callEyebrow) callEyebrow.textContent = incoming
+    ? (kind === 'video' ? 'Indgående videoopkald' : 'Indgående stemmeopkald')
+    : (kind === 'video' ? 'TSN videoopkald' : 'TSN stemmeopkald');
   if (callTitle) callTitle.textContent = title || 'Opkald';
   if (callStatusText) callStatusText.textContent = status || '';
   if (incomingCallActions) incomingCallActions.classList.toggle('hidden', !incoming);
@@ -2928,7 +2933,10 @@ function setCallUi({ title, status, incoming = false, active = false, kind = 'vo
 }
 
 function closeCallUi() {
-  if (callOverlay) callOverlay.classList.add('hidden');
+  if (callOverlay) {
+    callOverlay.classList.add('hidden');
+    callOverlay.classList.remove('call-is-incoming', 'call-is-active', 'call-is-outgoing', 'is-video-call');
+  }
   if (incomingCallActions) incomingCallActions.classList.add('hidden');
   if (activeCallActions) activeCallActions.classList.add('hidden');
   if (callStatusText) callStatusText.textContent = '';
