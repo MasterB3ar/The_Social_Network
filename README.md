@@ -1,4 +1,16 @@
-# TSN V1.5.33 — Mute Status + Video Toggle
+# TSN V1.5.34 — Video Call Polish
+
+Denne version bygger videre på V1.5.33 og gør videoopkald pænere og mere brugbare:
+
+- Video vises nu i et mere moderne layout, når opkaldet poppes frem.
+- Den anden persons video bliver hovedvisningen.
+- Din egen video vises som et mindre billede nederst i hjørnet.
+- Kamera-fra-tilstand har nu en pæn placeholder i stedet for grim/tom video.
+- Video beskæres korrekt med `object-fit: cover`, så den ikke bliver strukket.
+- Lokalt self-view spejles, så det føles mere naturligt.
+- Når du tænder kamera midt i et lydopkald, popper opkaldet automatisk frem, så videoen ikke gemmes i bundbjælken.
+- Bundbjælken forbliver ren og viser ikke små, grimme video-previewbokse.
+
 
 Denne version bygger videre på V1.5.32 og forbedrer opkald:
 

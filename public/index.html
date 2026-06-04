@@ -420,15 +420,17 @@
         </div>
       </div>
       <div class="call-video-grid">
-        <div class="call-video-box remote">
+        <div id="remoteCallVideoBox" class="call-video-box remote camera-off">
           <video id="remoteVideo" autoplay playsinline></video>
           <div id="remoteAudioAvatar" class="call-audio-avatar">?</div>
-          <span id="remoteCallName">Den anden person</span>
+          <span id="remoteCallName" class="call-video-name">Den anden person</span>
+          <span id="remoteVideoOffLabel" class="call-video-state-label">Kamera fra</span>
         </div>
-        <div class="call-video-box local">
+        <div id="localCallVideoBox" class="call-video-box local camera-off">
           <video id="localVideo" autoplay playsinline muted></video>
           <div id="localAudioAvatar" class="call-audio-avatar small">Mig</div>
-          <span>Dig</span>
+          <span class="call-video-name">Dig</span>
+          <span id="localVideoOffLabel" class="call-video-state-label">Dit kamera er fra</span>
         </div>
       </div>
       <div class="call-status-row">
@@ -478,6 +480,6 @@
   <div id="toast" class="toast hidden"></div>
 
   <script src="/socket.io/socket.io.js"></script>
-  <script src="/app.js?v=1.5.33"></script>
+  <script src="/app.js?v=1.5.34"></script>
 </body>
 </html>

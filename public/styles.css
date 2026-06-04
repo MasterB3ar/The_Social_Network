@@ -7309,3 +7309,228 @@ body.is-admin .growth-admin-tools { display:grid; }
     flex: 1 1 0 !important;
   }
 }
+
+/* TSN V1.5.34 — polished video-call layout */
+.call-video-box {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+  border-radius: 24px;
+  background:
+    radial-gradient(circle at 20% 10%, rgba(56, 189, 248, 0.18), transparent 38%),
+    radial-gradient(circle at 80% 90%, rgba(168, 85, 247, 0.16), transparent 42%),
+    linear-gradient(145deg, rgba(15, 23, 42, 0.96), rgba(2, 6, 23, 0.98));
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  box-shadow: 0 20px 70px rgba(0, 0, 0, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+.call-video-box::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  background: linear-gradient(180deg, rgba(2, 6, 23, 0.05), transparent 45%, rgba(2, 6, 23, 0.5));
+  opacity: 0;
+  transition: opacity 0.18s ease;
+}
+
+.call-video-box.has-video::before {
+  opacity: 1;
+}
+
+.call-video-box video {
+  position: absolute;
+  inset: 0;
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: cover;
+  transform: translateZ(0);
+  background: #020617;
+}
+
+.call-video-box.local video {
+  transform: scaleX(-1) translateZ(0);
+}
+
+.call-video-box video.hidden {
+  display: none !important;
+}
+
+.call-video-box .call-audio-avatar {
+  position: relative;
+  z-index: 2;
+  box-shadow: 0 16px 50px rgba(0, 0, 0, 0.32), inset 0 1px 0 rgba(255, 255, 255, 0.16);
+}
+
+.call-video-box .call-audio-avatar.hidden {
+  display: none !important;
+}
+
+.call-video-name,
+.call-video-state-label {
+  position: absolute;
+  z-index: 3;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  max-width: calc(100% - 1.2rem);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(2, 6, 23, 0.62);
+  color: rgba(248, 250, 252, 0.94);
+  backdrop-filter: blur(14px);
+  box-shadow: 0 10px 32px rgba(0, 0, 0, 0.22);
+}
+
+.call-video-name {
+  left: 0.72rem;
+  bottom: 0.72rem;
+  padding: 0.42rem 0.7rem;
+  font-size: 0.78rem;
+  font-weight: 900;
+}
+
+.call-video-state-label {
+  top: 0.72rem;
+  right: 0.72rem;
+  padding: 0.34rem 0.62rem;
+  font-size: 0.72rem;
+  font-weight: 850;
+  color: rgba(203, 213, 225, 0.92);
+}
+
+.call-video-box.has-video .call-video-state-label {
+  border-color: rgba(34, 197, 94, 0.28);
+  background: rgba(20, 83, 45, 0.42);
+  color: #dcfce7;
+}
+
+.call-video-box.camera-off .call-video-state-label {
+  border-color: rgba(148, 163, 184, 0.2);
+  background: rgba(15, 23, 42, 0.72);
+}
+
+.call-overlay.call-expanded.call-is-video .call-card {
+  width: min(1060px, calc(100vw - 1.2rem)) !important;
+  max-height: min(92vh, 820px) !important;
+  overflow: hidden auto !important;
+}
+
+.call-overlay.call-expanded.call-is-video .call-video-grid {
+  position: relative;
+  display: block !important;
+  min-height: clamp(330px, 58vh, 620px);
+  border-radius: 28px;
+  overflow: hidden;
+  background: linear-gradient(145deg, rgba(2, 6, 23, 0.98), rgba(15, 23, 42, 0.96));
+  border: 1px solid rgba(148, 163, 184, 0.16);
+}
+
+.call-overlay.call-expanded.call-is-video .call-video-box.remote {
+  width: 100% !important;
+  min-height: clamp(330px, 58vh, 620px) !important;
+  border-radius: 28px !important;
+  border: 0 !important;
+  box-shadow: none !important;
+}
+
+.call-overlay.call-expanded.call-is-video .call-video-box.local {
+  position: absolute !important;
+  right: 1rem !important;
+  bottom: 1rem !important;
+  z-index: 6 !important;
+  width: min(245px, 28vw) !important;
+  min-width: 150px !important;
+  aspect-ratio: 16 / 10;
+  min-height: 0 !important;
+  border-radius: 22px !important;
+  border: 1px solid rgba(255, 255, 255, 0.18) !important;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.46), 0 0 0 1px rgba(15, 23, 42, 0.28) inset !important;
+}
+
+.call-overlay.call-expanded.call-local-video-only .call-video-box.local,
+.call-overlay.call-expanded.call-remote-video-only .call-video-box.local.camera-off {
+  width: min(210px, 24vw) !important;
+}
+
+.call-overlay.call-expanded.call-is-video .call-video-box.local .call-video-name {
+  font-size: 0.68rem;
+  padding: 0.28rem 0.48rem;
+  left: 0.5rem;
+  bottom: 0.5rem;
+}
+
+.call-overlay.call-expanded.call-is-video .call-video-box.local .call-video-state-label {
+  font-size: 0.64rem;
+  padding: 0.24rem 0.42rem;
+  top: 0.5rem;
+  right: 0.5rem;
+}
+
+.call-overlay.call-expanded.call-is-video .call-video-box.local .call-audio-avatar.small {
+  width: 58px;
+  height: 58px;
+  font-size: 0.82rem;
+}
+
+.call-overlay.call-expanded.call-is-video .call-actions {
+  margin-top: 0.78rem;
+}
+
+.call-overlay.call-expanded.call-is-video .call-media-status {
+  margin-top: 0.62rem;
+}
+
+/* Keep the bottom bar clean: video previews only appear when the call is popped forward. */
+#callOverlay.call-overlay.call-minimized:not(.call-expanded) .call-video-grid,
+#callOverlay.call-overlay.call-minimized:not(.call-expanded) .call-video-box,
+#callOverlay.call-overlay.call-minimized:not(.call-expanded) video {
+  display: none !important;
+}
+
+@media (max-width: 720px) {
+  .call-overlay.call-expanded.call-is-video .call-card {
+    width: calc(100vw - 0.7rem) !important;
+    padding: 0.72rem !important;
+    border-radius: 24px !important;
+  }
+
+  .call-overlay.call-expanded.call-is-video .call-video-grid,
+  .call-overlay.call-expanded.call-is-video .call-video-box.remote {
+    min-height: clamp(310px, 54vh, 520px) !important;
+    border-radius: 22px !important;
+  }
+
+  .call-overlay.call-expanded.call-is-video .call-video-box.local {
+    right: 0.65rem !important;
+    bottom: 0.65rem !important;
+    width: min(165px, 42vw) !important;
+    min-width: 118px !important;
+    border-radius: 18px !important;
+  }
+
+  .call-video-name {
+    left: 0.55rem;
+    bottom: 0.55rem;
+    max-width: calc(100% - 1rem);
+    font-size: 0.7rem;
+    padding: 0.3rem 0.52rem;
+  }
+
+  .call-video-state-label {
+    top: 0.55rem;
+    right: 0.55rem;
+    max-width: calc(100% - 1rem);
+    font-size: 0.66rem;
+    padding: 0.26rem 0.46rem;
+  }
+}
+
+.call-video-state-label {
+  left: auto !important;
+  bottom: auto !important;
+}

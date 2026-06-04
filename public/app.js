@@ -113,6 +113,10 @@ const callTitle = $('#callTitle');
 const callStatusText = $('#callStatusText');
 const localVideo = $('#localVideo');
 const remoteVideo = $('#remoteVideo');
+const remoteCallVideoBox = $('#remoteCallVideoBox');
+const localCallVideoBox = $('#localCallVideoBox');
+const remoteVideoOffLabel = $('#remoteVideoOffLabel');
+const localVideoOffLabel = $('#localVideoOffLabel');
 const remoteAudioAvatar = $('#remoteAudioAvatar');
 const remoteCallName = $('#remoteCallName');
 const localAudioAvatar = $('#localAudioAvatar');
@@ -3332,28 +3336,60 @@ function remoteVideoEnabled(call = state.call) {
   return Boolean(stream?.getVideoTracks?.().some((track) => track.readyState !== 'ended'));
 }
 
+function playVideoSafely(videoElement) {
+  if (!videoElement || videoElement.classList.contains('hidden')) return;
+  const playPromise = videoElement.play?.();
+  if (playPromise?.catch) playPromise.catch(() => {});
+}
+
+function setCallVideoBoxState(box, { hasVideo = false, offLabel = 'Kamera fra' } = {}) {
+  if (!box) return;
+  box.classList.toggle('has-video', Boolean(hasVideo));
+  box.classList.toggle('camera-off', !hasVideo);
+  box.setAttribute('data-video-state', hasVideo ? 'video-on' : 'camera-off');
+  const label = box.querySelector('.call-video-state-label');
+  if (label) label.textContent = hasVideo ? 'Video til' : offLabel;
+}
+
 function setLocalStream(stream) {
+  const hasVisibleVideo = Boolean(getLiveTrack(stream, 'video')?.enabled);
   if (localVideo) {
-    localVideo.srcObject = stream || null;
-    localVideo.classList.toggle('hidden', !stream || !localVideoEnabled({ localStream: stream }));
+    if (localVideo.srcObject !== stream) localVideo.srcObject = stream || null;
+    localVideo.classList.toggle('hidden', !hasVisibleVideo);
+    playVideoSafely(localVideo);
   }
+  if (localAudioAvatar) localAudioAvatar.classList.toggle('hidden', hasVisibleVideo);
+  if (localVideoOffLabel) localVideoOffLabel.textContent = hasVisibleVideo ? 'Video til' : 'Dit kamera er fra';
+  setCallVideoBoxState(localCallVideoBox, { hasVideo: hasVisibleVideo, offLabel: 'Dit kamera er fra' });
 }
 
 function setRemoteStream(stream) {
+  const hasVideoTrack = Boolean(stream?.getVideoTracks?.().some((track) => track.readyState !== 'ended'));
+  const remoteAllowed = state.call?.remoteVideoEnabled !== false;
+  const hasVisibleVideo = Boolean(hasVideoTrack && remoteAllowed);
   if (remoteVideo) {
-    remoteVideo.srcObject = stream || null;
-    const hasVideo = Boolean(stream?.getVideoTracks?.().some((track) => track.readyState !== 'ended'));
-    const remoteAllowed = state.call?.remoteVideoEnabled !== false;
-    remoteVideo.classList.toggle('hidden', !hasVideo || !remoteAllowed);
+    if (remoteVideo.srcObject !== stream) remoteVideo.srcObject = stream || null;
+    remoteVideo.classList.toggle('hidden', !hasVisibleVideo);
+    playVideoSafely(remoteVideo);
   }
+  if (remoteAudioAvatar) remoteAudioAvatar.classList.toggle('hidden', hasVisibleVideo);
+  const remoteName = callPeerName(state.call?.peer) || 'Den anden';
+  if (remoteVideoOffLabel) remoteVideoOffLabel.textContent = hasVisibleVideo ? 'Video til' : `${remoteName} har kamera fra`;
+  setCallVideoBoxState(remoteCallVideoBox, { hasVideo: hasVisibleVideo, offLabel: `${remoteName} har kamera fra` });
 }
 
 function refreshCallVideoMode() {
   if (!callOverlay) return;
-  const videoActive = localVideoEnabled() || remoteVideoEnabled() || state.call?.kind === 'video';
+  const localOn = localVideoEnabled();
+  const remoteOn = remoteVideoEnabled();
+  const videoActive = localOn || remoteOn || state.call?.kind === 'video';
   callOverlay.classList.toggle('call-is-video', videoActive);
   callOverlay.classList.toggle('call-is-voice', !videoActive);
   callOverlay.classList.toggle('is-video-call', videoActive);
+  callOverlay.classList.toggle('call-has-any-video', localOn || remoteOn);
+  callOverlay.classList.toggle('call-both-video', localOn && remoteOn);
+  callOverlay.classList.toggle('call-local-video-only', localOn && !remoteOn);
+  callOverlay.classList.toggle('call-remote-video-only', remoteOn && !localOn);
   if (callTypeBadge) callTypeBadge.textContent = videoActive ? 'Video' : 'Stemme';
 }
 
@@ -3775,6 +3811,11 @@ async function toggleCallCamera() {
     current.localStream.addTrack(videoTrack);
     const needsNegotiation = await replaceOrAddLocalTrack(videoTrack, current.localStream);
     syncLocalCallMediaState({ notify: true });
+    if (callOverlay && !callOverlay.classList.contains('call-expanded')) {
+      callOverlay.classList.add('call-expanded');
+      callOverlay.classList.remove('call-minimized');
+      syncCallDockButton();
+    }
     if (needsNegotiation) await renegotiateCall('camera-on');
   } catch (error) {
     showToast(error?.message || 'Kameraet kunne ikke tændes.');
