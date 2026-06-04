@@ -1,4 +1,4 @@
-# TSN V1.5.31 — Cross-Network Calls + Better Call UI
+# TSN V1.5.32 — Call Bottom Bar + Pop-out Panel
 
 Denne version retter WebRTC-opkald, så de kan fungere mellem brugere på forskellige netværk. TSN bruger Socket.IO som signaling-server, public STUN som standard og understøtter valgfri TURN-server via Render/.env for stabile opkald på mobilnet, skole-/arbejdsnetværk og streng NAT.
 

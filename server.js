@@ -2672,8 +2672,8 @@ app.get('/api/health', (req, res) => {
     const storage = getStorageStatus();
     res.json({
       ok: true,
-      app: 'TSN V1.5.31',
-      shortName: 'TSN V1.5.31',
+      app: 'TSN V1.5.32',
+      shortName: 'TSN V1.5.32',
       environment: process.env.NODE_ENV || 'development',
       storage: {
         ok: storage.ok,
@@ -2703,8 +2703,8 @@ app.get('/api/health', (req, res) => {
   } catch (error) {
     res.status(503).json({
       ok: false,
-      app: 'TSN V1.5.31',
-      shortName: 'TSN V1.5.31',
+      app: 'TSN V1.5.32',
+      shortName: 'TSN V1.5.32',
       error: 'Lageret er ikke klar.',
       detail: error.message
     });
@@ -2714,7 +2714,7 @@ app.get('/api/health', (req, res) => {
 app.get('/api/ping', (req, res) => {
   res.json({
     ok: true,
-    app: 'TSN V1.5.31',
+    app: 'TSN V1.5.32',
     message: 'pong',
     now: new Date().toISOString()
   });

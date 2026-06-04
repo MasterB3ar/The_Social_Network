@@ -3197,14 +3197,33 @@ function setCallStatusText(text, quality = '') {
   if (callQualityText && quality) callQualityText.textContent = quality;
 }
 
+function syncCallDockButton() {
+  if (!callOverlay || !callFullscreenBtn) return;
+  const expanded = callOverlay.classList.contains('call-expanded');
+  callFullscreenBtn.textContent = expanded ? 'Tilbage til bjælke' : 'Pop frem';
+  callFullscreenBtn.setAttribute('aria-pressed', expanded ? 'true' : 'false');
+  callFullscreenBtn.setAttribute('aria-label', expanded ? 'Minimer opkald til bundbjælke' : 'Pop opkald frem');
+}
+
 function setCallUi({ title, status, incoming = false, active = false, kind = 'voice', peerName = '', quality = '' } = {}) {
   if (!callOverlay) return;
+  const wasExpanded = callOverlay.classList.contains('call-expanded');
   callOverlay.classList.remove('hidden');
   callOverlay.classList.toggle('call-is-incoming', Boolean(incoming));
   callOverlay.classList.toggle('call-is-active', Boolean(active));
   callOverlay.classList.toggle('call-is-outgoing', !incoming && !active);
   callOverlay.classList.toggle('call-is-video', kind === 'video');
   callOverlay.classList.toggle('call-is-voice', kind !== 'video');
+
+  if (incoming) {
+    callOverlay.classList.remove('call-minimized', 'call-expanded');
+  } else if (active) {
+    callOverlay.classList.toggle('call-expanded', wasExpanded);
+    callOverlay.classList.toggle('call-minimized', !wasExpanded);
+  } else {
+    callOverlay.classList.remove('call-minimized');
+  }
+
   if (callEyebrow) callEyebrow.textContent = incoming
     ? (kind === 'video' ? 'Indgående videoopkald' : 'Indgående stemmeopkald')
     : (kind === 'video' ? 'TSN videoopkald' : 'TSN stemmeopkald');
@@ -3219,18 +3238,19 @@ function setCallUi({ title, status, incoming = false, active = false, kind = 'vo
   if (remoteCallName) remoteCallName.textContent = peerName || 'Ukendt bruger';
   if (localAudioAvatar) localAudioAvatar.textContent = initials(state.me?.name || 'Mig');
   callOverlay.classList.toggle('is-video-call', kind === 'video');
+  syncCallDockButton();
 }
 
 function closeCallUi() {
   if (callOverlay) {
     callOverlay.classList.add('hidden');
-    callOverlay.classList.remove('call-is-incoming', 'call-is-active', 'call-is-outgoing', 'is-video-call', 'call-is-video', 'call-is-voice', 'call-expanded');
+    callOverlay.classList.remove('call-is-incoming', 'call-is-active', 'call-is-outgoing', 'is-video-call', 'call-is-video', 'call-is-voice', 'call-expanded', 'call-minimized');
   }
   if (incomingCallActions) incomingCallActions.classList.add('hidden');
   if (activeCallActions) activeCallActions.classList.add('hidden');
   if (callStatusText) callStatusText.textContent = '';
   if (callQualityText) callQualityText.textContent = '';
-  if (callFullscreenBtn) callFullscreenBtn.textContent = 'Udvid';
+  syncCallDockButton();
   stopCallTimer();
 }
 
@@ -3531,8 +3551,10 @@ function toggleCallCamera() {
 
 function toggleCallFullscreen() {
   if (!callOverlay) return;
-  callOverlay.classList.toggle('call-expanded');
-  if (callFullscreenBtn) callFullscreenBtn.textContent = callOverlay.classList.contains('call-expanded') ? 'Minimer' : 'Udvid';
+  const shouldExpand = !callOverlay.classList.contains('call-expanded');
+  callOverlay.classList.toggle('call-expanded', shouldExpand);
+  callOverlay.classList.toggle('call-minimized', !shouldExpand && !callOverlay.classList.contains('call-is-incoming'));
+  syncCallDockButton();
 }
 
 if (startVoiceCallBtn) startVoiceCallBtn.addEventListener('click', () => startCall('voice'));

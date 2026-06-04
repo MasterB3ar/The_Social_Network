@@ -6999,3 +6999,216 @@ body.is-admin .growth-admin-tools { display:grid; }
     min-height: 125px !important;
   }
 }
+
+
+/* TSN V1.5.32 — call bottom bar + pop-out panel */
+#callOverlay.call-overlay.call-minimized:not(.call-expanded),
+#callOverlay.call-overlay.call-is-active.call-minimized:not(.call-expanded),
+#callOverlay.call-overlay.call-is-outgoing.call-minimized:not(.call-expanded) {
+  position: fixed !important;
+  top: auto !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  left: 0 !important;
+  inset: auto 0 0 0 !important;
+  width: 100vw !important;
+  height: auto !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  display: flex !important;
+  align-items: flex-end !important;
+  justify-content: center !important;
+  padding: 0 0.8rem max(0.65rem, env(safe-area-inset-bottom)) !important;
+  margin: 0 !important;
+  background: linear-gradient(180deg, rgba(2, 6, 23, 0), rgba(2, 6, 23, 0.72)) !important;
+  backdrop-filter: none !important;
+  pointer-events: none !important;
+  z-index: 9997 !important;
+}
+
+#callOverlay.call-overlay.call-minimized:not(.call-expanded) .call-card {
+  pointer-events: auto !important;
+  width: min(980px, calc(100vw - 1rem)) !important;
+  max-height: none !important;
+  overflow: visible !important;
+  display: grid !important;
+  grid-template-columns: auto minmax(0, 1fr) auto auto !important;
+  grid-template-areas: "top title status actions" !important;
+  align-items: center !important;
+  gap: 0.7rem !important;
+  padding: 0.72rem 0.8rem !important;
+  border-radius: 24px !important;
+  border: 1px solid rgba(125, 211, 252, 0.28) !important;
+  background: linear-gradient(135deg, rgba(7, 14, 31, 0.97), rgba(15, 23, 42, 0.98)) !important;
+  box-shadow: 0 18px 64px rgba(0, 0, 0, 0.48), 0 0 0 1px rgba(255,255,255,0.05) inset !important;
+}
+
+#callOverlay.call-overlay.call-minimized:not(.call-expanded) .call-topbar {
+  grid-area: top !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 0.45rem !important;
+  margin: 0 !important;
+}
+
+#callOverlay.call-overlay.call-minimized:not(.call-expanded) .call-header {
+  grid-area: title !important;
+  min-width: 0 !important;
+  margin: 0 !important;
+  align-items: center !important;
+}
+
+#callOverlay.call-overlay.call-minimized:not(.call-expanded) .call-header > div {
+  min-width: 0 !important;
+}
+
+#callOverlay.call-overlay.call-minimized:not(.call-expanded) #callEyebrow,
+#callOverlay.call-overlay.call-minimized:not(.call-expanded) #callNetworkText,
+#callOverlay.call-overlay.call-minimized:not(.call-expanded) .call-help,
+#callOverlay.call-overlay.call-minimized:not(.call-expanded) .call-video-grid {
+  display: none !important;
+}
+
+#callOverlay.call-overlay.call-minimized:not(.call-expanded) #callTitle {
+  margin: 0 !important;
+  max-width: 100% !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+  font-size: 0.98rem !important;
+  line-height: 1.1 !important;
+}
+
+#callOverlay.call-overlay.call-minimized:not(.call-expanded) #callStatusText {
+  margin: 0.18rem 0 0 !important;
+  max-width: 100% !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+  font-size: 0.78rem !important;
+  color: rgba(219, 234, 254, 0.78) !important;
+}
+
+#callOverlay.call-overlay.call-minimized:not(.call-expanded) .call-status-row {
+  grid-area: status !important;
+  margin: 0 !important;
+  white-space: nowrap !important;
+  max-width: 220px !important;
+  overflow: hidden !important;
+}
+
+#callOverlay.call-overlay.call-minimized:not(.call-expanded) #callQualityText {
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+}
+
+#callOverlay.call-overlay.call-minimized:not(.call-expanded) #incomingCallActions {
+  display: none !important;
+}
+
+#callOverlay.call-overlay.call-minimized:not(.call-expanded) #activeCallActions {
+  grid-area: actions !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: flex-end !important;
+  flex-wrap: nowrap !important;
+  gap: 0.45rem !important;
+  margin: 0 !important;
+}
+
+#callOverlay.call-overlay.call-minimized:not(.call-expanded) #activeCallActions.hidden {
+  display: none !important;
+}
+
+#callOverlay.call-overlay.call-minimized:not(.call-expanded) #activeCallActions button,
+#callOverlay.call-overlay.call-minimized:not(.call-expanded) .call-fullscreen,
+#callOverlay.call-overlay.call-minimized:not(.call-expanded) #closeCallBtn {
+  min-height: 38px !important;
+  border-radius: 14px !important;
+  padding: 0.45rem 0.7rem !important;
+  font-size: 0.82rem !important;
+  white-space: nowrap !important;
+}
+
+#callOverlay.call-overlay.call-minimized:not(.call-expanded) #closeCallBtn {
+  position: static !important;
+  width: 38px !important;
+  padding: 0 !important;
+}
+
+#callOverlay.call-overlay.call-minimized:not(.call-expanded) .call-pill,
+#callOverlay.call-overlay.call-minimized:not(.call-expanded) .call-timer {
+  min-height: 30px !important;
+  padding: 0.25rem 0.58rem !important;
+  font-size: 0.75rem !important;
+}
+
+#callOverlay.call-overlay.call-expanded {
+  animation: callPopForward 0.16s ease-out both;
+}
+
+@keyframes callPopForward {
+  from { transform: translateY(10px) scale(0.985); opacity: 0.92; }
+  to { transform: translateY(0) scale(1); opacity: 1; }
+}
+
+@media (max-width: 860px) {
+  #callOverlay.call-overlay.call-minimized:not(.call-expanded) .call-card {
+    grid-template-columns: auto minmax(0, 1fr) auto !important;
+    grid-template-areas:
+      "top title actions"
+      "status status status" !important;
+    gap: 0.52rem !important;
+  }
+
+  #callOverlay.call-overlay.call-minimized:not(.call-expanded) .call-status-row {
+    width: 100% !important;
+    max-width: none !important;
+    justify-self: stretch !important;
+  }
+}
+
+@media (max-width: 620px) {
+  #callOverlay.call-overlay.call-minimized:not(.call-expanded) {
+    padding-inline: 0.45rem !important;
+  }
+
+  #callOverlay.call-overlay.call-minimized:not(.call-expanded) .call-card {
+    grid-template-columns: minmax(0, 1fr) auto !important;
+    grid-template-areas:
+      "title top"
+      "status status"
+      "actions actions" !important;
+    padding: 0.62rem !important;
+    border-radius: 20px !important;
+  }
+
+  #callOverlay.call-overlay.call-minimized:not(.call-expanded) .call-topbar {
+    justify-self: end !important;
+  }
+
+  #callOverlay.call-overlay.call-minimized:not(.call-expanded) .call-pill {
+    display: none !important;
+  }
+
+  #callOverlay.call-overlay.call-minimized:not(.call-expanded) #activeCallActions {
+    width: 100% !important;
+    display: grid !important;
+    grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+    gap: 0.42rem !important;
+  }
+
+  #callOverlay.call-overlay.call-minimized:not(.call-expanded) #activeCallActions button,
+  #callOverlay.call-overlay.call-minimized:not(.call-expanded) .call-fullscreen,
+  #callOverlay.call-overlay.call-minimized:not(.call-expanded) #closeCallBtn {
+    width: 100% !important;
+    min-width: 0 !important;
+    padding-inline: 0.42rem !important;
+    font-size: 0.75rem !important;
+  }
+
+  #callOverlay.call-overlay.call-minimized:not(.call-expanded) .call-fullscreen {
+    min-width: 74px !important;
+  }
+}

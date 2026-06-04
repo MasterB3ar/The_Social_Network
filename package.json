@@ -1,7 +1,7 @@
 {
   "name": "the-social-network-tsn",
-  "version": "1.5.31",
-  "description": "TSN V1.5.31 cross-network WebRTC calls with improved call UI and TURN configuration.",
+  "version": "1.5.32",
+  "description": "TSN V1.5.32 call bottom bar with pop-out active call UI.",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
