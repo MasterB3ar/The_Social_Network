@@ -1,3 +1,7 @@
+# TSN V2.0 — Fast Private Scroll Fix
+
+Denne patch holder versionen på 2.0/2.0.0 og retter hurtig scroll i privat chat, så forsinkede auto-scroll timers ikke sender brugeren tilbage til bunden, når man scroller op hurtigt.
+
 # TSN V2.0 - Conversation Scroll Stability Fix
 
 This patch keeps the app version at `2.0.0` and fixes chat scroll stability. When a user scrolls up in a global or private conversation, pending auto-scroll timers are cancelled so the conversation no longer jumps back down while reading older messages. Media loading also preserves scroll position better.

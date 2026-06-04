@@ -64,6 +64,10 @@ state.polls = [];
 
 const PRIVATE_MESSAGE_DELETE_FOR_EVERYONE_MS = 15 * 60 * 1000;
 const IMAGE_MAX_BYTES = 2 * 1024 * 1024; // Legacy limit for old uploaded image messages only. New messages use approved website media.
+const MESSAGE_MANUAL_SCROLL_LOCK_MS = 12000;
+const MESSAGE_SCROLL_LOCK_THRESHOLD = 140;
+const MESSAGE_SCROLL_UNLOCK_THRESHOLD = 72;
+
 
 const $ = (selector) => document.querySelector(selector);
 const authScreen = $('#authScreen');
@@ -809,7 +813,7 @@ function isPrivateManualScrollLocked() {
 }
 
 function noteManualMessageScroll(kind) {
-  const until = Date.now() + 2500;
+  const until = Date.now() + MESSAGE_MANUAL_SCROLL_LOCK_MS;
   if (kind === 'global') {
     state.globalManualScrollLockUntil = until;
     state.globalChatNeedsBottomScroll = false;
@@ -821,12 +825,27 @@ function noteManualMessageScroll(kind) {
   }
 }
 
+function clearManualMessageScrollLock(kind) {
+  if (kind === 'global') state.globalManualScrollLockUntil = 0;
+  else if (kind === 'private') state.privateManualScrollLockUntil = 0;
+}
+
 function registerManualScrollGuards(element, kind) {
   if (!element) return;
   const mark = () => noteManualMessageScroll(kind);
+  const watchScrollPosition = () => {
+    if (!isElementNearBottom(element, MESSAGE_SCROLL_LOCK_THRESHOLD)) {
+      mark();
+    } else if (isElementNearBottom(element, MESSAGE_SCROLL_UNLOCK_THRESHOLD)) {
+      clearManualMessageScrollLock(kind);
+    }
+  };
+
   element.addEventListener('wheel', mark, { passive: true });
   element.addEventListener('touchstart', mark, { passive: true });
   element.addEventListener('touchmove', mark, { passive: true });
+  element.addEventListener('pointerdown', mark, { passive: true });
+  element.addEventListener('scroll', watchScrollPosition, { passive: true });
   element.addEventListener('keydown', (event) => {
     if (['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' '].includes(event.key)) {
       mark();
@@ -892,18 +911,21 @@ function scrollElementToTop(element) {
   setTimeout(apply, 80);
 }
 
+function setElementScrollToBottomNow(element) {
+  if (!element) return;
+  const previousBehavior = element.style.scrollBehavior;
+  element.style.scrollBehavior = 'auto';
+  element.scrollTop = element.scrollHeight;
+  if (typeof element.scrollTo === 'function') {
+    element.scrollTo({ top: element.scrollHeight, left: 0, behavior: 'auto' });
+  }
+  element.style.scrollBehavior = previousBehavior;
+}
+
 function scrollElementToBottom(element) {
   if (!element) return;
 
-  const apply = () => {
-    const previousBehavior = element.style.scrollBehavior;
-    element.style.scrollBehavior = 'auto';
-    element.scrollTop = element.scrollHeight;
-    if (typeof element.scrollTo === 'function') {
-      element.scrollTo({ top: element.scrollHeight, left: 0, behavior: 'auto' });
-    }
-    element.style.scrollBehavior = previousBehavior;
-  };
+  const apply = () => setElementScrollToBottomNow(element);
 
   apply();
   requestAnimationFrame(apply);
@@ -917,7 +939,7 @@ function scheduleGlobalChatBottomScroll() {
   cancelGlobalChatBottomScroll();
   const apply = () => {
     if (isGlobalManualScrollLocked()) return;
-    scrollElementToBottom(globalMessagesList);
+    setElementScrollToBottomNow(globalMessagesList);
   };
   apply();
   requestAnimationFrame(apply);
@@ -939,7 +961,7 @@ function schedulePrivateChatBottomScroll() {
   cancelPrivateChatBottomScroll();
   const apply = () => {
     if (isPrivateManualScrollLocked()) return;
-    scrollElementToBottom(messagesList);
+    setElementScrollToBottomNow(messagesList);
   };
   apply();
   requestAnimationFrame(apply);
@@ -2113,6 +2135,7 @@ async function sendPrivateMessage(text = '') {
 
   const to = state.activeChatUser.id;
   if (input) state.chatDrafts[to] = input.value;
+  clearManualMessageScrollLock('private');
 
   state.socket.emit('private-message', { to, text: cleanMessageText, attachment }, (response) => {
     if (!response?.ok) {
@@ -4016,7 +4039,7 @@ function connectSocket() {
 
     if (isActiveConversation) {
       const exists = state.activeMessages.some((candidate) => candidate.id === message.id);
-      const wasNearBottom = isElementNearBottom(messagesList);
+      const wasNearBottom = !isPrivateManualScrollLocked() && isElementNearBottom(messagesList);
       if (!exists) state.activeMessages.push(message);
       renderChat({ forceBottom: message.from === state.me?.id || wasNearBottom });
       if (message.to === state.me.id) markConversationRead(message.from).catch(() => {});
