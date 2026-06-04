@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>TSN V2.0</title>
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link rel="stylesheet" href="/styles.css?v=2.0-global-input-layout" />
+  <link rel="stylesheet" href="/styles.css?v=2.0-media-modal" />
 </head>
 <body>
   <div class="noise"></div>
@@ -242,11 +242,10 @@
           </div>
 
           <form id="globalMessageForm" class="message-form global-message-form image-message-form">
-            <button id="globalMediaPickerBtn" class="image-picker-button" type="button" title="Søg/vælg billede eller GIF">📷</button>
-            <input id="globalMessageInput" maxlength="600" placeholder="Skriv en global chatbesked eller find et billede/GIF..." autocomplete="off" />
+            <button id="globalMediaPickerBtn" class="image-picker-button" type="button" title="Åbn stor billed/GIF-popup">📷</button>
+            <input id="globalMessageInput" maxlength="600" placeholder="Skriv en global chatbesked..." autocomplete="off" />
             <button class="primary" type="submit">Send</button>
             <div id="globalImagePreview" class="image-send-preview hidden" aria-live="polite"></div>
-            <div id="globalMediaPicker" class="safe-media-picker hidden" aria-label="TSN mediesøgning"></div>
           </form>
         </section>
 
@@ -378,6 +377,23 @@
     </div>
   </main>
 
+  <section id="globalMediaModal" class="media-modal hidden" role="dialog" aria-modal="true" aria-labelledby="globalMediaModalTitle">
+    <div class="media-modal-backdrop" data-close-global-media-modal></div>
+    <div class="media-modal-card card">
+      <header class="media-modal-header">
+        <div>
+          <p class="eyebrow mini">TSN Media</p>
+          <h2 id="globalMediaModalTitle">Vælg billede eller GIF</h2>
+          <p>Søg, vælg og send uden at global chat bliver presset sammen.</p>
+        </div>
+        <button id="closeGlobalMediaModalBtn" class="icon-button" type="button" aria-label="Luk medievælger">×</button>
+      </header>
+      <div class="media-modal-body">
+        <div id="globalMediaPicker" class="safe-media-picker hidden" aria-label="TSN mediesøgning"></div>
+      </div>
+    </div>
+  </section>
+
   <section id="chatPanel" class="chat-panel hidden">
     <header>
       <div class="chat-user">
@@ -485,6 +501,6 @@
   <div id="toast" class="toast hidden"></div>
 
   <script src="/socket.io/socket.io.js"></script>
-  <script src="/app.js?v=2.0-global-input-layout"></script>
+  <script src="/app.js?v=2.0-media-modal"></script>
 </body>
 </html>

@@ -530,3 +530,7 @@ Det fjerner cyberrisikoen ved at gemme eller vise adgangskoder i klartekst.
 ## TSN V2.0 Spam Alert Removed
 
 Automatic spam blocking is disabled, so fast/repeated messages are allowed. Admin moderation tools still exist.
+
+## TSN V2.0 — Global Media Popup
+
+Denne patch flytter global chat GIF/billede-vælgeren til en separat stor popup, så media-søgning ikke længere udvider eller sløver selve chat-inputtet. Versionen forbliver TSN V2.0 / `2.0.0`.

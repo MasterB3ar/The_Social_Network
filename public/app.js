@@ -105,6 +105,8 @@ const globalMediaPickerBtn = $('#globalMediaPickerBtn');
 const privateMediaPickerBtn = $('#privateMediaPickerBtn');
 const globalMediaPicker = $('#globalMediaPicker');
 const privateMediaPicker = $('#privateMediaPicker');
+const globalMediaModal = $('#globalMediaModal');
+const closeGlobalMediaModalBtn = $('#closeGlobalMediaModalBtn');
 const startVoiceCallBtn = $('#startVoiceCallBtn');
 const startVideoCallBtn = $('#startVideoCallBtn');
 const callOverlay = $('#callOverlay');
@@ -325,6 +327,25 @@ function renderSafeMediaPicker(kind) {
 function renderSafeMediaPickers() {
   renderSafeMediaPicker('global');
   renderSafeMediaPicker('private');
+}
+
+function openGlobalMediaModal() {
+  if (!globalMediaModal || !globalMediaPicker) return;
+  globalMediaModal.classList.remove('hidden');
+  globalMediaPicker.classList.remove('hidden');
+  document.body.classList.add('media-modal-open');
+  renderSafeMediaPicker('global');
+  requestAnimationFrame(() => {
+    const searchInput = globalMediaModal.querySelector('input[name="q"]');
+    if (searchInput) searchInput.focus();
+  });
+}
+
+function closeGlobalMediaModal() {
+  if (!globalMediaModal) return;
+  globalMediaModal.classList.add('hidden');
+  globalMediaPicker?.classList.add('hidden');
+  document.body.classList.remove('media-modal-open');
 }
 
 function updateImagePreview(kind) {
@@ -1866,9 +1887,14 @@ if (messagesList) {
 }
 
 if (globalMediaPickerBtn) globalMediaPickerBtn.addEventListener('click', () => {
-  globalMediaPicker?.classList.toggle('hidden');
-  renderSafeMediaPicker('global');
+  openGlobalMediaModal();
 });
+if (closeGlobalMediaModalBtn) closeGlobalMediaModalBtn.addEventListener('click', closeGlobalMediaModal);
+if (globalMediaModal) {
+  globalMediaModal.addEventListener('click', (event) => {
+    if (event.target.closest('[data-close-global-media-modal]')) closeGlobalMediaModal();
+  });
+}
 if (privateMediaPickerBtn) privateMediaPickerBtn.addEventListener('click', () => {
   privateMediaPicker?.classList.toggle('hidden');
   renderSafeMediaPicker('private');
@@ -1892,6 +1918,10 @@ document.addEventListener('submit', (event) => {
 });
 
 document.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape' && globalMediaModal && !globalMediaModal.classList.contains('hidden')) {
+    closeGlobalMediaModal();
+    return;
+  }
   if (event.key !== 'Enter') return;
   const panel = event.target.closest('[data-media-search-form]');
   if (!panel) return;
@@ -1961,7 +1991,8 @@ document.addEventListener('click', (event) => {
     else state.selectedGlobalMediaId = mediaButton.dataset.safeMediaId || '';
     updateImagePreview(kind);
     renderSafeMediaPicker(kind);
-    (kind === 'private' ? privateMediaPicker : globalMediaPicker)?.classList.add('hidden');
+    if (kind === 'private') privateMediaPicker?.classList.add('hidden');
+    else closeGlobalMediaModal();
     return;
   }
   const clearButton = event.target.closest('[data-clear-image]');

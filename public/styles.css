@@ -9921,3 +9921,217 @@ select:focus {
     justify-self: stretch !important;
   }
 }
+
+/* TSN V2.0 — Global media modal
+   Global GIF/image search now opens in a dedicated popup instead of expanding inside the chat composer. */
+body.media-modal-open {
+  overflow: hidden;
+}
+
+.media-modal.hidden {
+  display: none !important;
+}
+
+.media-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 2400;
+  display: grid;
+  place-items: center;
+  padding: clamp(0.8rem, 2vw, 1.6rem);
+}
+
+.media-modal-backdrop {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle at 18% 12%, rgba(14, 165, 233, 0.22), transparent 34%),
+    radial-gradient(circle at 82% 86%, rgba(168, 85, 247, 0.20), transparent 32%),
+    rgba(2, 6, 23, 0.78);
+  backdrop-filter: blur(18px);
+}
+
+.media-modal-card {
+  position: relative;
+  z-index: 1;
+  inline-size: min(1120px, 100%);
+  block-size: min(86dvh, 820px);
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  overflow: hidden;
+  border-radius: 30px;
+  border: 1px solid rgba(125, 211, 252, 0.22);
+  box-shadow: 0 34px 120px rgba(0, 0, 0, 0.58), 0 0 0 1px rgba(255, 255, 255, 0.04) inset;
+}
+
+.media-modal-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: clamp(1rem, 2vw, 1.35rem);
+  border-bottom: 1px solid rgba(148, 163, 184, 0.16);
+  background: linear-gradient(135deg, rgba(15, 23, 42, 0.94), rgba(30, 41, 59, 0.72));
+}
+
+.media-modal-header h2 {
+  margin: 0.1rem 0 0;
+  font-size: clamp(1.25rem, 2.2vw, 2rem);
+  letter-spacing: -0.04em;
+}
+
+.media-modal-header p:last-child {
+  margin: 0.34rem 0 0;
+  color: var(--muted);
+  font-weight: 750;
+  max-inline-size: 56rem;
+}
+
+.media-modal-body {
+  min-block-size: 0;
+  overflow: hidden;
+  background:
+    linear-gradient(180deg, rgba(2, 6, 23, 0.30), rgba(2, 6, 23, 0.74)),
+    radial-gradient(circle at 50% 0%, rgba(59, 130, 246, 0.12), transparent 50%);
+}
+
+.media-modal .safe-media-picker:not(.hidden) {
+  inline-size: 100% !important;
+  block-size: 100% !important;
+  min-block-size: 0 !important;
+  max-block-size: none !important;
+  display: grid !important;
+  grid-template-rows: auto minmax(0, 1fr) !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  contain: layout paint style !important;
+}
+
+.media-modal .safe-media-picker .media-search-panel,
+.media-modal .safe-media-picker .media-search-panel.media-search-panel-polished {
+  position: relative !important;
+  grid-row: 1 !important;
+  padding: clamp(0.9rem, 1.7vw, 1.15rem) !important;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.16) !important;
+  background: rgba(15, 23, 42, 0.76) !important;
+  transform: none !important;
+  opacity: 1 !important;
+  pointer-events: auto !important;
+}
+
+.media-modal .safe-media-picker .safe-media-scroll-area {
+  grid-row: 2 !important;
+  min-block-size: 0 !important;
+  block-size: auto !important;
+  max-block-size: none !important;
+  overflow-y: auto !important;
+  overscroll-behavior: contain !important;
+  -webkit-overflow-scrolling: touch !important;
+  padding: clamp(0.9rem, 1.9vw, 1.25rem) !important;
+}
+
+.media-modal .safe-media-grid {
+  display: grid !important;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)) !important;
+  gap: clamp(0.75rem, 1.4vw, 1.05rem) !important;
+  align-content: start !important;
+}
+
+.media-modal .safe-media-item {
+  min-block-size: 232px !important;
+  transform: translateZ(0);
+  will-change: transform;
+}
+
+.media-modal .safe-media-thumb {
+  aspect-ratio: 1.42 / 1 !important;
+}
+
+.media-modal .media-search-form {
+  grid-template-columns: minmax(220px, 1fr) minmax(120px, 160px) auto !important;
+}
+
+.media-modal .media-selected-card {
+  grid-template-columns: 96px minmax(0, 1fr) auto !important;
+}
+
+.media-modal .media-selected-card img {
+  inline-size: 96px !important;
+  block-size: 68px !important;
+}
+
+.global-message-form #globalMediaPickerBtn::after {
+  content: "Åbn billeder / GIFs" !important;
+}
+
+@media (max-width: 760px) {
+  .media-modal {
+    align-items: end;
+    padding: 0.55rem;
+    padding-bottom: max(0.55rem, env(safe-area-inset-bottom));
+  }
+
+  .media-modal-card {
+    inline-size: 100%;
+    block-size: min(91dvh, 780px);
+    border-radius: 26px 26px 20px 20px;
+  }
+
+  .media-modal-header {
+    padding: 0.95rem;
+  }
+
+  .media-modal-header p:last-child {
+    display: none;
+  }
+
+  .media-modal .media-search-title {
+    align-items: flex-start;
+  }
+
+  .media-modal .media-search-safety-pill {
+    display: none;
+  }
+
+  .media-modal .media-search-form {
+    grid-template-columns: 1fr !important;
+  }
+
+  .media-modal .safe-media-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 0.72rem !important;
+  }
+
+  .media-modal .safe-media-item {
+    min-block-size: 184px !important;
+    border-radius: 20px !important;
+  }
+
+  .media-modal .safe-media-meta {
+    padding: 0.62rem 0.66rem 0.16rem;
+  }
+
+  .media-modal .safe-media-name {
+    font-size: 0.82rem;
+  }
+
+  .media-modal .safe-media-provider,
+  .media-modal .safe-media-select-label {
+    font-size: 0.68rem;
+  }
+
+  .media-modal .media-selected-card {
+    grid-template-columns: 72px minmax(0, 1fr) !important;
+  }
+
+  .media-modal .media-selected-card button {
+    grid-column: 1 / -1;
+  }
+
+  .media-modal .media-selected-card img {
+    inline-size: 72px !important;
+    block-size: 54px !important;
+  }
+}
