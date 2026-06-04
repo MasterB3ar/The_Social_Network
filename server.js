@@ -83,6 +83,66 @@ const GIPHY_LANG = process.env.TSN_GIPHY_LANG || 'da';
 const PIXABAY_API_KEY = process.env.TSN_PIXABAY_API_KEY || process.env.PIXABAY_API_KEY || '';
 const WEB_MEDIA_CACHE = new Map();
 
+
+function splitEnvList(value) {
+  return String(value || '')
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function buildCallIceServers() {
+  const fallbackStunUrls = [
+    'stun:stun.l.google.com:19302',
+    'stun:stun1.l.google.com:19302',
+    'stun:stun2.l.google.com:19302'
+  ];
+
+  const jsonConfig = String(process.env.TSN_ICE_SERVERS_JSON || '').trim();
+  if (jsonConfig) {
+    try {
+      const parsed = JSON.parse(jsonConfig);
+      if (Array.isArray(parsed)) {
+        const normalized = parsed
+          .map((server) => {
+            if (!server || typeof server !== 'object') return null;
+            const urls = Array.isArray(server.urls)
+              ? server.urls.map(String).filter(Boolean)
+              : String(server.urls || '').trim();
+            if (!urls || (Array.isArray(urls) && urls.length === 0)) return null;
+            const item = { urls };
+            if (server.username) item.username = String(server.username);
+            if (server.credential) item.credential = String(server.credential);
+            return item;
+          })
+          .filter(Boolean);
+        if (normalized.length) return normalized;
+      }
+    } catch (error) {
+      console.warn(`TSN_ICE_SERVERS_JSON kunne ikke læses: ${error.message}`);
+    }
+  }
+
+  const iceServers = [];
+  const stunUrls = splitEnvList(process.env.TSN_STUN_URLS || fallbackStunUrls.join(','));
+  if (stunUrls.length) iceServers.push({ urls: stunUrls });
+
+  const turnUrls = splitEnvList(process.env.TSN_TURN_URLS || process.env.TURN_URLS || '');
+  const turnUsername = process.env.TSN_TURN_USERNAME || process.env.TURN_USERNAME || '';
+  const turnCredential = process.env.TSN_TURN_CREDENTIAL || process.env.TURN_CREDENTIAL || '';
+  if (turnUrls.length && turnUsername && turnCredential) {
+    iceServers.push({ urls: turnUrls, username: turnUsername, credential: turnCredential });
+  }
+
+  return iceServers;
+}
+
+const CALL_ICE_SERVERS = buildCallIceServers();
+const CALL_TURN_ENABLED = CALL_ICE_SERVERS.some((server) => {
+  const urls = Array.isArray(server.urls) ? server.urls : [server.urls];
+  return urls.some((url) => String(url || '').toLowerCase().startsWith('turn:') || String(url || '').toLowerCase().startsWith('turns:'));
+});
+
 const ROOMS = Array.from({ length: 7 }, (_, index) => {
   const id = index + 1;
   return {
@@ -2612,8 +2672,8 @@ app.get('/api/health', (req, res) => {
     const storage = getStorageStatus();
     res.json({
       ok: true,
-      app: 'TSN V1.5.30',
-      shortName: 'TSN V1.5.30',
+      app: 'TSN V1.5.31',
+      shortName: 'TSN V1.5.31',
       environment: process.env.NODE_ENV || 'development',
       storage: {
         ok: storage.ok,
@@ -2636,14 +2696,15 @@ app.get('/api/health', (req, res) => {
         moderation: 'admins can review global messages and reported private-message evidence, handle reports, kick accounts, ban accounts, unban accounts, and see private-message counts without browsing all private-message content',
         contentFilter: CONTENT_FILTER_ENABLED ? 'server-side blocked-language filter enabled' : 'disabled',
         customBlockedWords: CUSTOM_BLOCKED_WORDS.length,
+        callNetworking: CALL_TURN_ENABLED ? 'STUN + TURN configured for cross-network WebRTC calls' : 'STUN only; add TURN env vars for reliable strict-NAT cross-network calls',
         adminRights: 'claimable with server-side admin setup password'
       }
     });
   } catch (error) {
     res.status(503).json({
       ok: false,
-      app: 'TSN V1.5.30',
-      shortName: 'TSN V1.5.30',
+      app: 'TSN V1.5.31',
+      shortName: 'TSN V1.5.31',
       error: 'Lageret er ikke klar.',
       detail: error.message
     });
@@ -2653,7 +2714,7 @@ app.get('/api/health', (req, res) => {
 app.get('/api/ping', (req, res) => {
   res.json({
     ok: true,
-    app: 'TSN V1.5.30',
+    app: 'TSN V1.5.31',
     message: 'pong',
     now: new Date().toISOString()
   });
@@ -2893,6 +2954,17 @@ app.get('/api/me', requireAuth, async (req, res) => {
   updateLoginStreak(req.db, user);
   await writeDb(req.db);
   res.json({ user: publicUser(user || req.user), recoveryMerge: pendingMergePublic(req.db, findPendingMergeForPrimary(req.db, (user || req.user).id)) });
+});
+
+app.get('/api/call-config', requireAuth, (req, res) => {
+  res.json({
+    iceServers: CALL_ICE_SERVERS,
+    turnEnabled: CALL_TURN_ENABLED,
+    mode: CALL_TURN_ENABLED ? 'stun-turn' : 'stun-only',
+    note: CALL_TURN_ENABLED
+      ? 'TURN er konfigureret. Opkald virker bedre på forskellige netværk og bag streng NAT.'
+      : 'Public STUN er aktiv. Tilføj TSN_TURN_URLS, TSN_TURN_USERNAME og TSN_TURN_CREDENTIAL på Render for maksimal stabilitet på forskellige netværk.'
+  });
 });
 
 

@@ -1,3 +1,18 @@
+# TSN V1.5.31 — Cross-Network Calls + Better Call UI
+
+Denne version retter WebRTC-opkald, så de kan fungere mellem brugere på forskellige netværk. TSN bruger Socket.IO som signaling-server, public STUN som standard og understøtter valgfri TURN-server via Render/.env for stabile opkald på mobilnet, skole-/arbejdsnetværk og streng NAT.
+
+Ændret:
+
+- Tilføjet `/api/call-config`, som sender sikre ICE-serverindstillinger til browseren.
+- Tilføjet public STUN som standard og `TSN_TURN_URLS`, `TSN_TURN_USERNAME`, `TSN_TURN_CREDENTIAL` samt `TSN_ICE_SERVERS_JSON` til `.env.example` og `.env.render.example`.
+- Rettet WebRTC ICE-flowet, så kandidater ikke længere forsvinder, hvis de kommer før modtageren accepterer opkaldet.
+- Forlænget opkaldstimeout fra 10 til 30 sekunder, så brugeren bedre kan nå at tage telefonen.
+- Forbedret opkalds-UI med netværksstatus, opkaldstype, timer, forbindelsesstatus, bedre knapper og Udvid/Minimer.
+- Forbedret mikrofon/kamera-indstillinger med echo cancellation, noise suppression og auto gain control.
+
+Vigtigt: Public STUN virker for mange almindelige internetforbindelser, men ikke for alle. Hvis opkald skal være mest muligt stabile på forskellige netværk, skal du sætte en rigtig TURN-server i Render Environment Variables.
+
 # TSN V1.5.30 — Recovery Notifications + Message Merge Fix
 
 Denne version retter admin-notifikationer ved kontogendannelse og private beskeder ved kontosammenlægning, så beskeder fra den midlertidige konto bliver flyttet til den gamle konto med dansk transfer-markering.

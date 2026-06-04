@@ -403,15 +403,21 @@
     </form>
   </section>
 
-  <section id="callOverlay" class="call-overlay hidden" role="dialog">
+  <section id="callOverlay" class="call-overlay hidden" role="dialog" aria-modal="true" aria-live="polite">
     <div class="call-card card">
+      <div class="call-topbar">
+        <span id="callTypeBadge" class="call-pill">Stemme</span>
+        <span id="callTimerText" class="call-timer">00:00</span>
+        <button id="callFullscreenBtn" class="ghost tiny call-fullscreen" type="button">Udvid</button>
+        <button id="closeCallBtn" class="icon-button" type="button" aria-label="Luk opkald">×</button>
+      </div>
       <div class="call-header">
         <div>
           <p id="callEyebrow" class="eyebrow mini">TSN Call</p>
           <h2 id="callTitle">Opkald</h2>
           <p id="callStatusText">Forbinder...</p>
+          <p id="callNetworkText" class="call-network-text">Netværk: klargør...</p>
         </div>
-        <button id="closeCallBtn" class="icon-button" type="button" aria-label="Luk opkald">×</button>
       </div>
       <div class="call-video-grid">
         <div class="call-video-box remote">
@@ -425,16 +431,20 @@
           <span>Dig</span>
         </div>
       </div>
+      <div class="call-status-row">
+        <span class="call-live-dot"></span>
+        <span id="callQualityText">Forbinder...</span>
+      </div>
       <div id="incomingCallActions" class="call-actions hidden">
         <button id="acceptCallBtn" class="primary call-answer-btn" type="button">📞 Tag telefonen</button>
         <button id="declineCallBtn" class="secondary danger call-decline-btn" type="button">Afvis</button>
       </div>
       <div id="activeCallActions" class="call-actions hidden">
-        <button id="muteCallBtn" class="secondary" type="button">Mute mic</button>
-        <button id="cameraCallBtn" class="secondary" type="button">Slå kamera fra</button>
-        <button id="endCallBtn" class="primary danger call-end-btn" type="button">Læg på</button>
+        <button id="muteCallBtn" class="secondary" type="button">🎙️ Mikrofon fra</button>
+        <button id="cameraCallBtn" class="secondary" type="button">📷 Kamera fra</button>
+        <button id="endCallBtn" class="primary danger call-end-btn" type="button">☎️ Læg på</button>
       </div>
-      <p class="call-help">Opkald virker bedst på HTTPS/Render og kræver, at browseren får adgang til mikrofon/kamera.</p>
+      <p class="call-help">Opkald bruger WebRTC via TSN-serverens signaling. Public STUN er indbygget; TURN kan sættes i Render for stabile opkald på forskellige netværk.</p>
     </div>
   </section>
 
@@ -463,6 +473,6 @@
   <div id="toast" class="toast hidden"></div>
 
   <script src="/socket.io/socket.io.js"></script>
-  <script src="/app.js?v=1.5.30"></script>
+  <script src="/app.js?v=1.5.31"></script>
 </body>
 </html>

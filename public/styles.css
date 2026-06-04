@@ -6829,3 +6829,173 @@ body.is-admin .growth-admin-tools { display:grid; }
 .message.mine .message-transfer-note {
   color: rgba(255,255,255,0.82);
 }
+
+
+/* TSN V1.5.31 — cross-network calls + improved call UI */
+.call-topbar {
+  display: grid;
+  grid-template-columns: auto 1fr auto auto;
+  align-items: center;
+  gap: 0.55rem;
+  margin-bottom: 0.75rem;
+}
+
+.call-pill,
+.call-timer {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 30px;
+  padding: 0.25rem 0.65rem;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.72);
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  color: #e0f2fe;
+  font-size: 0.78rem;
+  font-weight: 900;
+  letter-spacing: 0.02em;
+}
+
+.call-timer {
+  justify-self: center;
+  font-variant-numeric: tabular-nums;
+  color: #bbf7d0;
+}
+
+.call-fullscreen {
+  min-height: 30px;
+  padding-inline: 0.7rem;
+}
+
+.call-network-text {
+  margin-top: 0.35rem !important;
+  color: #bae6fd !important;
+  font-size: 0.82rem;
+  font-weight: 750;
+}
+
+.call-status-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  margin: 0.8rem auto 0;
+  padding: 0.48rem 0.7rem;
+  width: fit-content;
+  max-width: 100%;
+  border-radius: 999px;
+  background: rgba(2, 6, 23, 0.52);
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  color: #dbeafe;
+  font-size: 0.82rem;
+  font-weight: 750;
+}
+
+.call-live-dot {
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 999px;
+  background: #22c55e;
+  box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.7);
+  animation: tsnCallLivePulse 1.4s ease-out infinite;
+}
+
+.call-overlay.call-is-incoming .call-topbar,
+#callOverlay.call-overlay.call-is-incoming .call-topbar {
+  grid-template-columns: auto 1fr auto auto;
+}
+
+.call-overlay.call-is-incoming .call-fullscreen,
+#callOverlay.call-overlay.call-is-incoming .call-fullscreen {
+  display: none;
+}
+
+.call-overlay.call-is-active .call-card,
+.call-overlay.call-is-outgoing .call-card {
+  background: linear-gradient(145deg, rgba(8, 17, 38, 0.98), rgba(5, 12, 26, 0.98));
+}
+
+.call-overlay.call-is-active .call-video-box.remote,
+.call-overlay.call-is-outgoing .call-video-box.remote {
+  min-height: 170px;
+}
+
+.call-overlay.call-is-voice .call-video-box.remote video.hidden,
+.call-overlay.call-is-voice .call-video-box.local video.hidden {
+  display: none !important;
+}
+
+.call-overlay.call-expanded {
+  position: fixed !important;
+  inset: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  display: grid !important;
+  place-items: center !important;
+  padding: clamp(0.7rem, 2vw, 1.4rem) !important;
+  background: rgba(3, 7, 18, 0.76) !important;
+  backdrop-filter: blur(20px) !important;
+  pointer-events: auto !important;
+  z-index: 9998 !important;
+}
+
+.call-overlay.call-expanded .call-card {
+  width: min(980px, calc(100vw - 1.5rem)) !important;
+  max-height: min(92vh, 820px) !important;
+  overflow: auto !important;
+  border-radius: 30px !important;
+}
+
+.call-overlay.call-expanded .call-video-grid {
+  grid-template-columns: 1fr 240px !important;
+}
+
+.call-overlay.call-expanded .call-video-box.remote {
+  min-height: clamp(280px, 54vh, 560px) !important;
+}
+
+.call-overlay.call-expanded .call-video-box.local {
+  min-height: 180px !important;
+}
+
+.call-answer-btn,
+.call-decline-btn,
+.call-end-btn,
+#muteCallBtn,
+#cameraCallBtn {
+  touch-action: manipulation;
+}
+
+@keyframes tsnCallLivePulse {
+  0% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.7); }
+  72% { box-shadow: 0 0 0 8px rgba(34, 197, 94, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0); }
+}
+
+@media (max-width: 720px) {
+  .call-topbar {
+    grid-template-columns: auto 1fr auto auto;
+    gap: 0.35rem;
+  }
+
+  .call-pill,
+  .call-timer,
+  .call-fullscreen {
+    font-size: 0.72rem;
+    padding-inline: 0.5rem;
+  }
+
+  .call-status-row {
+    width: 100%;
+    border-radius: 16px;
+    text-align: center;
+  }
+
+  .call-overlay.call-expanded .call-video-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  .call-overlay.call-expanded .call-video-box.local {
+    min-height: 125px !important;
+  }
+}
