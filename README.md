@@ -1,4 +1,19 @@
-# TSN V1.5.34 — Video Call Polish
+# TSN V1.5.35 — Complete UI Redesign + Mobile
+
+Denne version bygger videre på V1.5.34 og giver TSN et komplet nyt UI-design, der fungerer bedre på både desktop og mobil.
+
+Ændret:
+
+- Nyt samlet dark/glass design-system på login, topbar, navigation, chat, profil, venner, aktivitet, admin og opkald.
+- Mobilnavigation er nu en fast bundbjælke med store trykflader.
+- Global chat har pænere beskedbobler, bedre inputfelt, bedre scroll-plads og mere app-agtig layout.
+- Privat chat åbner nu som fuldskærm på mobil, så tastatur og beskedfelt er nemmere at bruge.
+- Brugerlisten har nye bruger-kort med tydeligere online-status, unread-badges, bio og badges.
+- Knapper, inputs, cards, badges, modals og toast har fået samme visuelle stil.
+- Opkaldsbjælken tager hensyn til mobilnavigation og iPhone safe-area.
+- Version/cache er opdateret til `1.5.35`.
+
+## Tidligere: TSN V1.5.34 — Video Call Polish
 
 Denne version bygger videre på V1.5.33 og gør videoopkald pænere og mere brugbare:
 
