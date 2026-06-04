@@ -1,4 +1,20 @@
-# TSN V1.5.35 — Complete UI Redesign + Mobile
+# TSN V1.5.36 — Global Chat Classic Layout Fix
+
+Denne version beholder det nye UI-design, men gendanner global chat til den gamle, fungerende opsætning fra før V1.5.35.
+
+## Ændret
+
+- Global chat bruger igen den klassiske chat-first opsætning.
+- Beskeder ligger igen som normale chatbobler med avatar, afsender og tidspunkt.
+- Dine egne beskeder ligger igen til højre.
+- Global chat-feltet ligger igen stabilt under beskedlisten.
+- Mobilvisningen er rettet, så global chat ikke bliver mast eller sat op som en forkert fuldskærmskort-visning.
+- Designet er stadig nyere: glass/dark card, pænere bobler, bedre inputfelt og mobiltilpasning.
+- Version/cache er opdateret til `1.5.36`.
+
+---
+
+# TSN V1.5.36 — Global Chat Classic Layout Fix
 
 Denne version bygger videre på V1.5.34 og giver TSN et komplet nyt UI-design, der fungerer bedre på både desktop og mobil.
 
@@ -11,7 +27,7 @@ Denne version bygger videre på V1.5.34 og giver TSN et komplet nyt UI-design, d
 - Brugerlisten har nye bruger-kort med tydeligere online-status, unread-badges, bio og badges.
 - Knapper, inputs, cards, badges, modals og toast har fået samme visuelle stil.
 - Opkaldsbjælken tager hensyn til mobilnavigation og iPhone safe-area.
-- Version/cache er opdateret til `1.5.35`.
+- Version/cache er opdateret til `1.5.36`.
 
 ## Tidligere: TSN V1.5.34 — Video Call Polish
 

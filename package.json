@@ -1,7 +1,7 @@
 {
   "name": "the-social-network-tsn",
-  "version": "1.5.35",
-  "description": "TSN V1.5.35 complete UI redesign and mobile-friendly layout.",
+  "version": "1.5.36",
+  "description": "TSN V1.5.36 global chat classic layout with refreshed design.",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
