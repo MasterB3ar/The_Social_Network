@@ -435,6 +435,11 @@
         <span class="call-live-dot"></span>
         <span id="callQualityText">Forbinder...</span>
       </div>
+      <div class="call-media-status" aria-live="polite">
+        <span id="remoteMuteStatus" class="call-media-pill">Den anden: mikrofon ukendt</span>
+        <span id="remoteCameraStatus" class="call-media-pill">Den anden: video ukendt</span>
+        <span id="localMediaStatus" class="call-media-pill self">Dig: mikrofon ukendt · video fra</span>
+      </div>
       <div id="incomingCallActions" class="call-actions hidden">
         <button id="acceptCallBtn" class="primary call-answer-btn" type="button">📞 Tag telefonen</button>
         <button id="declineCallBtn" class="secondary danger call-decline-btn" type="button">Afvis</button>
@@ -473,6 +478,6 @@
   <div id="toast" class="toast hidden"></div>
 
   <script src="/socket.io/socket.io.js"></script>
-  <script src="/app.js?v=1.5.32"></script>
+  <script src="/app.js?v=1.5.33"></script>
 </body>
 </html>

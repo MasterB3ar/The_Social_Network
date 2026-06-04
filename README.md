@@ -1,4 +1,12 @@
-# TSN V1.5.32 — Call Bottom Bar + Pop-out Panel
+# TSN V1.5.33 — Mute Status + Video Toggle
+
+Denne version bygger videre på V1.5.32 og forbedrer opkald:
+
+- Du kan nu se live, om den anden person har muted sin mikrofon.
+- Du kan se, om den anden persons video er til eller fra.
+- Kamera-knappen virker nu også i almindelige stemmeopkald, så man kan tænde/slukke video midt i opkaldet.
+- Opkaldets bundbjælke viser nu media-status uden at fylde hele skærmen.
+
 
 Denne version retter WebRTC-opkald, så de kan fungere mellem brugere på forskellige netværk. TSN bruger Socket.IO som signaling-server, public STUN som standard og understøtter valgfri TURN-server via Render/.env for stabile opkald på mobilnet, skole-/arbejdsnetværk og streng NAT.
 

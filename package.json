@@ -1,7 +1,7 @@
 {
   "name": "the-social-network-tsn",
-  "version": "1.5.32",
-  "description": "TSN V1.5.32 call bottom bar with pop-out active call UI.",
+  "version": "1.5.33",
+  "description": "TSN V1.5.33 call mute status and mid-call video toggle.",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",

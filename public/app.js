@@ -119,6 +119,9 @@ const localAudioAvatar = $('#localAudioAvatar');
 const callNetworkText = $('#callNetworkText');
 const callTimerText = $('#callTimerText');
 const callQualityText = $('#callQualityText');
+const remoteMuteStatus = $('#remoteMuteStatus');
+const remoteCameraStatus = $('#remoteCameraStatus');
+const localMediaStatus = $('#localMediaStatus');
 const callTypeBadge = $('#callTypeBadge');
 const callFullscreenBtn = $('#callFullscreenBtn');
 const incomingCallActions = $('#incomingCallActions');
@@ -3237,8 +3240,8 @@ function setCallUi({ title, status, incoming = false, active = false, kind = 'vo
   if (remoteAudioAvatar) remoteAudioAvatar.textContent = initials(peerName || 'TSN');
   if (remoteCallName) remoteCallName.textContent = peerName || 'Ukendt bruger';
   if (localAudioAvatar) localAudioAvatar.textContent = initials(state.me?.name || 'Mig');
-  callOverlay.classList.toggle('is-video-call', kind === 'video');
   syncCallDockButton();
+  updateCallMediaStatusUi();
 }
 
 function closeCallUi() {
@@ -3250,6 +3253,9 @@ function closeCallUi() {
   if (activeCallActions) activeCallActions.classList.add('hidden');
   if (callStatusText) callStatusText.textContent = '';
   if (callQualityText) callQualityText.textContent = '';
+  if (remoteMuteStatus) remoteMuteStatus.textContent = 'Den anden: mikrofon ukendt';
+  if (remoteCameraStatus) remoteCameraStatus.textContent = 'Den anden: video ukendt';
+  if (localMediaStatus) localMediaStatus.textContent = 'Dig: mikrofon ukendt · video fra';
   syncCallDockButton();
   stopCallTimer();
 }
@@ -3300,17 +3306,200 @@ async function getCallMedia(kind) {
   }
 }
 
+function getLiveTrack(stream, kind) {
+  const tracks = kind === 'video' ? stream?.getVideoTracks?.() : stream?.getAudioTracks?.();
+  return (tracks || []).find((track) => track.readyState !== 'ended') || null;
+}
+
+function localAudioAvailable(call = state.call) {
+  return Boolean(getLiveTrack(call?.localStream, 'audio'));
+}
+
+function localAudioMuted(call = state.call) {
+  const audio = getLiveTrack(call?.localStream, 'audio');
+  return !audio || !audio.enabled;
+}
+
+function localVideoEnabled(call = state.call) {
+  const video = getLiveTrack(call?.localStream, 'video');
+  return Boolean(video && video.enabled);
+}
+
+function remoteVideoEnabled(call = state.call) {
+  if (!call) return false;
+  if (typeof call.remoteVideoEnabled === 'boolean') return call.remoteVideoEnabled;
+  const stream = remoteVideo?.srcObject;
+  return Boolean(stream?.getVideoTracks?.().some((track) => track.readyState !== 'ended'));
+}
+
 function setLocalStream(stream) {
   if (localVideo) {
     localVideo.srcObject = stream || null;
-    localVideo.classList.toggle('hidden', !stream || !stream.getVideoTracks().some((track) => track.enabled));
+    localVideo.classList.toggle('hidden', !stream || !localVideoEnabled({ localStream: stream }));
   }
 }
 
 function setRemoteStream(stream) {
   if (remoteVideo) {
     remoteVideo.srcObject = stream || null;
-    remoteVideo.classList.toggle('hidden', !stream || !stream.getVideoTracks().length);
+    const hasVideo = Boolean(stream?.getVideoTracks?.().some((track) => track.readyState !== 'ended'));
+    const remoteAllowed = state.call?.remoteVideoEnabled !== false;
+    remoteVideo.classList.toggle('hidden', !hasVideo || !remoteAllowed);
+  }
+}
+
+function refreshCallVideoMode() {
+  if (!callOverlay) return;
+  const videoActive = localVideoEnabled() || remoteVideoEnabled() || state.call?.kind === 'video';
+  callOverlay.classList.toggle('call-is-video', videoActive);
+  callOverlay.classList.toggle('call-is-voice', !videoActive);
+  callOverlay.classList.toggle('is-video-call', videoActive);
+  if (callTypeBadge) callTypeBadge.textContent = videoActive ? 'Video' : 'Stemme';
+}
+
+function updateCallActionButtons() {
+  const audio = getLiveTrack(state.call?.localStream, 'audio');
+  const videoOn = localVideoEnabled();
+  if (muteCallBtn) {
+    muteCallBtn.textContent = audio ? (audio.enabled ? '🎙️ Mikrofon fra' : '🔇 Mikrofon til') : '🎙️ Ingen mikrofon';
+    muteCallBtn.disabled = !audio;
+  }
+  if (cameraCallBtn) {
+    cameraCallBtn.textContent = videoOn ? '📷 Kamera fra' : '🎥 Kamera til';
+    cameraCallBtn.disabled = !state.call?.active;
+  }
+}
+
+function updateCallMediaStatusUi() {
+  const current = state.call;
+  const remoteName = callPeerName(current?.peer) || 'Den anden';
+  const remoteMuted = typeof current?.remoteMuted === 'boolean' ? current.remoteMuted : null;
+  const remoteVideoState = typeof current?.remoteVideoEnabled === 'boolean' ? current.remoteVideoEnabled : null;
+
+  if (remoteMuteStatus) {
+    remoteMuteStatus.textContent = remoteMuted === null
+      ? `${remoteName}: mikrofon ukendt`
+      : `${remoteName}: ${remoteMuted ? 'muted' : 'mikrofon til'}`;
+    remoteMuteStatus.classList.toggle('is-muted', remoteMuted === true);
+    remoteMuteStatus.classList.toggle('is-on', remoteMuted === false);
+  }
+  if (remoteCameraStatus) {
+    remoteCameraStatus.textContent = remoteVideoState === null
+      ? `${remoteName}: video ukendt`
+      : `${remoteName}: ${remoteVideoState ? 'video til' : 'video fra'}`;
+    remoteCameraStatus.classList.toggle('is-muted', remoteVideoState === false);
+    remoteCameraStatus.classList.toggle('is-on', remoteVideoState === true);
+  }
+  if (localMediaStatus) {
+    const audioLabel = localAudioAvailable(current) ? (localAudioMuted(current) ? 'mikrofon muted' : 'mikrofon til') : 'ingen mikrofon';
+    const videoLabel = localVideoEnabled(current) ? 'video til' : 'video fra';
+    localMediaStatus.textContent = `Dig: ${audioLabel} · ${videoLabel}`;
+    localMediaStatus.classList.toggle('is-muted', localAudioMuted(current));
+  }
+
+  setLocalStream(current?.localStream || null);
+  setRemoteStream(remoteVideo?.srcObject || null);
+  updateCallActionButtons();
+  refreshCallVideoMode();
+}
+
+function emitCallMediaState() {
+  const current = state.call;
+  if (!current?.peerId || !current.callId || !state.socket) return;
+  const mediaState = {
+    audioAvailable: localAudioAvailable(current),
+    audioMuted: localAudioMuted(current),
+    videoEnabled: localVideoEnabled(current),
+    updatedAt: Date.now()
+  };
+  state.socket.emit('call-signal', { to: current.peerId, callId: current.callId, signal: { mediaState } });
+}
+
+function syncLocalCallMediaState({ notify = true } = {}) {
+  updateCallMediaStatusUi();
+  if (notify) emitCallMediaState();
+}
+
+function handleRemoteMediaState(mediaState = {}) {
+  const current = state.call;
+  if (!current) return;
+  current.remoteMuted = Boolean(mediaState.audioMuted);
+  current.remoteAudioAvailable = mediaState.audioAvailable !== false;
+  current.remoteVideoEnabled = Boolean(mediaState.videoEnabled);
+  updateCallMediaStatusUi();
+  if (callQualityText) {
+    const remoteName = callPeerName(current.peer);
+    callQualityText.textContent = `${remoteName}: ${current.remoteMuted ? 'muted' : 'mikrofon til'} · ${current.remoteVideoEnabled ? 'video til' : 'video fra'}`;
+  }
+}
+
+function findLocalSender(kind) {
+  const current = state.call;
+  if (!current?.pc) return null;
+  return current.pc.getSenders().find((sender) => sender.track?.kind === kind || sender._tsnKind === kind || (sender.track === null && sender._tsnKind === kind)) || null;
+}
+
+async function replaceOrAddLocalTrack(track, stream) {
+  const current = state.call;
+  if (!current?.pc || !track) return false;
+  const sender = findLocalSender(track.kind);
+  if (sender) {
+    sender._tsnKind = track.kind;
+    await sender.replaceTrack(track);
+    return false;
+  }
+  const added = current.pc.addTrack(track, stream);
+  added._tsnKind = track.kind;
+  return true;
+}
+
+async function removeLocalVideoTrack() {
+  const current = state.call;
+  if (!current?.localStream) return;
+  const tracks = current.localStream.getVideoTracks();
+  for (const track of tracks) {
+    current.localStream.removeTrack(track);
+    try { track.stop(); } catch {}
+  }
+  const sender = findLocalSender('video');
+  if (sender) {
+    sender._tsnKind = 'video';
+    try { await sender.replaceTrack(null); } catch {}
+  }
+}
+
+async function renegotiateCall(reason = 'media-change') {
+  const current = state.call;
+  if (!current?.pc || !current.active || !state.socket) return;
+  if (current.pc.signalingState !== 'stable') {
+    setTimeout(() => renegotiateCall(reason), 350);
+    return;
+  }
+  const offer = await current.pc.createOffer({ offerToReceiveAudio: true, offerToReceiveVideo: true });
+  await current.pc.setLocalDescription(offer);
+  state.socket.emit('call-signal', {
+    to: current.peerId,
+    callId: current.callId,
+    signal: { renegotiate: { type: 'offer', description: current.pc.localDescription, reason } }
+  });
+}
+
+async function handleCallRenegotiation(renegotiate = {}) {
+  const current = state.call;
+  if (!current?.pc || !renegotiate.description) return;
+  if (renegotiate.type === 'offer') {
+    await current.pc.setRemoteDescription(new RTCSessionDescription(renegotiate.description));
+    await applyQueuedIceCandidates(current);
+    const answer = await current.pc.createAnswer();
+    await current.pc.setLocalDescription(answer);
+    state.socket?.emit('call-signal', {
+      to: current.peerId,
+      callId: current.callId,
+      signal: { renegotiate: { type: 'answer', description: current.pc.localDescription, reason: renegotiate.reason || 'media-change' } }
+    });
+  } else if (renegotiate.type === 'answer') {
+    await current.pc.setRemoteDescription(new RTCSessionDescription(renegotiate.description));
+    await applyQueuedIceCandidates(current);
   }
 }
 
@@ -3380,8 +3569,22 @@ function createCallPeer(peerId, callId, { initiator = false } = {}) {
   pc.ontrack = (event) => {
     const stream = event.streams?.[0];
     if (stream) {
+      const videoTrack = stream.getVideoTracks?.()[0];
+      if (videoTrack && state.call) {
+        if (typeof state.call.remoteVideoEnabled !== 'boolean') state.call.remoteVideoEnabled = true;
+        videoTrack.onmute = () => {
+          if (state.call?.callId === callId && typeof state.call.remoteVideoEnabled !== 'boolean') updateCallMediaStatusUi();
+        };
+        videoTrack.onunmute = () => {
+          if (state.call?.callId === callId) {
+            if (typeof state.call.remoteVideoEnabled !== 'boolean') state.call.remoteVideoEnabled = true;
+            updateCallMediaStatusUi();
+          }
+        };
+      }
       setRemoteStream(stream);
       setCallStatusText('Lyd/video er forbundet', 'Modtager stream');
+      updateCallMediaStatusUi();
     }
   };
   pc.oniceconnectionstatechange = () => {
@@ -3426,11 +3629,12 @@ async function startCall(kind = 'voice') {
     setLocalStream(localStream);
     const pc = createCallPeer(peer.id, callId, { initiator: true });
     localStream.getTracks().forEach((track) => pc.addTrack(track, localStream));
-    state.call = { callId, kind, peerId: peer.id, peer, pc, localStream, mediaFallback: media.fallback, incoming: false, active: false, pendingIceCandidates: [] };
+    state.call = { callId, kind, peerId: peer.id, peer, pc, localStream, mediaFallback: media.fallback, incoming: false, active: false, pendingIceCandidates: [], remoteMuted: null, remoteVideoEnabled: null };
+    syncLocalCallMediaState({ notify: false });
     if (media.fallback) showToast(media.fallbackReason);
     setCallUi({ title: `Ringer til ${peer.name}`, status: media.fallback ? `${media.fallbackReason} Venter på svar...` : 'Venter på svar...', kind, peerName: peer.name, active: true, quality: callNetworkLabel() });
     armOutgoingCallTimeout(callId);
-    const offer = await pc.createOffer({ offerToReceiveAudio: true, offerToReceiveVideo: kind === 'video' });
+    const offer = await pc.createOffer({ offerToReceiveAudio: true, offerToReceiveVideo: true });
     await pc.setLocalDescription(offer);
     state.socket.emit('call-user', { to: peer.id, kind, callId, offer: pc.localDescription }, (response) => {
       if (!response?.ok) {
@@ -3451,7 +3655,7 @@ function showIncomingCall(payload) {
     return;
   }
   loadCallConfig().catch(() => {});
-  state.call = { callId: payload.callId, kind: payload.kind || 'voice', peerId: payload.from.id, peer: payload.from, offer: payload.offer, incoming: true, active: false, pc: null, localStream: null, pendingIceCandidates: [] };
+  state.call = { callId: payload.callId, kind: payload.kind || 'voice', peerId: payload.from.id, peer: payload.from, offer: payload.offer, incoming: true, active: false, pc: null, localStream: null, pendingIceCandidates: [], remoteMuted: null, remoteVideoEnabled: null };
   setCallUi({ title: `${payload.from.name || payload.from.username || 'En bruger'} ringer`, status: 'Indgående opkald · svar inden 30 sekunder', incoming: true, kind: payload.kind || 'voice', peerName: callPeerName(payload.from), quality: 'Klar til at forbinde' });
   startRingtone();
   armIncomingCallTimeout(payload.callId);
@@ -3481,6 +3685,7 @@ async function acceptIncomingCall() {
     await pc.setLocalDescription(answer);
     state.socket.emit('call-response', { to: current.peerId, callId: current.callId, accepted: true, answer: pc.localDescription, mediaFallback: media.fallback });
     setCallUi({ title: `Opkald med ${callPeerName(current.peer)}`, status: media.fallback ? `${media.fallbackReason} Forbinder...` : 'Forbinder...', active: true, kind: current.kind, peerName: callPeerName(current.peer), quality: callNetworkLabel() });
+    syncLocalCallMediaState({ notify: true });
   } catch (error) {
     showToast(error?.message || 'Kunne ikke acceptere opkald.');
     state.socket?.emit('call-response', { to: current.peerId, callId: current.callId, accepted: false, reason: 'Teknisk fejl' });
@@ -3515,6 +3720,7 @@ async function handleCallResponse(payload) {
       await applyQueuedIceCandidates(current);
       current.active = true;
       setCallUi({ title: `Opkald med ${callPeerName(current.peer)}`, status: payload.mediaFallback ? `${callPeerName(current.peer)} bruger fallback uden fuld mikrofon/kamera. Forbinder...` : 'Forbinder...', active: true, kind: current.kind, peerName: callPeerName(current.peer), quality: callNetworkLabel() });
+      syncLocalCallMediaState({ notify: true });
     }
   } catch (error) {
     showToast('Kunne ikke forbinde opkaldet.');
@@ -3527,6 +3733,8 @@ async function handleCallSignal(payload) {
   if (!current || current.callId !== payload?.callId || !payload.signal) return;
   try {
     if (payload.signal.candidate) await addRemoteIceCandidate(payload.signal.candidate);
+    if (payload.signal.mediaState) handleRemoteMediaState(payload.signal.mediaState);
+    if (payload.signal.renegotiate) await handleCallRenegotiation(payload.signal.renegotiate);
   } catch (error) {
     console.warn('Call signal failed:', error);
   }
@@ -3534,19 +3742,44 @@ async function handleCallSignal(payload) {
 
 function toggleCallMute() {
   const current = state.call;
-  const audio = current?.localStream?.getAudioTracks?.()[0];
+  const audio = getLiveTrack(current?.localStream, 'audio');
   if (!audio) return showToast('Der er ingen mikrofon aktiv i dette opkald.');
   audio.enabled = !audio.enabled;
-  if (muteCallBtn) muteCallBtn.textContent = audio.enabled ? '🎙️ Mikrofon fra' : '🔇 Mikrofon til';
+  syncLocalCallMediaState({ notify: true });
 }
 
-function toggleCallCamera() {
+async function toggleCallCamera() {
   const current = state.call;
-  const video = current?.localStream?.getVideoTracks?.()[0];
-  if (!video) return showToast('Der er intet kamera aktivt i dette opkald.');
-  video.enabled = !video.enabled;
-  if (cameraCallBtn) cameraCallBtn.textContent = video.enabled ? '📷 Kamera fra' : '📷 Kamera til';
-  setLocalStream(current.localStream);
+  if (!current?.active || !current.pc) return showToast('Du kan først skifte kamera, når opkaldet er aktivt.');
+
+  if (localVideoEnabled(current)) {
+    await removeLocalVideoTrack();
+    syncLocalCallMediaState({ notify: true });
+    await renegotiateCall('camera-off');
+    return;
+  }
+
+  if (!navigator.mediaDevices?.getUserMedia) {
+    showToast('Din browser understøtter ikke kameraadgang her. Brug HTTPS/Render.');
+    return;
+  }
+
+  try {
+    const cameraStream = await navigator.mediaDevices.getUserMedia({
+      video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' },
+      audio: false
+    });
+    const videoTrack = cameraStream.getVideoTracks()[0];
+    if (!videoTrack) throw new Error('Kameraet gav ikke noget videospor.');
+    current.localStream = current.localStream || new MediaStream();
+    current.localStream.addTrack(videoTrack);
+    const needsNegotiation = await replaceOrAddLocalTrack(videoTrack, current.localStream);
+    syncLocalCallMediaState({ notify: true });
+    if (needsNegotiation) await renegotiateCall('camera-on');
+  } catch (error) {
+    showToast(error?.message || 'Kameraet kunne ikke tændes.');
+    syncLocalCallMediaState({ notify: true });
+  }
 }
 
 function toggleCallFullscreen() {
@@ -3565,7 +3798,7 @@ if (endCallBtn) endCallBtn.addEventListener('click', () => cleanupCall({ notify:
 if (closeCallBtn) closeCallBtn.addEventListener('click', () => cleanupCall({ notify: true, reason: 'Opkald lukket' }));
 if (callFullscreenBtn) callFullscreenBtn.addEventListener('click', toggleCallFullscreen);
 if (muteCallBtn) muteCallBtn.addEventListener('click', toggleCallMute);
-if (cameraCallBtn) cameraCallBtn.addEventListener('click', toggleCallCamera);
+if (cameraCallBtn) cameraCallBtn.addEventListener('click', () => toggleCallCamera().catch(() => showToast('Kameraet kunne ikke skiftes.')));
 
 function connectSocket() {
   if (state.socket) state.socket.disconnect();
