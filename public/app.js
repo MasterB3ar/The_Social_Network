@@ -30,6 +30,10 @@ const state = {
   globalChatHasOpened: false,
   globalChatNeedsBottomScroll: false,
   privateChatNeedsBottomScroll: false,
+  globalChatBottomScrollTimers: [],
+  privateChatBottomScrollTimers: [],
+  globalManualScrollLockUntil: 0,
+  privateManualScrollLockUntil: 0,
   activePrivateConversationId: '',
   mediaLibrary: [],
   mediaSearchResults: [],
@@ -780,6 +784,56 @@ function restoreMessageScroll(element, snapshot, { forceBottom = false } = {}) {
   requestAnimationFrame(apply);
 }
 
+function clearScheduledScrollTimers(timerList) {
+  if (!Array.isArray(timerList)) return;
+  while (timerList.length) {
+    const timer = timerList.pop();
+    try { clearTimeout(timer); } catch {}
+  }
+}
+
+function cancelGlobalChatBottomScroll() {
+  clearScheduledScrollTimers(state.globalChatBottomScrollTimers);
+}
+
+function cancelPrivateChatBottomScroll() {
+  clearScheduledScrollTimers(state.privateChatBottomScrollTimers);
+}
+
+function isGlobalManualScrollLocked() {
+  return Date.now() < Number(state.globalManualScrollLockUntil || 0);
+}
+
+function isPrivateManualScrollLocked() {
+  return Date.now() < Number(state.privateManualScrollLockUntil || 0);
+}
+
+function noteManualMessageScroll(kind) {
+  const until = Date.now() + 2500;
+  if (kind === 'global') {
+    state.globalManualScrollLockUntil = until;
+    state.globalChatNeedsBottomScroll = false;
+    cancelGlobalChatBottomScroll();
+  } else if (kind === 'private') {
+    state.privateManualScrollLockUntil = until;
+    state.privateChatNeedsBottomScroll = false;
+    cancelPrivateChatBottomScroll();
+  }
+}
+
+function registerManualScrollGuards(element, kind) {
+  if (!element) return;
+  const mark = () => noteManualMessageScroll(kind);
+  element.addEventListener('wheel', mark, { passive: true });
+  element.addEventListener('touchstart', mark, { passive: true });
+  element.addEventListener('touchmove', mark, { passive: true });
+  element.addEventListener('keydown', (event) => {
+    if (['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' '].includes(event.key)) {
+      mark();
+    }
+  });
+}
+
 function isElementNearBottom(element, threshold = 96) {
   if (!element) return true;
   return element.scrollHeight - element.scrollTop - element.clientHeight <= threshold;
@@ -860,14 +914,16 @@ function scrollElementToBottom(element) {
 function scheduleGlobalChatBottomScroll() {
   if (!globalMessagesList) return;
 
-  const apply = () => scrollElementToBottom(globalMessagesList);
+  cancelGlobalChatBottomScroll();
+  const apply = () => {
+    if (isGlobalManualScrollLocked()) return;
+    scrollElementToBottom(globalMessagesList);
+  };
   apply();
   requestAnimationFrame(apply);
-  setTimeout(apply, 0);
-  setTimeout(apply, 80);
-  setTimeout(apply, 180);
-  setTimeout(apply, 360);
-  setTimeout(apply, 700);
+  [0, 80, 180, 360, 700].forEach((delay) => {
+    state.globalChatBottomScrollTimers.push(setTimeout(apply, delay));
+  });
 }
 
 function requestGlobalChatBottomOnOpen() {
@@ -880,14 +936,16 @@ function requestGlobalChatBottomOnOpen() {
 function schedulePrivateChatBottomScroll() {
   if (!messagesList) return;
 
-  const apply = () => scrollElementToBottom(messagesList);
+  cancelPrivateChatBottomScroll();
+  const apply = () => {
+    if (isPrivateManualScrollLocked()) return;
+    scrollElementToBottom(messagesList);
+  };
   apply();
   requestAnimationFrame(apply);
-  setTimeout(apply, 0);
-  setTimeout(apply, 80);
-  setTimeout(apply, 180);
-  setTimeout(apply, 360);
-  setTimeout(apply, 700);
+  [0, 80, 180, 360, 700].forEach((delay) => {
+    state.privateChatBottomScrollTimers.push(setTimeout(apply, delay));
+  });
 }
 
 function requestPrivateChatBottomOnOpen() {
@@ -895,21 +953,31 @@ function requestPrivateChatBottomOnOpen() {
   schedulePrivateChatBottomScroll();
 }
 
-function stabilizePrivateChatMediaScroll({ forceBottom = false, snapshot = null } = {}) {
-  if (!messagesList) return;
-  const media = messagesList.querySelectorAll('img, video');
+function stabilizeMessageMediaScroll(container, { forceBottom = false, snapshot = null, isManualLocked = () => false } = {}) {
+  if (!container) return;
+  const media = container.querySelectorAll('img, video');
   if (!media.length) return;
 
   media.forEach((element) => {
     const eventName = element.tagName === 'VIDEO' ? 'loadedmetadata' : 'load';
     element.addEventListener(eventName, () => {
-      if (forceBottom || !snapshot || snapshot.wasNearBottom) {
-        scrollElementToBottom(messagesList);
+      if (isManualLocked()) {
+        restoreMessageScroll(container, snapshot);
+      } else if (forceBottom || !snapshot || snapshot.wasNearBottom) {
+        scrollElementToBottom(container);
       } else {
-        restoreMessageScroll(messagesList, snapshot);
+        restoreMessageScroll(container, snapshot);
       }
     }, { once: true });
   });
+}
+
+function stabilizePrivateChatMediaScroll({ forceBottom = false, snapshot = null } = {}) {
+  stabilizeMessageMediaScroll(messagesList, { forceBottom, snapshot, isManualLocked: isPrivateManualScrollLocked });
+}
+
+function stabilizeGlobalChatMediaScroll({ forceBottom = false, snapshot = null } = {}) {
+  stabilizeMessageMediaScroll(globalMessagesList, { forceBottom, snapshot, isManualLocked: isGlobalManualScrollLocked });
 }
 
 function forceGlobalDetailTop() {
@@ -961,7 +1029,7 @@ function showApp() {
 
 
 function switchAppView(view) {
-  const allowedViews = new Set(['home', 'profile', 'global', 'private', 'friends', 'events', 'admin']);
+  const allowedViews = new Set(['home', 'profile', 'global', 'private', 'friends', 'admin']);
   const previousView = appScreen.dataset.view || '';
   const nextView = allowedViews.has(view) ? view : 'global';
 
@@ -996,9 +1064,6 @@ function switchAppView(view) {
     loadHome().catch((error) => showToast(error.message));
   }
 
-  if (activeView === 'events') {
-    Promise.all([loadEvents(), loadPolls(), loadLeaderboard()]).catch((error) => showToast(error.message));
-  }
 
   if (activeView === 'friends') {
     loadFriends().catch((error) => showToast(error.message));
@@ -1851,9 +1916,14 @@ if (globalMessagesList) {
 }
 
 if (globalMessagesList) {
+  registerManualScrollGuards(globalMessagesList, 'global');
   globalMessagesList.addEventListener('scroll', () => {
     if (isElementNearBottom(globalMessagesList)) clearGlobalNewMessages();
   });
+}
+
+if (messagesList) {
+  registerManualScrollGuards(messagesList, 'private');
 }
 
 if (globalNewMessagesBtn) {
@@ -2361,6 +2431,7 @@ function renderGlobalMessages({ forceBottom = false } = {}) {
     globalMessagesList.classList.remove('is-detail-mode');
     globalMessagesList.innerHTML = '<div class="empty">Der er ingen globale chatbeskeder endnu. Skriv den første.</div>';
     restoreMessageScroll(globalMessagesList, scrollSnapshot, { forceBottom: shouldForceBottom });
+    stabilizeGlobalChatMediaScroll({ forceBottom: shouldForceBottom, snapshot: scrollSnapshot });
     if (shouldForceBottom) scheduleGlobalChatBottomScroll();
     return;
   }
@@ -2368,6 +2439,7 @@ function renderGlobalMessages({ forceBottom = false } = {}) {
   globalMessagesList.classList.remove('is-detail-mode');
   globalMessagesList.innerHTML = state.globalMessages.map((message) => renderGlobalChatMessage(message)).join('');
   restoreMessageScroll(globalMessagesList, scrollSnapshot, { forceBottom: shouldForceBottom });
+  stabilizeGlobalChatMediaScroll({ forceBottom: shouldForceBottom, snapshot: scrollSnapshot });
   if (shouldForceBottom) {
     state.globalChatNeedsBottomScroll = false;
     scheduleGlobalChatBottomScroll();

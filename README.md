@@ -1,3 +1,12 @@
+# TSN V2.0 - Conversation Scroll Stability Fix
+
+This patch keeps the app version at `2.0.0` and fixes chat scroll stability. When a user scrolls up in a global or private conversation, pending auto-scroll timers are cancelled so the conversation no longer jumps back down while reading older messages. Media loading also preserves scroll position better.
+
+# TSN V2.0
+
+## TSN V2.0 - Activity Price + Activities Removed
+
+This patch keeps the app version at `2.0.0` and removes the visible `Aktivitetspris`/TSN-S widget plus the separate activity/events navigation page from the UI. The overview now keeps the cleaner V2.0 design with chat, profile, friends, events/polls preview, leaderboard, calls, reports, recovery, and the global media popup.
 # TSN V2.0 — Neon UI Redesign + Mobile Polish
 
 Dette er en større V2.0-opgradering oven på V1.5.36. Den beholder den fungerende klassiske global-chat-opsætning, men giver hele TSN et langt sejere, mere premium neon/glass dashboard-design.
