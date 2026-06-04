@@ -2672,8 +2672,8 @@ app.get('/api/health', (req, res) => {
     const storage = getStorageStatus();
     res.json({
       ok: true,
-      app: 'TSN V1.5.36',
-      shortName: 'TSN V1.5.36',
+      app: 'TSN V2.0',
+      shortName: 'TSN V2.0',
       environment: process.env.NODE_ENV || 'development',
       storage: {
         ok: storage.ok,
@@ -2703,8 +2703,8 @@ app.get('/api/health', (req, res) => {
   } catch (error) {
     res.status(503).json({
       ok: false,
-      app: 'TSN V1.5.36',
-      shortName: 'TSN V1.5.36',
+      app: 'TSN V2.0',
+      shortName: 'TSN V2.0',
       error: 'Lageret er ikke klar.',
       detail: error.message
     });
@@ -2714,7 +2714,7 @@ app.get('/api/health', (req, res) => {
 app.get('/api/ping', (req, res) => {
   res.json({
     ok: true,
-    app: 'TSN V1.5.36',
+    app: 'TSN V2.0',
     message: 'pong',
     now: new Date().toISOString()
   });
@@ -4251,7 +4251,7 @@ async function startServer() {
       console.log(`Backup directory: ${DB_BACKUP_DIR}`);
       const warning = storagePersistenceWarning();
       if (warning) console.warn(`Persistence warning: ${warning}`);
-      console.log('TSN V1.5.15 mode: activity hub, XP, streaks, Pixabay/GIPHY media only, leaderboard, events, polls, TSN-S widget, manual badges, friends, notifications, mentions, reactions and warnings.');
+      console.log('TSN V2.0 mode: neon UI, classic global chat, mobile polish, activity hub, calls, media, friends, reports and recovery flows.');
       console.log('Admin rights can be claimed inside the app with TSN_ADMIN_SETUP_PASSWORD or TSN_ADMIN_SETUP_PASSWORD_HASH.');
 
       if (process.env.NODE_ENV === 'production' && JWT_SECRET === DEFAULT_JWT_SECRET) {

@@ -8849,3 +8849,857 @@ select:focus {
     order: -1 !important;
   }
 }
+
+/* =====================================================================
+   TSN V2.0 — Neon UI Redesign + Mobile Polish
+   Keeps the classic global-chat layout from V1.5.36, but gives the app a
+   stronger premium/cyber dashboard look and better responsive behaviour.
+   ===================================================================== */
+:root {
+  --bg: #02030a;
+  --bg-soft: #060a16;
+  --surface: rgba(8, 13, 27, 0.78);
+  --surface-2: rgba(12, 18, 38, 0.88);
+  --surface-3: rgba(20, 29, 58, 0.95);
+  --card: rgba(10, 16, 34, 0.74);
+  --card-strong: rgba(14, 22, 45, 0.96);
+  --border: rgba(166, 183, 255, 0.16);
+  --border-strong: rgba(88, 214, 255, 0.32);
+  --text: #f8fbff;
+  --muted: #95a6c4;
+  --muted-2: #d7e2f4;
+  --primary: #8b5cf6;
+  --primary-2: #00e5ff;
+  --primary-3: #2dffb5;
+  --accent-hot: #ff3df2;
+  --danger: #ff4d7d;
+  --success: #2dffb5;
+  --warning: #ffd166;
+  --shadow: 0 32px 110px rgba(0, 0, 0, 0.58);
+  --shadow-soft: 0 18px 60px rgba(0, 0, 0, 0.35);
+  --glow-cyan: 0 0 30px rgba(0, 229, 255, 0.18);
+  --glow-purple: 0 0 34px rgba(139, 92, 246, 0.20);
+  --radius: 30px;
+  --radius-sm: 18px;
+  --tap: 48px;
+  --mobile-nav-height: 84px;
+}
+
+html {
+  background: #02030a;
+}
+
+body {
+  background:
+    radial-gradient(circle at 12% -6%, rgba(139, 92, 246, 0.42), transparent 35rem),
+    radial-gradient(circle at 88% 0%, rgba(0, 229, 255, 0.30), transparent 31rem),
+    radial-gradient(circle at 48% 112%, rgba(45, 255, 181, 0.16), transparent 29rem),
+    linear-gradient(180deg, #02030a 0%, #06101d 42%, #02030a 100%) !important;
+  color: var(--text);
+}
+
+body::before {
+  opacity: 0.9;
+  background-image:
+    linear-gradient(rgba(0, 229, 255, 0.045) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(139, 92, 246, 0.040) 1px, transparent 1px),
+    radial-gradient(circle at 50% 50%, rgba(255, 255, 255, 0.025), transparent 42%);
+  background-size: 54px 54px, 54px 54px, 820px 820px;
+  mask-image: linear-gradient(180deg, rgba(0,0,0,.78), transparent 92%);
+}
+
+.v2-aurora {
+  position: fixed;
+  inset: -35vh -18vw auto -18vw;
+  height: 64vh;
+  pointer-events: none;
+  z-index: -1;
+  opacity: 0.62;
+  filter: blur(42px) saturate(1.15);
+  background:
+    radial-gradient(circle at 20% 40%, rgba(255, 61, 242, 0.22), transparent 34%),
+    radial-gradient(circle at 52% 34%, rgba(0, 229, 255, 0.24), transparent 31%),
+    radial-gradient(circle at 76% 52%, rgba(45, 255, 181, 0.16), transparent 28%);
+}
+
+.noise {
+  opacity: 0.075 !important;
+  background-image:
+    linear-gradient(115deg, rgba(255,255,255,.15) 0, transparent 23%, rgba(0,229,255,.07) 51%, transparent 76%),
+    radial-gradient(circle at 25% 30%, rgba(255,255,255,.05), transparent 22%);
+}
+
+.version-badge {
+  top: 18px !important;
+  right: 18px !important;
+  padding: 9px 14px !important;
+  border-color: rgba(0, 229, 255, 0.30) !important;
+  background:
+    linear-gradient(135deg, rgba(139, 92, 246, 0.32), rgba(0, 229, 255, 0.16)),
+    rgba(3, 7, 18, 0.80) !important;
+  color: #effcff !important;
+  text-shadow: 0 0 18px rgba(0, 229, 255, 0.40);
+  box-shadow: 0 18px 54px rgba(0,0,0,.34), var(--glow-cyan) !important;
+}
+
+.card,
+.auth-panel,
+.chat-panel,
+.rules-card,
+.call-card,
+.side-card,
+.growth-panel {
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.075), rgba(255,255,255,.026)),
+    linear-gradient(135deg, rgba(139, 92, 246, 0.055), rgba(0, 229, 255, 0.035)),
+    var(--surface) !important;
+  border: 1px solid rgba(166, 183, 255, 0.16) !important;
+  box-shadow: var(--shadow-soft), inset 0 1px 0 rgba(255,255,255,.085) !important;
+  backdrop-filter: blur(26px) saturate(1.25) !important;
+}
+
+.card:hover,
+.auth-panel:hover,
+.chat-panel:hover,
+.side-card:hover,
+.growth-panel:hover {
+  border-color: rgba(0, 229, 255, 0.24) !important;
+}
+
+.primary,
+.secondary,
+.ghost,
+.icon-button,
+.image-picker-button,
+.tiny {
+  transition: transform 150ms ease, filter 150ms ease, border-color 150ms ease, background 150ms ease, box-shadow 150ms ease !important;
+}
+
+.primary {
+  background:
+    radial-gradient(circle at 20% 0%, rgba(255,255,255,.30), transparent 28%),
+    linear-gradient(135deg, #8b5cf6 0%, #00b7ff 52%, #2dffb5 118%) !important;
+  box-shadow: 0 18px 48px rgba(0, 229, 255, 0.18), 0 14px 44px rgba(139, 92, 246, 0.22) !important;
+  text-shadow: 0 1px 14px rgba(0,0,0,.28);
+}
+
+.secondary,
+.ghost,
+.image-picker-button {
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.075), rgba(255,255,255,.026)),
+    rgba(6, 12, 26, 0.70) !important;
+}
+
+.primary:hover,
+.secondary:hover,
+.ghost:hover,
+.icon-button:hover,
+.image-picker-button:hover {
+  transform: translateY(-2px) !important;
+  border-color: rgba(0, 229, 255, 0.30) !important;
+  box-shadow: 0 16px 42px rgba(0,0,0,.24), var(--glow-cyan) !important;
+}
+
+input,
+textarea,
+select {
+  background: rgba(2, 6, 17, 0.64) !important;
+  border-color: rgba(166, 183, 255, 0.16) !important;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.035) !important;
+}
+
+input:focus,
+textarea:focus,
+select:focus {
+  border-color: rgba(0, 229, 255, 0.60) !important;
+  box-shadow: 0 0 0 4px rgba(0, 229, 255, 0.11), inset 0 1px 0 rgba(255,255,255,.045) !important;
+}
+
+/* Auth */
+.auth-screen {
+  width: min(1220px, calc(100vw - 28px)) !important;
+  min-height: 100dvh !important;
+  grid-template-columns: minmax(0, 1.05fr) minmax(330px, 445px) !important;
+}
+
+.auth-hero::before {
+  content: "";
+  position: absolute;
+  inset: 4% 2% auto auto;
+  width: min(26vw, 290px);
+  aspect-ratio: 1;
+  border-radius: 40px;
+  border: 1px solid rgba(0, 229, 255, 0.16);
+  background:
+    linear-gradient(135deg, rgba(0,229,255,.14), transparent 45%),
+    linear-gradient(45deg, transparent 48%, rgba(255,255,255,.08) 49% 51%, transparent 52%);
+  transform: rotate(14deg);
+  filter: drop-shadow(0 22px 55px rgba(0,0,0,.28));
+  z-index: -1;
+}
+
+.auth-hero h1 {
+  max-width: 850px;
+  font-size: clamp(3.4rem, 9.2vw, 8.2rem) !important;
+  line-height: .82 !important;
+  letter-spacing: -0.115em !important;
+  background: linear-gradient(135deg, #ffffff 8%, #b9f7ff 42%, #d8c8ff 68%, #ffffff 92%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  filter: drop-shadow(0 20px 60px rgba(0,0,0,.30));
+}
+
+.hero-subtitle {
+  max-width: 660px;
+  font-size: clamp(1.05rem, 1.9vw, 1.28rem);
+  line-height: 1.6;
+}
+
+.v2-hero-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 22px;
+}
+
+.v2-hero-chips span,
+.v2-live-chip,
+.v2-brand-subtitle {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  border: 1px solid rgba(0, 229, 255, 0.22);
+  border-radius: 999px;
+  background: rgba(0, 229, 255, 0.07);
+  color: #dffbff;
+  font-size: .75rem;
+  font-weight: 950;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+
+.v2-hero-chips span {
+  padding: 8px 11px;
+}
+
+.auth-panel {
+  border-radius: 38px !important;
+  padding: clamp(20px, 4vw, 30px) !important;
+}
+
+.auth-panel h2 {
+  letter-spacing: -0.04em;
+}
+
+.brand-mark {
+  position: relative;
+  isolation: isolate;
+  background:
+    radial-gradient(circle at 22% 16%, rgba(255,255,255,.42), transparent 24%),
+    linear-gradient(135deg, #8b5cf6 0%, #00e5ff 58%, #2dffb5 118%) !important;
+  box-shadow: 0 22px 70px rgba(0, 229, 255, 0.20), 0 18px 58px rgba(139, 92, 246, 0.24) !important;
+}
+
+.brand-mark::after {
+  content: "";
+  position: absolute;
+  inset: -6px;
+  z-index: -1;
+  border-radius: inherit;
+  background: linear-gradient(135deg, rgba(139, 92, 246, 0.45), rgba(0, 229, 255, 0.28));
+  filter: blur(16px);
+  opacity: .72;
+}
+
+/* Top command bar */
+.topbar {
+  top: 14px !important;
+  padding: 10px 12px !important;
+  border-radius: 28px !important;
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.08), rgba(255,255,255,.025)),
+    rgba(4, 8, 19, 0.82) !important;
+  border-color: rgba(166, 183, 255, 0.18) !important;
+  box-shadow: 0 20px 70px rgba(0,0,0,.36), var(--glow-purple) !important;
+}
+
+.brand > div:last-child {
+  display: grid;
+  gap: 1px;
+}
+
+.v2-brand-subtitle {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: rgba(215, 226, 244, 0.68);
+  font-size: .66rem;
+}
+
+.v2-live-chip {
+  min-height: 38px;
+  padding: 0 12px;
+  white-space: nowrap;
+}
+
+.v2-live-chip i {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #2dffb5;
+  box-shadow: 0 0 16px rgba(45, 255, 181, .85);
+}
+
+/* Layout + navigation */
+.chat-only-layout.clean-discord-layout {
+  width: min(1540px, calc(100vw - 28px)) !important;
+  grid-template-columns: 100px minmax(0, 1fr) !important;
+  gap: 20px !important;
+  padding-top: 22px !important;
+}
+
+.app-switcher {
+  border-radius: 34px !important;
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.08), rgba(255,255,255,.024)),
+    rgba(5, 9, 21, 0.78) !important;
+}
+
+.app-nav-button {
+  min-height: 76px !important;
+  border-radius: 24px !important;
+}
+
+.app-nav-button .nav-icon {
+  font-size: 1.34rem !important;
+  filter: drop-shadow(0 8px 22px rgba(0,0,0,.25));
+}
+
+.app-nav-button.active {
+  background:
+    radial-gradient(circle at 28% 0%, rgba(255,255,255,.20), transparent 32%),
+    linear-gradient(135deg, rgba(139, 92, 246, 0.84), rgba(0, 153, 255, 0.56)) !important;
+  box-shadow: 0 18px 44px rgba(0, 229, 255, 0.16), 0 18px 54px rgba(139, 92, 246, 0.22) !important;
+}
+
+.nav-badge {
+  background: linear-gradient(135deg, var(--danger), var(--accent-hot)) !important;
+  box-shadow: 0 0 22px rgba(255, 61, 242, 0.35) !important;
+}
+
+/* Home/dashboard cards */
+.home-grid {
+  gap: 18px !important;
+}
+
+.home-hero,
+.home-widget,
+.tsns-widget,
+.profile-preview-card,
+.people.card,
+.sidebar.card {
+  border-radius: 30px !important;
+}
+
+.home-hero {
+  position: relative;
+  overflow: hidden;
+}
+
+.home-hero::after,
+.global-chat::after {
+  content: "";
+  position: absolute;
+  width: 360px;
+  height: 360px;
+  right: -120px;
+  top: -160px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(0, 229, 255, 0.12), transparent 62%);
+  pointer-events: none;
+}
+
+.section-heading h2,
+.section-heading h3,
+.home-widget h3,
+.tsns-widget h3,
+.chat-user strong {
+  letter-spacing: -0.045em;
+}
+
+.eyebrow.mini,
+.eyebrow {
+  color: #69f1ff !important;
+  text-shadow: 0 0 18px rgba(0, 229, 255, 0.26);
+}
+
+.pill,
+.call-pill,
+.call-media-pill {
+  border-color: rgba(0, 229, 255, 0.22) !important;
+  background: rgba(0, 229, 255, 0.08) !important;
+  color: #dffbff !important;
+}
+
+/* Classic global chat, V2 skin */
+.app[data-view="global"] .global-chat {
+  position: relative !important;
+  overflow: hidden !important;
+  border-radius: 34px !important;
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.073), rgba(255,255,255,.028)),
+    radial-gradient(circle at 0% 0%, rgba(139, 92, 246, 0.14), transparent 32%),
+    rgba(7, 12, 26, 0.82) !important;
+}
+
+.app[data-view="global"] .global-chat .section-heading {
+  position: relative;
+  z-index: 1;
+  padding-bottom: 12px;
+  border-bottom: 1px solid rgba(166, 183, 255, 0.12);
+}
+
+.app[data-view="global"] .global-messages {
+  position: relative;
+  z-index: 1;
+  gap: 12px !important;
+  padding: 16px !important;
+  border-radius: 26px !important;
+  background:
+    linear-gradient(180deg, rgba(2, 6, 17, 0.70), rgba(2, 6, 17, 0.42)),
+    radial-gradient(circle at 22% 0%, rgba(0,229,255,.06), transparent 28%) !important;
+  border-color: rgba(166, 183, 255, 0.14) !important;
+}
+
+.app[data-view="global"] .global-messages::-webkit-scrollbar,
+#messagesList::-webkit-scrollbar,
+.users-list::-webkit-scrollbar,
+.notifications-list::-webkit-scrollbar {
+  width: 10px;
+}
+
+.app[data-view="global"] .global-messages::-webkit-scrollbar-thumb,
+#messagesList::-webkit-scrollbar-thumb,
+.users-list::-webkit-scrollbar-thumb,
+.notifications-list::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, rgba(139, 92, 246, .65), rgba(0, 229, 255, .45));
+  border-radius: 999px;
+  border: 3px solid rgba(2, 6, 17, 0.6);
+}
+
+.app[data-view="global"] .global-chat-message .chat-avatar,
+.avatar {
+  background:
+    radial-gradient(circle at 30% 20%, rgba(255,255,255,.24), transparent 26%),
+    linear-gradient(135deg, rgba(139, 92, 246, 0.92), rgba(0, 229, 255, 0.68)) !important;
+  border: 1px solid rgba(255,255,255,.14) !important;
+  box-shadow: 0 12px 28px rgba(0,0,0,.24), 0 0 22px rgba(0,229,255,.10) !important;
+}
+
+.app[data-view="global"] .global-chat-bubble {
+  border-radius: 20px 20px 20px 8px !important;
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.075), rgba(255,255,255,.030)),
+    rgba(10, 16, 34, 0.84) !important;
+  border-color: rgba(166, 183, 255, 0.15) !important;
+  box-shadow: 0 14px 34px rgba(0,0,0,.22), inset 0 1px 0 rgba(255,255,255,.052) !important;
+}
+
+.app[data-view="global"] .global-chat-message.mine .global-chat-bubble {
+  border-radius: 20px 20px 8px 20px !important;
+  background:
+    radial-gradient(circle at 14% 0%, rgba(255,255,255,.22), transparent 25%),
+    linear-gradient(135deg, rgba(139, 92, 246, 0.84), rgba(0, 166, 255, 0.68)) !important;
+  border-color: rgba(0, 229, 255, 0.30) !important;
+  box-shadow: 0 16px 42px rgba(0,0,0,.24), 0 0 26px rgba(0,229,255,.12) !important;
+}
+
+.app[data-view="global"] .global-chat-meta strong {
+  color: #ffffff;
+}
+
+.app[data-view="global"] .global-chat-meta span {
+  color: rgba(222, 235, 255, 0.66) !important;
+}
+
+.app[data-view="global"] .global-message-form,
+.message-form {
+  z-index: 3;
+  border-radius: 28px !important;
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.060), rgba(255,255,255,.020)),
+    rgba(2, 6, 17, 0.72) !important;
+  border-color: rgba(166, 183, 255, 0.16) !important;
+}
+
+.app[data-view="global"] .global-message-form input,
+.message-form input {
+  border-radius: 999px !important;
+}
+
+.new-messages-button {
+  background: linear-gradient(135deg, var(--accent-hot), var(--primary-2)) !important;
+  border: 1px solid rgba(255,255,255,.18) !important;
+  box-shadow: 0 18px 42px rgba(255, 61, 242, 0.18) !important;
+}
+
+/* Private chat */
+.chat-panel {
+  border-radius: 32px !important;
+  overflow: hidden !important;
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.075), rgba(255,255,255,.024)),
+    rgba(5, 10, 24, 0.90) !important;
+}
+
+.chat-panel header {
+  background:
+    linear-gradient(90deg, rgba(139, 92, 246, 0.12), rgba(0, 229, 255, 0.07)),
+    rgba(2, 6, 17, 0.60) !important;
+  border-bottom: 1px solid rgba(166, 183, 255, 0.14) !important;
+}
+
+#messagesList.messages {
+  background:
+    radial-gradient(circle at 18% 0%, rgba(0, 229, 255, 0.052), transparent 28%),
+    rgba(2, 6, 17, 0.30) !important;
+}
+
+.message,
+.dm-message,
+.private-message,
+.message-bubble,
+.global-chat-bubble {
+  overflow-wrap: anywhere;
+}
+
+.users-list,
+.growth-list,
+.leaderboard-list,
+.activity-feed-list,
+.notifications-list,
+.admin-users-list,
+.admin-reports-list,
+.admin-messages-list {
+  gap: 10px !important;
+}
+
+.user-card,
+.growth-item,
+.notification-item,
+.admin-user-card,
+.report-card,
+.admin-message-card,
+.leaderboard-item,
+.activity-item {
+  border-radius: 22px !important;
+  border: 1px solid rgba(166, 183, 255, 0.13) !important;
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.055), rgba(255,255,255,.022)),
+    rgba(7, 12, 26, 0.62) !important;
+}
+
+.user-card:hover,
+.growth-item:hover,
+.notification-item:hover,
+.admin-user-card:hover,
+.report-card:hover,
+.admin-message-card:hover,
+.leaderboard-item:hover,
+.activity-item:hover {
+  border-color: rgba(0, 229, 255, 0.28) !important;
+  box-shadow: 0 18px 42px rgba(0,0,0,.22), var(--glow-cyan) !important;
+}
+
+/* Calls */
+.call-overlay:not(.hidden) {
+  background: rgba(1, 3, 10, 0.64) !important;
+  backdrop-filter: blur(14px) saturate(1.18) !important;
+}
+
+.call-overlay.call-minimized,
+.call-overlay.minimized,
+.call-overlay[data-mode="bar"] {
+  backdrop-filter: none !important;
+}
+
+.call-card {
+  border-radius: 34px !important;
+  border-color: rgba(0, 229, 255, 0.22) !important;
+  box-shadow: 0 30px 110px rgba(0,0,0,.55), 0 0 42px rgba(0,229,255,.13) !important;
+}
+
+.call-video-box {
+  border-radius: 28px !important;
+  border-color: rgba(166, 183, 255, 0.18) !important;
+  background:
+    radial-gradient(circle at 30% 20%, rgba(0,229,255,.11), transparent 30%),
+    rgba(2, 6, 17, 0.72) !important;
+}
+
+.call-actions button {
+  min-height: 50px !important;
+}
+
+/* Rules/modal/toast */
+.rules-panel,
+.modal-backdrop,
+.safe-media-backdrop {
+  backdrop-filter: blur(14px) saturate(1.15) !important;
+}
+
+.toast,
+.ping-banner {
+  border-radius: 20px !important;
+  background:
+    linear-gradient(135deg, rgba(139, 92, 246, 0.88), rgba(0, 166, 255, 0.76)) !important;
+  border: 1px solid rgba(255,255,255,.18) !important;
+  box-shadow: 0 22px 70px rgba(0,0,0,.42), var(--glow-cyan) !important;
+}
+
+/* Mobile V2 */
+@media (max-width: 1020px) {
+  .chat-only-layout.clean-discord-layout {
+    grid-template-columns: minmax(0, 1fr) !important;
+    width: min(100vw - 20px, 980px) !important;
+    padding-top: 16px !important;
+  }
+
+  .topbar {
+    width: min(100vw - 20px, 980px) !important;
+  }
+
+  .version-badge {
+    display: none !important;
+  }
+}
+
+@media (max-width: 780px) {
+  :root {
+    --tap: 50px;
+    --mobile-nav-height: 88px;
+  }
+
+  body {
+    overflow-x: hidden;
+  }
+
+  .auth-screen {
+    width: min(100vw - 22px, 540px) !important;
+    display: grid !important;
+    grid-template-columns: 1fr !important;
+    gap: 18px !important;
+    align-content: center !important;
+    padding: 18px 0 max(18px, env(safe-area-inset-bottom)) !important;
+  }
+
+  .auth-hero {
+    padding: 10px 6px !important;
+  }
+
+  .auth-hero h1 {
+    font-size: clamp(3.2rem, 18vw, 5.5rem) !important;
+  }
+
+  .v2-hero-chips {
+    gap: 8px;
+  }
+
+  .v2-hero-chips span {
+    padding: 7px 9px;
+    font-size: .68rem;
+  }
+
+  .topbar {
+    top: 8px !important;
+    border-radius: 22px !important;
+    padding: 8px !important;
+  }
+
+  .brand .brand-mark.small {
+    width: 38px !important;
+    height: 38px !important;
+    border-radius: 14px !important;
+  }
+
+  .v2-live-chip,
+  .topbar-actions #rulesBtn,
+  .topbar-actions #refreshBtn {
+    display: none !important;
+  }
+
+  .topbar-actions .ghost {
+    min-height: 40px !important;
+    padding-inline: 10px !important;
+  }
+
+  .app-switcher {
+    position: fixed !important;
+    left: max(10px, env(safe-area-inset-left)) !important;
+    right: max(10px, env(safe-area-inset-right)) !important;
+    bottom: max(10px, env(safe-area-inset-bottom)) !important;
+    z-index: 80 !important;
+    display: grid !important;
+    grid-template-columns: repeat(6, minmax(0, 1fr)) !important;
+    gap: 7px !important;
+    min-height: auto !important;
+    padding: 8px !important;
+    border-radius: 26px !important;
+    background:
+      linear-gradient(180deg, rgba(255,255,255,.10), rgba(255,255,255,.030)),
+      rgba(3, 7, 18, 0.88) !important;
+    box-shadow: 0 22px 74px rgba(0,0,0,.48), 0 0 36px rgba(0,229,255,.10) !important;
+  }
+
+  .app-nav-button {
+    min-width: 0 !important;
+    min-height: 58px !important;
+    border-radius: 18px !important;
+    padding: 6px 2px !important;
+  }
+
+  .app-nav-button .nav-icon {
+    font-size: 1.12rem !important;
+  }
+
+  .app-nav-button .nav-label {
+    font-size: .62rem !important;
+    letter-spacing: -.02em;
+  }
+
+  #adminNavButton:not(.hidden) {
+    display: flex !important;
+  }
+
+  .chat-only-layout.clean-discord-layout {
+    padding-bottom: calc(var(--mobile-nav-height) + 22px) !important;
+  }
+
+  .home-grid,
+  .growth-grid,
+  .event-growth-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  .global-chat,
+  .home-hero,
+  .home-widget,
+  .tsns-widget,
+  .sidebar.card,
+  .people.card,
+  .growth-panel,
+  .admin-message-viewer,
+  .admin-report-viewer {
+    border-radius: 26px !important;
+  }
+
+  .app[data-view="global"] .global-chat {
+    min-height: calc(100dvh - 202px) !important;
+    padding: 14px !important;
+  }
+
+  .app[data-view="global"] .global-chat .section-heading p:not(.eyebrow) {
+    display: none;
+  }
+
+  .app[data-view="global"] .global-messages {
+    min-height: 375px !important;
+    max-height: calc(100dvh - 338px) !important;
+    padding: 10px !important;
+  }
+
+  .app[data-view="global"] .global-chat-bubble {
+    max-width: min(86vw, 620px) !important;
+  }
+
+  .app[data-view="global"] .global-message-form {
+    position: sticky !important;
+    bottom: calc(var(--mobile-nav-height) + 8px) !important;
+    margin-top: 10px !important;
+    box-shadow: 0 -12px 40px rgba(0,0,0,.24), var(--glow-cyan) !important;
+  }
+
+  .chat-panel {
+    inset: 8px 8px calc(var(--mobile-nav-height) + 8px) 8px !important;
+    border-radius: 26px !important;
+  }
+
+  .chat-panel header {
+    padding: 10px !important;
+  }
+
+  .chat-header-actions {
+    gap: 6px !important;
+  }
+
+  .chat-header-actions button {
+    min-height: 40px !important;
+    min-width: 40px !important;
+    padding-inline: 9px !important;
+  }
+
+  .call-overlay .call-card,
+  .call-card {
+    max-width: calc(100vw - 18px) !important;
+    border-radius: 26px !important;
+  }
+}
+
+@media (max-width: 480px) {
+  .auth-panel {
+    padding: 16px !important;
+    border-radius: 28px !important;
+  }
+
+  .topbar .brand strong {
+    font-size: .96rem !important;
+  }
+
+  .v2-brand-subtitle {
+    font-size: .60rem !important;
+  }
+
+  .mobile-menu-btn {
+    display: none !important;
+  }
+
+  .app-switcher {
+    grid-template-columns: repeat(5, minmax(0, 1fr)) !important;
+  }
+
+  .app-nav-button {
+    min-height: 54px !important;
+  }
+
+  .app-nav-button .nav-label {
+    display: none !important;
+  }
+
+  .app[data-view="global"] .global-chat-message .chat-avatar {
+    display: none !important;
+  }
+
+  .app[data-view="global"] .global-chat-bubble,
+  .app[data-view="global"] .global-chat-message.mine .global-chat-bubble {
+    max-width: 93vw !important;
+    border-radius: 18px !important;
+  }
+
+  .app[data-view="global"] .global-message-form {
+    border-radius: 22px !important;
+  }
+
+  .app[data-view="global"] .global-message-form input {
+    min-height: 48px !important;
+  }
+
+  .section-heading.compact-heading {
+    gap: 8px !important;
+  }
+
+  .section-heading h2 {
+    font-size: 1.35rem !important;
+  }
+}

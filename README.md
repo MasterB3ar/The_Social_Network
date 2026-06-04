@@ -1,3 +1,20 @@
+# TSN V2.0 — Neon UI Redesign + Mobile Polish
+
+Dette er en større V2.0-opgradering oven på V1.5.36. Den beholder den fungerende klassiske global-chat-opsætning, men giver hele TSN et langt sejere, mere premium neon/glass dashboard-design.
+
+## Nyt i V2.0
+
+- Komplet nyt TSN V2.0 visuelt tema.
+- Ny login/registrering med stærkere hero, chips og V2 branding.
+- Topbar er redesignet som en live command bar.
+- Navigation, kort, chatbobler, inputs, knapper, modals og opkaldspanel har fået nyt look.
+- Global chat beholder den gamle, fungerende opsætning, men med V2 bobler, bedre spacing og mobiloptimering.
+- Privat chat, brugerlisten, profil, admin, events, notifikationer og media picker har fået V2 polish.
+- Mobilvisning er forbedret med bedre bundnavigation, større touch targets, safe-area support og mere stabil chatplads.
+- Version/cache er opdateret til `2.0.0`.
+
+---
+
 # TSN V1.5.36 — Global Chat Classic Layout Fix
 
 Denne version beholder det nye UI-design, men gendanner global chat til den gamle, fungerende opsætning fra før V1.5.35.

@@ -3,18 +3,21 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>TSN</title>
+  <title>TSN V2.0</title>
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="/styles.css" />
 </head>
 <body>
   <div class="noise"></div>
+  <div class="v2-aurora" aria-hidden="true"></div>
+  <div class="version-badge">TSN V2.0</div>
   <section id="authScreen" class="auth-screen">
     <div class="auth-hero">
       <div class="brand-mark">TSN</div>
-      <p class="eyebrow">privat + global chat</p>
-      <h1>Velkommen til TSN.</h1>
-      <p class="hero-subtitle">Et enkelt chat-netværk med global chat og private samtaler.</p>
+      <p class="eyebrow">TSN V2.0 · live social hub</p>
+      <h1>Velkommen til TSN 2.0.</h1>
+      <p class="hero-subtitle">Global chat, private beskeder, opkald, profiler, events og aktivitet samlet i et nyt neon-dashboard.</p>
+      <div class="v2-hero-chips" aria-hidden="true"><span>Live chat</span><span>Opkald</span><span>Mobilklar</span></div>
     </div>
 
     <div class="auth-panel">
@@ -65,9 +68,11 @@
         <div class="brand-mark small">TSN</div>
         <div>
           <strong>TSN</strong>
+          <span class="v2-brand-subtitle">Version 2.0</span>
         </div>
       </div>
       <div class="topbar-actions">
+        <span class="v2-live-chip"><i></i> Live</span>
         <button id="mobileMenuBtn" class="ghost mobile-menu-btn" type="button">Menu</button>
         <button id="rulesBtn" class="ghost" type="button">Regler</button>
         <button id="refreshBtn" class="ghost" type="button">Opdater</button>
@@ -209,7 +214,7 @@
       <section id="homePanel" class="chat-main route-view" data-route-view="home">
         <section class="home-grid">
           <div class="home-hero card">
-            <div class="section-heading compact-heading"><div><p class="eyebrow mini">TSN Hub</p><h2>Overblik</h2><p>Din aktivitet, TSN-S status, events, polls og leaderboard samlet ét sted.</p></div><button id="refreshHomeBtn" class="secondary tiny" type="button">Opdater</button></div>
+            <div class="section-heading compact-heading"><div><p class="eyebrow mini">TSN V2.0 Hub</p><h2>Overblik</h2><p>Et nyt dashboard til aktivitet, TSN-S status, events, polls og leaderboard.</p></div><button id="refreshHomeBtn" class="secondary tiny" type="button">Opdater</button></div>
             <div id="homeProfileCard" class="home-profile-card"></div>
           </div>
           <div class="tsns-widget card"><p class="eyebrow mini">TSN-S</p><h3>Aktivitetspris</h3><div id="tsnsWidget" class="tsns-widget-body">Indlæser TSN-S...</div></div>
@@ -224,9 +229,9 @@
         <section class="global-chat card">
           <div class="section-heading compact-heading">
             <div>
-              <p class="eyebrow mini">Global</p>
+              <p class="eyebrow mini">TSN World</p>
               <h2>Global chat</h2>
-              <p>Alle, der er logget ind på TSN, kan skrive i samme live chat. Fokus er hurtige beskeder og samtaler i realtid.</p>
+              <p>Klassisk chat-layout, men med TSN V2.0 design: hurtige beskeder, renere bobler og bedre mobilflow.</p>
             </div>
             <span id="globalStatus" class="pill">0 beskeder</span>
           </div>
@@ -459,7 +464,7 @@
     <div class="rules-card card">
       <div class="section-heading">
         <div>
-          <p class="eyebrow mini">TSN V1.5.1</p>
+          <p class="eyebrow mini">TSN V2.0</p>
           <h2>Regler og sikkerhed</h2>
         </div>
         <button id="closeRulesBtn" class="icon-button" type="button" aria-label="Luk regler">×</button>
@@ -480,6 +485,6 @@
   <div id="toast" class="toast hidden"></div>
 
   <script src="/socket.io/socket.io.js"></script>
-  <script src="/app.js?v=1.5.36"></script>
+  <script src="/app.js?v=2.0.0"></script>
 </body>
 </html>
