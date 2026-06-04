@@ -185,7 +185,7 @@ This version adds chat-focused upgrades:
 Optional anti-spam env vars:
 
 ```txt
-TSN_ANTI_SPAM_ENABLED=true
+TSN_ANTI_SPAM_ENABLED=false
 TSN_MESSAGE_COOLDOWN_MS=1500
 TSN_DUPLICATE_MESSAGE_WINDOW_MS=120000
 TSN_MAX_DUPLICATES_PER_WINDOW=3
@@ -525,3 +525,8 @@ I stedet kan brugere gendanne konti sikkert med dette flow:
 6. Når brugeren trykker Fortsæt, flyttes beskeder, stats, venner, badges, notifikationer og aktivitet fra User2 til User1. Derefter fjernes User2.
 
 Det fjerner cyberrisikoen ved at gemme eller vise adgangskoder i klartekst.
+
+
+## TSN V2.0 Spam Alert Removed
+
+Automatic spam blocking is disabled, so fast/repeated messages are allowed. Admin moderation tools still exist.

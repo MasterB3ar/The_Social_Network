@@ -171,8 +171,10 @@ function imageAttachmentHtml(attachment, extraClass = '') {
   if (!src) return '';
   const name = attachment.name || 'Billede';
   const provider = attachment.provider || attachment.attribution || '';
+  const mediaKind = String(attachment.kind || '').toLowerCase() === 'gif' ? 'message-gif' : 'message-picture';
+  const classes = ['message-image', mediaKind, extraClass].filter(Boolean).map(escapeHtml).join(' ');
   return `
-    <figure class="message-image ${escapeHtml(extraClass)}">
+    <figure class="${classes}">
       <img src="${escapeHtml(src)}" alt="${escapeHtml(name)}" loading="lazy" referrerpolicy="no-referrer" />
       <figcaption>${escapeHtml(name)}${provider ? ` · ${escapeHtml(provider)}` : ''}</figcaption>
     </figure>

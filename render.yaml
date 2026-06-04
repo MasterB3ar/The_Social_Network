@@ -39,7 +39,7 @@ services:
       - key: TSN_BLOCKED_WORDS
         sync: false
       - key: TSN_ANTI_SPAM_ENABLED
-        value: true
+        value: false
       - key: TSN_MESSAGE_COOLDOWN_MS
         value: 1500
       - key: TSN_DUPLICATE_MESSAGE_WINDOW_MS

@@ -1,7 +1,7 @@
 {
   "name": "the-social-network-tsn",
   "version": "2.0.0",
-  "description": "TSN V2.0 complete neon UI redesign with classic global chat and mobile polish.",
+  "description": "TSN V2.0 neon UI with spam alert removed and classic global chat.",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",

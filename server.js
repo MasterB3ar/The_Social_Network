@@ -38,7 +38,8 @@ const PUBLIC_DIR = path.join(__dirname, 'public');
 const ADMIN_SETUP_PASSWORD = process.env.TSN_ADMIN_SETUP_PASSWORD || 'TSN-Admin!ChangeMe-2026';
 const ADMIN_SETUP_PASSWORD_HASH = process.env.TSN_ADMIN_SETUP_PASSWORD_HASH || '';
 const PRIVATE_MESSAGE_DELETE_FOR_EVERYONE_MS = 15 * 60 * 1000;
-const ANTI_SPAM_ENABLED = String(process.env.TSN_ANTI_SPAM_ENABLED || 'true').toLowerCase() !== 'false';
+// TSN V2.0 patch: automatic spam blocking/alerts are disabled, so fast/repeated chat messages are allowed.
+const ANTI_SPAM_ENABLED = false;
 const MESSAGE_COOLDOWN_MS = clampInteger(process.env.TSN_MESSAGE_COOLDOWN_MS || 1500, 250, 30000);
 const DUPLICATE_MESSAGE_WINDOW_MS = clampInteger(process.env.TSN_DUPLICATE_MESSAGE_WINDOW_MS || 120000, 10000, 15 * 60 * 1000);
 const MAX_DUPLICATE_MESSAGES_PER_WINDOW = clampInteger(process.env.TSN_MAX_DUPLICATES_PER_WINDOW || 3, 1, 20);
